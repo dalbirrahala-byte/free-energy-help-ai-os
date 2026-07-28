@@ -1,0 +1,34 @@
+---
+description: Core agent workflow — branches, approvals, and scope control
+alwaysApply: true
+---
+
+# Core workflow
+
+## Git and branches
+
+- **Never commit or push directly to `main`.**
+- Use branch names such as `feat/<id>-<slug>`, `fix/<id>-<slug>`, `chore/<id>-<slug>`, or `db/<id>-<slug>`.
+- One logical change set per branch; open a **pull request** for merge to `main`.
+- Do not merge PRs unless the human owner explicitly requests it.
+
+## Plan before code
+
+- For non-trivial work: analyse the repo, list every file to create or modify, give a short implementation plan, and **wait for explicit approval** before editing code.
+- Stay within the approved file list and scope. Ask before expanding scope.
+
+## Quality gates
+
+- Before marking work complete, run (from `frontend/`): `npm run lint`, `npm run typecheck`, `npm run build`.
+- CI must pass on the PR branch.
+
+## Deploy and database
+
+- **No production deployment** without explicit human approval.
+- **No automatic apply** of Supabase migrations to remote projects. Migrations belong in `supabase/migrations/` only; humans apply to staging/production deliberately.
+- Never commit secrets, `.env.local`, or service role keys.
+
+## Preservation
+
+- Do not remove existing CRM behaviour unless the approved spec requires it.
+- Prefer minimal diffs and match existing Tailwind and Next.js patterns in `frontend/`.
