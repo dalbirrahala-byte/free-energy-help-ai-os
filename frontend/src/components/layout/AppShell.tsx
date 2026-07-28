@@ -16,6 +16,7 @@ import {
   Settings,
   Factory,
   Users,
+  Workflow,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -34,6 +35,7 @@ const navigation = [
   { name: "Quotes", icon: FileText, href: "/quotes" },
   { name: "Appointments", icon: CalendarDays, href: "/appointments" },
   { name: "Reports", icon: BarChart3, href: "/reports" },
+  { name: "Automation Centre", icon: Workflow, href: "/automation" },
   { name: "Settings", icon: Settings, href: "/settings" },
 ];
 
