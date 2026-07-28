@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  RefreshCw,
   Settings,
   Users,
   Zap,
@@ -19,6 +20,7 @@ import { useState } from "react";
 const navigation = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/" },
   { name: "AI Operations", icon: Bot, href: "/ai-operations" },
+  { name: "Renewals", icon: RefreshCw, href: "/renewals" },
   { name: "Leads", icon: Users, href: "/leads" },
   { name: "Customers", icon: Building2, href: "/customers" },
   { name: "Quotes", icon: FileText, href: "/quotes" },
