@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  Bot,
   Building2,
   CalendarDays,
   FileText,
@@ -17,6 +18,7 @@ import { useState } from "react";
 
 const navigation = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/" },
+  { name: "AI Operations", icon: Bot, href: "/ai-operations" },
   { name: "Leads", icon: Users, href: "/leads" },
   { name: "Customers", icon: Building2, href: "/customers" },
   { name: "Quotes", icon: FileText, href: "/quotes" },
@@ -29,6 +31,7 @@ type AppShellProps = {
   activeHref?: string;
   title: string;
   subtitle: string;
+  headerContext?: string;
   children: React.ReactNode;
 };
 
@@ -36,6 +39,7 @@ export function AppShell({
   activeHref = "/",
   title,
   subtitle,
+  headerContext = "Mission Control",
   children,
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -120,7 +124,7 @@ export function AppShell({
 
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold">Operations</p>
-              <p className="text-xs text-slate-500">Mission Control</p>
+              <p className="text-xs text-slate-500">{headerContext}</p>
             </div>
           </header>
 
