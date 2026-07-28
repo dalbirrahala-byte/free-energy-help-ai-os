@@ -15,6 +15,7 @@ import {
   ScrollText,
   Settings,
   Factory,
+  Sparkles,
   Users,
   Workflow,
   Zap,
@@ -25,6 +26,7 @@ import { useState } from "react";
 const navigation = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/" },
   { name: "AI Operations", icon: Bot, href: "/ai-operations" },
+  { name: "AI Sales Assistant", icon: Sparkles, href: "/ai-assistant" },
   { name: "Renewals", icon: RefreshCw, href: "/renewals" },
   { name: "Commission Intelligence", icon: PoundSterling, href: "/commissions" },
   { name: "Supplier Intelligence", icon: Factory, href: "/suppliers" },
