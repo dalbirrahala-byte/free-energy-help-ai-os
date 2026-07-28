@@ -14,6 +14,7 @@ import {
   RefreshCw,
   ScrollText,
   Settings,
+  Factory,
   Users,
   Zap,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const navigation = [
   { name: "AI Operations", icon: Bot, href: "/ai-operations" },
   { name: "Renewals", icon: RefreshCw, href: "/renewals" },
   { name: "Commission Intelligence", icon: PoundSterling, href: "/commissions" },
+  { name: "Supplier Intelligence", icon: Factory, href: "/suppliers" },
   { name: "Contracts", icon: ScrollText, href: "/contracts" },
   { name: "Live Transfers", icon: PhoneCall, href: "/live-transfers" },
   { name: "Leads", icon: Users, href: "/leads" },
