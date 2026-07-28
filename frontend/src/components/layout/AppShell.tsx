@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Network,
   PhoneCall,
   PoundSterling,
   RefreshCw,
@@ -38,6 +39,7 @@ const navigation = [
   { name: "Appointments", icon: CalendarDays, href: "/appointments" },
   { name: "Reports", icon: BarChart3, href: "/reports" },
   { name: "Automation Centre", icon: Workflow, href: "/automation" },
+  { name: "Workflow Intelligence", icon: Network, href: "/workflow-intelligence" },
   { name: "Settings", icon: Settings, href: "/settings" },
 ];
 

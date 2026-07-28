@@ -1,0 +1,180 @@
+import type { WorkflowDefinition } from "./types";
+
+const base = {
+  environment: "Demonstration",
+  version: "1.0.0-demo",
+  auditRequirements: "Full event trace with correlation ID (demo)",
+  retryPolicy: "3 attempts with exponential backoff (not connected)",
+  failureHandling: "Queue for manual review — demo placeholder",
+};
+
+export const CORE_END_TO_END_WORKFLOWS: WorkflowDefinition[] = [
+  {
+    workflowId: "WF-L2C-001",
+    name: "Lead-to-customer workflow",
+    description: "Qualify inbound lead through to Customer 360 creation.",
+    businessObjective: "Convert qualified leads into active customers with assigned account manager.",
+    triggerEvent: "Lead created",
+    entryConditions: ["Lead source validated (demo)", "No duplicate match (demo)"],
+    processingSteps: [
+      "Duplicate check",
+      "Qualification",
+      "Account-manager assignment",
+      "Contact task",
+      "Quote opportunity",
+      "Customer conversion",
+      "Customer 360 created",
+    ],
+    approvalPoints: ["High-value lead assignment (demo)"],
+    actions: ["Create task", "Create quote opportunity", "Create customer record (demo)"],
+    expectedResult: "Customer 360 active with owner assigned.",
+    owner: "Sales operations (demo)",
+    status: "Active in demonstration",
+    ...base,
+  },
+  {
+    workflowId: "WF-LT-001",
+    name: "Live-transfer conversion workflow",
+    description: "Monitor transfer queue through lead and customer outcomes.",
+    businessObjective: "Maximise qualified transfers converted to customers.",
+    triggerEvent: "Transfer received",
+    entryConditions: ["Transfer queue open (demo)"],
+    processingSteps: [
+      "Wait-time monitoring",
+      "Agent assignment",
+      "Transfer outcome",
+      "Lead creation",
+      "Qualification",
+      "Customer or follow-up creation",
+    ],
+    approvalPoints: ["Outbound follow-up after missed transfer (demo)"],
+    actions: ["Assign agent", "Create lead", "Schedule callback task"],
+    expectedResult: "Lead or customer record with transfer correlation.",
+    owner: "Live transfers (demo)",
+    status: "Active in demonstration",
+    ...base,
+  },
+  {
+    workflowId: "WF-Q2C-001",
+    name: "Quote-to-contract workflow",
+    description: "Progress priced quote through contract submission.",
+    businessObjective: "Ship accurate contracts with complete data and approvals.",
+    triggerEvent: "Quote created",
+    entryConditions: ["Quote register entry (demo)"],
+    processingSteps: [
+      "Data completeness check",
+      "Supplier comparison",
+      "Internal review",
+      "Customer approval",
+      "Contract creation",
+      "Paperwork check",
+      "Supplier submission",
+    ],
+    approvalPoints: ["Margin review", "Customer send (demo)"],
+    actions: ["Request missing data", "Create contract draft", "Supplier submission placeholder"],
+    expectedResult: "Contract submitted pending signature.",
+    owner: "Quote desk (demo)",
+    status: "Active in demonstration",
+    ...base,
+  },
+  {
+    workflowId: "WF-COB-001",
+    name: "Contract onboarding workflow",
+    description: "Onboard accepted contract across sites and commission.",
+    businessObjective: "Live contract with validated meters and renewal dates.",
+    triggerEvent: "Contract accepted",
+    entryConditions: ["Signed contract received (demo)"],
+    processingSteps: [
+      "Customer onboarding",
+      "Site validation",
+      "Meter validation",
+      "Task creation",
+      "Commission forecast",
+      "Renewal date creation",
+    ],
+    approvalPoints: ["Commission forecast publish (demo)"],
+    actions: ["Validate MPAN/MPRN", "Create renewal window", "Forecast commission"],
+    expectedResult: "Live contract with commission forecast and renewal date.",
+    owner: "Operations (demo)",
+    status: "Active in demonstration",
+    ...base,
+  },
+  {
+    workflowId: "WF-REN-001",
+    name: "Renewal workflow",
+    description: "Manage renewal window through outcome.",
+    businessObjective: "Retain customers with timely renewal quotes.",
+    triggerEvent: "Renewal window opened",
+    entryConditions: ["Contract end within renewal window (demo)"],
+    processingSteps: [
+      "Risk assessment",
+      "Task created",
+      "Customer contacted",
+      "Quote produced",
+      "Outcome recorded",
+      "Contract and commission updated",
+    ],
+    approvalPoints: ["Renewal pricing send (demo)"],
+    actions: ["Create renewal task", "Produce quote", "Record win/loss"],
+    expectedResult: "Renewed contract or documented loss.",
+    owner: "Renewals (demo)",
+    status: "Active in demonstration",
+    ...base,
+  },
+  {
+    workflowId: "WF-COM-001",
+    name: "Commission reconciliation workflow",
+    description: "Track expected commission through payment and disputes.",
+    businessObjective: "Reconcile supplier payments with forecasts.",
+    triggerEvent: "Commission expected",
+    entryConditions: ["Commission forecast exists (demo)"],
+    processingSteps: [
+      "Payment-date monitoring",
+      "Payment received or overdue",
+      "Reconciliation",
+      "Underpayment or dispute handling",
+      "Reporting updated",
+    ],
+    approvalPoints: ["Dispute escalation (demo)"],
+    actions: ["Chase supplier", "Raise dispute", "Update reporting register"],
+    expectedResult: "Commission reconciled or dispute in progress.",
+    owner: "Finance operations (demo)",
+    status: "Active in demonstration",
+    ...base,
+  },
+  {
+    workflowId: "WF-RISK-001",
+    name: "Customer-risk workflow",
+    description: "Respond to no-contact and negative signals.",
+    businessObjective: "Reduce churn through timely intervention.",
+    triggerEvent: "Customer at risk",
+    entryConditions: ["No recent contact or negative event (demo)"],
+    processingSteps: [
+      "Risk score updated",
+      "AI recommendation created",
+      "Account manager notified",
+      "Task created",
+      "Management escalation if unresolved",
+    ],
+    approvalPoints: ["Management escalation (demo)"],
+    actions: ["Notify AM", "Create task", "AI recommendation placeholder"],
+    expectedResult: "Contact plan executed or escalated.",
+    owner: "Customer success (demo)",
+    status: "Active in demonstration",
+    ...base,
+  },
+];
+
+export function getWorkflowDefinitionById(id: string): WorkflowDefinition | undefined {
+  return CORE_END_TO_END_WORKFLOWS.find((w) => w.workflowId === id);
+}
+
+export function workflowProgressPercent(completedSteps: number, totalSteps: number): number {
+  if (totalSteps <= 0) return 0;
+  return Math.min(100, Math.round((completedSteps / totalSteps) * 100));
+}
+
+export function requiresHumanApprovalForWorkflow(workflowId: string): boolean {
+  const wf = getWorkflowDefinitionById(workflowId);
+  return (wf?.approvalPoints.length ?? 0) > 0;
+}
