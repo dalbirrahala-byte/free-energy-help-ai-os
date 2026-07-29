@@ -11,6 +11,8 @@ import {
 } from "./analytics";
 import { demoExecutiveOverlay, getDemoModulesForCustomer } from "./demo-data";
 import type {
+  Activity360Row,
+  Contact360Row,
   Customer360Alert,
   Customer360View,
   Site360Row,
@@ -102,6 +104,45 @@ function mapTasks(tasks: TaskRow[]): Task360Row[] {
     status: displayValue(task.status),
     assignedUser: "Unassigned",
   }));
+}
+
+function mapActivities(activities: ActivityRow[]): Activity360Row[] {
+  return activities.map((activity) => ({
+    id: activity.id,
+    source: "live",
+    activityType: displayValue(activity.activity_type),
+    title: displayValue(activity.title ?? activity.activity_type),
+    details: activity.details?.trim() ? activity.details.trim() : "—",
+    occurredLabel: formatUkDateTime(
+      activity.activity_date ?? activity.created_at.slice(0, 10),
+      activity.activity_time,
+    ),
+  }));
+}
+
+function buildContacts(
+  customer: CustomerRow,
+  demoAdditional: Contact360Row[],
+): Contact360Row[] {
+  const livePrimary: Contact360Row[] = [];
+
+  if (
+    customer.contact_name?.trim() ||
+    customer.email?.trim() ||
+    customer.telephone?.trim()
+  ) {
+    livePrimary.push({
+      id: `live-primary-${customer.id}`,
+      source: "live",
+      name: displayValue(customer.contact_name),
+      role: "Primary contact",
+      telephone: displayValue(customer.telephone),
+      email: displayValue(customer.email),
+      isPrimary: true,
+    });
+  }
+
+  return [...livePrimary, ...demoAdditional];
 }
 
 function buildLiveTimeline(
@@ -304,6 +345,8 @@ export async function loadCustomer360(
   );
 
   const taskRows = mapTasks(tasks);
+  const activityRows = mapActivities(activities);
+  const contactRows = buildContacts(customer, demo.additionalContacts);
   const latestActivity = activities[0];
   const upcomingTask = tasks.find(
     (t) => (t.status ?? "Open").toLowerCase() !== "completed",
@@ -348,6 +391,8 @@ export async function loadCustomer360(
     alerts: buildAlerts(customer, sites, tasks, activities, demo),
     sites: mapSites(sites, execDemo.electricityMeters, execDemo.gasMeters),
     tasks: taskRows,
+    contacts: contactRows,
+    activities: activityRows,
     liveNotes: customer.notes,
     overview: {
       profileSummary: `${displayValue(customer.company_name)} — ${displayValue(customer.status)} trading status.`,

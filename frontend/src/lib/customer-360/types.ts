@@ -224,6 +224,60 @@ export type DemoNoteHistoryEntry = {
   body: string;
 };
 
+export type Contact360Row = {
+  id: string;
+  source: DataSource;
+  name: string;
+  role: string;
+  telephone: string;
+  email: string;
+  isPrimary: boolean;
+};
+
+export type Activity360Row = {
+  id: number;
+  source: "live";
+  activityType: string;
+  title: string;
+  details: string;
+  occurredLabel: string;
+};
+
+export type Bill360Row = {
+  id: string;
+  source: "demo";
+  reference: string;
+  supplier: string;
+  fuel: string;
+  periodLabel: string;
+  amount: string;
+  status: string;
+  receivedDate: string;
+};
+
+export type CreditStatus360 = {
+  source: "demo";
+  overallRating: string;
+  creditLimit: string;
+  exposure: string;
+  paymentBehaviour: string;
+  lastReviewLabel: string;
+  nextReviewLabel: string;
+  notes: string;
+};
+
+export type Opportunity360Row = {
+  id: string;
+  source: "demo";
+  title: string;
+  type: string;
+  estimatedValue: string;
+  priority: "High" | "Medium" | "Low";
+  status: string;
+  owner: string;
+  nextStep: string;
+};
+
 export type Customer360Overview = {
   profileSummary: string;
   primarySiteName: string;
@@ -247,6 +301,10 @@ export type Customer360DemoModules = {
   commissions: Commission360Row[];
   appointments: Appointment360Row[];
   documents: Document360Row[];
+  bills: Bill360Row[];
+  creditStatus: CreditStatus360;
+  opportunities: Opportunity360Row[];
+  additionalContacts: Contact360Row[];
   timelineDemo: Timeline360Entry[];
   aiRecommendations: AiRecommendation[];
   noteHistoryDemo: DemoNoteHistoryEntry[];
@@ -259,6 +317,8 @@ export type Customer360View = {
   alerts: Customer360Alert[];
   sites: Site360Row[];
   tasks: Task360Row[];
+  contacts: Contact360Row[];
+  activities: Activity360Row[];
   liveNotes: string | null;
   overview: Customer360Overview;
   demo: Customer360DemoModules;

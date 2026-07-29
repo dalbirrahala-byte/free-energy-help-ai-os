@@ -1,3 +1,7 @@
+import type { TrendSeries } from "@/lib/reports/types";
+
+import type { Consumption360, Contract360Row } from "./types";
+
 export function formatUkDate(date: string | null | undefined): string {
   if (!date) {
     return "Not set";
@@ -72,6 +76,36 @@ export function countRenewalsDueWithinDays(
     const days = daysUntil(end);
     return days !== null && days >= 0 && days <= withinDays;
   }).length;
+}
+
+export function filterContractsByFuel(
+  contracts: Contract360Row[],
+  fuel: "Electricity" | "Gas",
+): Contract360Row[] {
+  return contracts.filter((contract) => contract.fuelType === fuel);
+}
+
+export function buildConsumptionTrendSeries(consumption: Consumption360): TrendSeries[] {
+  return [
+    {
+      id: "elec-trend",
+      title: "Electricity — monthly index (demo)",
+      points: consumption.monthlyTrend.map((row) => ({
+        label: row.month,
+        value: row.electricityPct,
+        display: `${row.electricityPct}%`,
+      })),
+    },
+    {
+      id: "gas-trend",
+      title: "Gas — monthly index (demo)",
+      points: consumption.monthlyTrend.map((row) => ({
+        label: row.month,
+        value: row.gasPct,
+        display: `${row.gasPct}%`,
+      })),
+    },
+  ];
 }
 
 export function buildRenewalsDueLabel(

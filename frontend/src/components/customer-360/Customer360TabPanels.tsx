@@ -1,10 +1,13 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { SectionCard } from "@/components/dashboard/SectionCard";
+import { DemoTrendChart } from "@/components/reports/DemoTrendChart";
 import { AI_ASSISTANT_DISCONNECTED, AI_SUGGESTED_PROMPTS } from "@/lib/customer-360/constants";
-import type { Customer360Tab, Customer360View } from "@/lib/customer-360/types";
+import { buildConsumptionTrendSeries, filterContractsByFuel } from "@/lib/customer-360/analytics";
+import type { Customer360Tab, Customer360View, Opportunity360Row } from "@/lib/customer-360/types";
 
 import { AiRecommendationsPanel } from "./AiRecommendationsPanel";
 import { Customer360Table } from "./Customer360Table";
@@ -36,10 +39,66 @@ function renderPanel(tab: Customer360Tab, view: Customer360View) {
   switch (tab) {
     case "Overview":
       return <OverviewPanel view={view} />;
+    case "Contacts":
+      return <ContactsPanel view={view} />;
     case "Sites":
       return <SitesPanel view={view} />;
     case "Contracts":
       return <ContractsPanel view={view} />;
+    case "Electricity Contracts":
+      return (
+        <FuelContractsPanel
+          view={view}
+          fuel="Electricity"
+          meterSection={
+            <SectionCard title="Electricity meters" description="Demo MPAN register">
+              <Customer360Table
+                caption="Electricity meters"
+                headers={[
+                  "MPAN",
+                  "Profile",
+                  "Serial",
+                  "HH/NHH",
+                  "Supplier",
+                  "Annual consumption",
+                  "Status",
+                ]}
+                rows={view.demo.electricityMeters.map((m) => [
+                  m.mpan,
+                  m.profileClass,
+                  m.meterSerial,
+                  m.hhNhh,
+                  m.currentSupplier,
+                  m.annualConsumption,
+                  m.status,
+                ])}
+              />
+            </SectionCard>
+          }
+        />
+      );
+    case "Gas Contracts":
+      return (
+        <FuelContractsPanel
+          view={view}
+          fuel="Gas"
+          meterSection={
+            <SectionCard title="Gas meters" description="Demo MPRN register">
+              <Customer360Table
+                caption="Gas meters"
+                headers={["MPRN", "Serial", "AQ", "Supplier", "Status"]}
+                rows={view.demo.gasMeters.map((m) => [
+                  m.mprn,
+                  m.meterSerial,
+                  m.aq,
+                  m.currentSupplier,
+                  m.status,
+                ])}
+              />
+            </SectionCard>
+          }
+        />
+      );
     case "Meters":
       return <MetersPanel view={view} />;
     case "Consumption":
@@ -50,10 +109,14 @@ function renderPanel(tab: Customer360Tab, view: Customer360View) {
       return <LiveTransfersPanel view={view} />;
     case "Quotes":
       return <QuotesPanel view={view} />;
+    case "Bills":
+      return <BillsPanel view={view} />;
     case "Commission":
       return <CommissionPanel view={view} />;
     case "Tasks":
       return <TasksPanel view={view} />;
+    case "Activities":
+      return <ActivitiesPanel view={view} />;
     case "Appointments":
       return <AppointmentsPanel view={view} />;
     case "Documents":
@@ -66,6 +129,10 @@ function renderPanel(tab: Customer360Tab, view: Customer360View) {
       );
     case "Notes":
       return <NotesPanel view={view} />;
+    case "Credit Status":
+      return <CreditStatusPanel view={view} />;
+    case "Opportunities":
+      return <OpportunitiesPanel view={view} />;
     case "AI Assistant":
       return <AiAssistantPanel view={view} />;
     default:
@@ -118,9 +185,19 @@ function OverviewPanel({ view }: { view: Customer360View }) {
         </SectionCard>
       </div>
 
-      <SectionCard title="AI recommendations" description="Demonstration only">
+      <SectionCard title="AI recommendations" description="Demonstration only — AI Insights">
         <AiRecommendationsPanel recommendations={view.demo.aiRecommendations} />
       </SectionCard>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <SectionCard title="Credit status" description="Demo credit file">
+          <p className="text-sm text-slate-700">{view.demo.creditStatus.overallRating}</p>
+          <p className="mt-2 text-sm text-slate-600">{view.demo.creditStatus.notes}</p>
+        </SectionCard>
+        <SectionCard title="Opportunities" description="Customer-specific demo register">
+          <OpportunityTeaserList opportunities={view.demo.opportunities} />
+        </SectionCard>
+      </div>
     </div>
   );
 }
@@ -130,6 +207,109 @@ function OverviewItem({ label, value }: { label: string; value: string }) {
     <div>
       <dt className="text-xs font-semibold uppercase text-slate-400">{label}</dt>
       <dd className="mt-1 text-sm text-slate-800">{value}</dd>
+    </div>
+  );
+}
+
+function OpportunityTeaserList({ opportunities }: { opportunities: Opportunity360Row[] }) {
+  if (opportunities.length === 0) {
+    return <p className="text-sm text-slate-500">No demo opportunities for this customer.</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {opportunities.slice(0, 2).map((item) => (
+        <li key={item.id} className="text-sm text-slate-700">
+          <span className="font-semibold text-slate-900">{item.title}</span>
+          <span className="text-slate-500"> · {item.estimatedValue}</span>
+          <DemoBadge compact />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ContactsPanel({ view }: { view: Customer360View }) {
+  return (
+    <SectionCard title="Contacts" description="Live primary contact and demonstration secondary contacts">
+      <Customer360Table
+        caption="Customer contacts"
+        headers={["Name", "Role", "Telephone", "Email", "Primary", "Source"]}
+        rows={view.contacts.map((contact) => [
+          contact.name,
+          contact.role,
+          contact.telephone,
+          contact.email,
+          contact.isPrimary ? "Yes" : "—",
+          contact.source === "live" ? (
+            "Live CRM"
+          ) : (
+            <>
+              Demo <DemoBadge compact />
+            </>
+          ),
+        ])}
+        emptyMessage="No contacts on file — add primary contact via Edit customer."
+      />
+      <Link
+        href={`/customers/${view.customerId}/edit`}
+        className="mt-4 inline-block text-sm font-semibold text-emerald-600"
+      >
+        Edit primary contact →
+      </Link>
+    </SectionCard>
+  );
+}
+
+function FuelContractsPanel({
+  view,
+  fuel,
+  meterSection,
+}: {
+  view: Customer360View;
+  fuel: "Electricity" | "Gas";
+  meterSection: ReactNode;
+}) {
+  const contracts = filterContractsByFuel(view.demo.contracts, fuel);
+
+  return (
+    <div className="space-y-6">
+      <SectionCard
+        title={`${fuel} contracts`}
+        description="Demo contract register — not live"
+      >
+        <Customer360Table
+          caption={`${fuel} contracts`}
+          headers={[
+            "Supplier",
+            "Type",
+            "Start",
+            "End",
+            "Term",
+            "Status",
+            "Consumption",
+            "EACV",
+            "Demo commission",
+            "Renewal window",
+          ]}
+          rows={contracts.map((c) => [
+            <>
+              {c.supplier} <DemoBadge compact />
+            </>,
+            c.contractType,
+            c.startLabel,
+            c.endLabel,
+            c.term,
+            c.status,
+            c.annualConsumption,
+            c.estimatedAnnualValue,
+            c.demoCommission,
+            c.renewalWindow,
+          ])}
+          emptyMessage={`No demo ${fuel.toLowerCase()} contracts on register.`}
+        />
+      </SectionCard>
+      {meterSection}
     </div>
   );
 }
@@ -250,6 +430,7 @@ function MetersPanel({ view }: { view: Customer360View }) {
 
 function ConsumptionPanel({ view }: { view: Customer360View }) {
   const c = view.demo.consumption;
+  const trendSeries = buildConsumptionTrendSeries(c);
 
   return (
     <SectionCard title="Consumption" description="Demo analytics — not connected to HH feeds">
@@ -259,6 +440,12 @@ function ConsumptionPanel({ view }: { view: Customer360View }) {
         <OverviewItem label="Peak usage" value={c.peakUsage} />
         <OverviewItem label="Estimated annual spend" value={c.estimatedAnnualSpend} />
       </dl>
+      <h4 className="mt-6 text-sm font-bold text-slate-900">Consumption charts (demo)</h4>
+      <div className="mt-3 grid gap-4 lg:grid-cols-2">
+        {trendSeries.map((series) => (
+          <DemoTrendChart key={series.id} series={series} />
+        ))}
+      </div>
       <h4 className="mt-6 text-sm font-bold text-slate-900">Monthly trend (demo index)</h4>
       <ul className="mt-3 space-y-3">
         {c.monthlyTrend.map((row) => (
@@ -395,6 +582,31 @@ function QuotesPanel({ view }: { view: Customer360View }) {
   );
 }
 
+function BillsPanel({ view }: { view: Customer360View }) {
+  return (
+    <SectionCard title="Bills" description="Demo bill register — upload and validation not configured">
+      <Customer360Table
+        caption="Bills"
+        headers={["Reference", "Supplier", "Fuel", "Period", "Amount", "Status", "Received"]}
+        rows={view.demo.bills.map((bill) => [
+          <>
+            {bill.reference} <DemoBadge compact />
+          </>,
+          bill.supplier,
+          bill.fuel,
+          bill.periodLabel,
+          bill.amount,
+          bill.status,
+          bill.receivedDate,
+        ])}
+      />
+      <p className="mt-4 text-sm text-slate-500">
+        Bill ingestion — Not configured. Figures are demonstration only.
+      </p>
+    </SectionCard>
+  );
+}
+
 function CommissionPanel({ view }: { view: Customer360View }) {
   return (
     <SectionCard title="Commission" description="Demo commission rows — not live financial data">
@@ -452,6 +664,34 @@ function TasksPanel({ view }: { view: Customer360View }) {
   );
 }
 
+function ActivitiesPanel({ view }: { view: Customer360View }) {
+  return (
+    <SectionCard title="Activities" description="Live CRM activity history for this customer">
+      <Customer360Table
+        caption="Activities"
+        headers={["Date/time", "Type", "Title", "Details"]}
+        rows={view.activities.map((activity) => [
+          activity.occurredLabel,
+          activity.activityType,
+          activity.title,
+          activity.details,
+        ])}
+        emptyMessage="No activities recorded — activities may be linked from lead conversion."
+      />
+      {view.header.sourceLeadId ? (
+        <Link
+          href={`/leads/${view.header.sourceLeadId}/activity/new`}
+          className="mt-4 inline-block font-semibold text-emerald-600"
+        >
+          Add activity via source lead →
+        </Link>
+      ) : (
+        <p className="mt-4 text-sm text-slate-500">Add activity from customer — Not configured.</p>
+      )}
+    </SectionCard>
+  );
+}
+
 function AppointmentsPanel({ view }: { view: Customer360View }) {
   return (
     <SectionCard title="Appointments" description="Demo schedule — appointments route not configured">
@@ -498,7 +738,10 @@ function DocumentsPanel({ view }: { view: Customer360View }) {
 function NotesPanel({ view }: { view: Customer360View }) {
   return (
     <div className="space-y-6">
-      <SectionCard title="Customer notes" description="Live CRM notes field (read-only on this page)">
+      <SectionCard
+        title="Broker notes"
+        description="Live CRM notes field (read-only on this page)"
+      >
         <p className="whitespace-pre-wrap text-sm text-slate-700">
           {view.liveNotes?.trim() ? view.liveNotes : "No notes stored in CRM."}
         </p>
@@ -506,7 +749,7 @@ function NotesPanel({ view }: { view: Customer360View }) {
           href={`/customers/${view.customerId}/edit`}
           className="mt-4 inline-block text-sm font-semibold text-emerald-600"
         >
-          Edit notes in customer record →
+          Edit broker notes in customer record →
         </Link>
       </SectionCard>
       <SectionCard title="Notes history" description="Demonstration thread only — no database writes">
@@ -524,6 +767,79 @@ function NotesPanel({ view }: { view: Customer360View }) {
         </ul>
       </SectionCard>
     </div>
+  );
+}
+
+const OPPORTUNITY_PRIORITY_STYLES: Record<Opportunity360Row["priority"], string> = {
+  High: "bg-red-100 text-red-900",
+  Medium: "bg-amber-100 text-amber-950",
+  Low: "bg-slate-100 text-slate-700",
+};
+
+function CreditStatusPanel({ view }: { view: Customer360View }) {
+  const credit = view.demo.creditStatus;
+
+  return (
+    <SectionCard title="Credit status" description="Demonstration credit file — not live bureau data">
+      <dl className="grid gap-4 sm:grid-cols-2">
+        <OverviewItem label="Overall rating" value={credit.overallRating} />
+        <OverviewItem label="Credit limit" value={credit.creditLimit} />
+        <OverviewItem label="Exposure" value={credit.exposure} />
+        <OverviewItem label="Payment behaviour" value={credit.paymentBehaviour} />
+        <OverviewItem label="Last review" value={credit.lastReviewLabel} />
+        <OverviewItem label="Next review" value={credit.nextReviewLabel} />
+      </dl>
+      <p className="mt-4 text-sm text-slate-600">{credit.notes}</p>
+      <p className="mt-2 text-sm text-slate-500">
+        Live credit integration — Not configured. <DemoBadge compact />
+      </p>
+    </SectionCard>
+  );
+}
+
+function OpportunitiesPanel({ view }: { view: Customer360View }) {
+  return (
+    <SectionCard
+      title="Opportunities"
+      description="Customer-specific demonstration opportunities — not live pipeline data"
+    >
+      <ul className="space-y-3">
+        {view.demo.opportunities.map((item) => (
+          <li key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-semibold text-slate-900">{item.title}</p>
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${OPPORTUNITY_PRIORITY_STYLES[item.priority]}`}
+              >
+                {item.priority}
+              </span>
+              <DemoBadge compact />
+            </div>
+            <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-semibold uppercase text-slate-400">Type</dt>
+                <dd className="text-slate-700">{item.type}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-slate-400">Status</dt>
+                <dd className="text-slate-700">{item.status}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-slate-400">Estimated value</dt>
+                <dd className="text-slate-700">{item.estimatedValue}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-slate-400">Owner</dt>
+                <dd className="text-slate-700">{item.owner}</dd>
+              </div>
+            </dl>
+            <p className="mt-2 text-sm text-slate-600">
+              <span className="font-semibold text-slate-800">Next step:</span> {item.nextStep}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </SectionCard>
   );
 }
 
@@ -551,7 +867,7 @@ function AiAssistantPanel({ view }: { view: Customer360View }) {
           ))}
         </ul>
       </SectionCard>
-      <SectionCard title="Recommendations" description="Demo only">
+      <SectionCard title="Recommendations" description="AI Insights — demo only">
         <AiRecommendationsPanel recommendations={view.demo.aiRecommendations} />
       </SectionCard>
     </div>
