@@ -8,6 +8,7 @@ import {
   FileText,
   LayoutDashboard,
   LogOut,
+  Brain,
   Menu,
   Network,
   PhoneCall,
@@ -40,6 +41,7 @@ const navigation = [
   { name: "Reports", icon: BarChart3, href: "/reports" },
   { name: "Automation Centre", icon: Workflow, href: "/automation" },
   { name: "Workflow Intelligence", icon: Network, href: "/workflow-intelligence" },
+  { name: "Enterprise Intelligence", icon: Brain, href: "/enterprise-intelligence" },
   { name: "Settings", icon: Settings, href: "/settings" },
 ];
 
