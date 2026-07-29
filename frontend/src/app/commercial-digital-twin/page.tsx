@@ -8,10 +8,10 @@ export const metadata: Metadata = {
   description: "Operational brain of the brokerage — demonstration workspace",
 };
 
-export default function DigitalTwinPage() {
+export default function CommercialDigitalTwinPage() {
   return (
     <AppShell
-      activeHref="/digital-twin"
+      activeHref="/commercial-digital-twin"
       title="Enterprise Commercial Digital Twin"
       subtitle="Portfolio and customer commercial workspace — demonstration architecture"
       headerContext="Commercial Digital Twin"

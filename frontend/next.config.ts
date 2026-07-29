@@ -1,7 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  async redirects() {
+    return [
+      {
+        source: "/digital-twin",
+        destination: "/commercial-digital-twin",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

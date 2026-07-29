@@ -37,7 +37,7 @@ const navigation = [
   { name: "Live Transfers", icon: PhoneCall, href: "/live-transfers" },
   { name: "Leads", icon: Users, href: "/leads" },
   { name: "Customers", icon: Building2, href: "/customers" },
-  { name: "Commercial Digital Twin", icon: Cuboid, href: "/digital-twin" },
+  { name: "Commercial Digital Twin", icon: Cuboid, href: "/commercial-digital-twin" },
   { name: "Quotes", icon: FileText, href: "/quotes" },
   { name: "Appointments", icon: CalendarDays, href: "/appointments" },
   { name: "Reports", icon: BarChart3, href: "/reports" },

@@ -1,0 +1,272 @@
+---
+description: Free Energy Help AI OS autonomous development workflow, approvals, safety boundaries and quality gates
+alwaysApply: true
+---
+# Free Energy Help AI OS — Core Development Rule
+## 1. Operating roles
+The human Product Owner has final authority over:
+- Business priorities
+- Feature approval
+- Financial rules
+- Production deployment
+- Database migrations
+- Merging into main
+ChatGPT acts as:
+- Chief Solution Architect
+- Product planner
+- Specification writer
+- Technical reviewer
+- Workflow director
+Cursor acts as:
+- Senior Software Engineer
+- Implementation agent
+- Local QA engineer
+- Documentation maintainer
+Cursor must implement only the approved feature scope.
+---
+## 2. Default working method
+For every feature:
+1. Inspect the repository.
+2. Confirm the current branch.
+3. Confirm the working tree state.
+4. Read the relevant existing files.
+5. Preserve current functionality.
+6. Follow the approved specification.
+7. Reuse existing architecture and components.
+8. Implement only within scope.
+9. Run all quality checks.
+10. Report every changed file.
+11. Stop before commit, push, merge, migration or deployment unless explicitly approved.
+Do not repeatedly ask for confirmation during routine implementation when the requested action is clearly within the approved feature scope.
+---
+## 3. Actions Cursor may perform without stopping
+Cursor may automatically perform these actions when they are required by the approved task:
+### Repository inspection
+- Read files
+- Search files
+- List directories
+- Inspect Git status
+- Inspect Git branch
+- Inspect Git diff
+- Inspect Git log
+- Inspect package.json
+- Inspect TypeScript configuration
+- Inspect environment example files
+- Inspect documentation
+### File operations within approved scope
+- Create new feature files
+- Edit existing feature files
+- Create React components
+- Create TypeScript types
+- Create constants
+- Create clearly labelled demo data
+- Create utility functions
+- Create tests
+- Edit Tailwind classes
+- Edit feature-specific documentation
+- Refactor code inside the approved feature
+- Update sidebar navigation when the approved feature requires it
+- Format files
+### Safe local commands
+Cursor may run these without repeatedly stopping:
+- cd
+- pwd
+- dir
+- ls
+- Get-ChildItem
+- git status
+- git branch
+- git diff
+- git log
+- git show
+- npm install
+- npm run lint
+- npm run typecheck
+- npm run build
+- npm run test
+- npm run dev
+- npx tsc --noEmit
+Cursor should fix lint, typecheck, test and build errors that were introduced by the current feature.
+---
+## 4. Actions that require explicit human approval
+Cursor must stop and request approval before:
+- Committing code
+- Pushing to GitHub
+- Opening or updating a Pull Request
+- Merging any branch
+- Modifying main
+- Rebasing shared branches
+- Force pushing
+- Resetting Git history
+- Running git clean
+- Deleting branches
+- Deleting existing project files
+- Replacing large sections of unrelated code
+- Modifying .env.local
+- Exposing or printing secrets
+- Modifying Supabase tables
+- Applying database migrations
+- Changing RLS policies
+- Deleting database records
+- Connecting demo financial modules to live data
+- Deploying to production
+- Changing production configuration
+- Installing a major framework or replacing an existing library
+- Making any change outside the approved feature scope
+Never treat silence as approval.
+---
+## 5. Git rules
+- Never commit directly to main.
+- Use one branch per feature.
+- Recommended branch formats:
+  feat/<feature-id>-<slug>
+  fix/<issue-id>-<slug>
+  chore/<task-id>-<slug>
+  docs/<task-id>-<slug>
+- Do not mix unrelated work in one commit.
+- Do not discard uncommitted work.
+- Do not overwrite another feature branch.
+- Before creating a branch, inspect the current working tree.
+- If unrelated work exists, preserve it and report the conflict before proceeding.
+- Never merge without explicit human approval.
+---
+## 6. Scope control
+Before implementation, identify:
+- Approved objective
+- Files likely to change
+- Files that must not change
+- Database impact
+- External service impact
+- Acceptance criteria
+Do not add features that were not requested.
+Do not redesign unrelated screens.
+Do not perform broad cleanup unless it is necessary for the approved feature.
+Do not remove existing CRM behaviour unless the approved specification explicitly requires it.
+---
+## 7. Data integrity rules
+- Use real Supabase data only where existing tables support it.
+- Never invent live business figures.
+- Never present demo data as real business data.
+- Label all placeholder data clearly as “Demo data”.
+- Display “Not configured” where a real integration or data source does not exist.
+- Do not invent revenue, commission, pipeline, customer or supplier figures.
+- Do not modify Supabase during UI-only tasks.
+- Database migrations must be separate, reviewable tasks.
+- Never expose environment variables, API keys or service-role keys.
+---
+## 8. Financial module rules
+For commissions, quotes, contracts, savings and forecasts:
+- Keep calculations in named utility functions.
+- Document calculation assumptions.
+- Use decimal-safe financial handling where appropriate.
+- Do not silently round intermediate values.
+- Clearly distinguish expected, forecast, invoiced, paid and outstanding amounts.
+- Demo figures must be visibly labelled.
+- Live financial integrations require separate approval.
+---
+## 9. UI and code standards
+Use:
+- Next.js
+- TypeScript
+- Tailwind CSS
+- Existing AppShell
+- Existing navigation and visual language
+- Reusable components
+- Accessible labels
+- Semantic headings
+- Responsive layouts
+Avoid:
+- One very large page component
+- Duplicated business logic
+- Inline mock data inside page components
+- Unnecessary dependencies
+- Unrelated visual redesigns
+- Fake loading or fake live status indicators
+Preferred structure:
+- app route file
+- components
+- types
+- constants
+- utilities
+- data loader
+- tests where practical
+---
+## 10. Quality gates
+Before reporting a feature complete, run:
+```bash
+npm run lint
+npm run typecheck
+npm run build
+```
+---
+## 11. Completion report
+At the end of every implementation, report:
+1. Current branch
+2. Feature completed
+3. Every file created
+4. Every file modified
+5. Every file deleted
+6. Lint result
+7. Typecheck result
+8. Build result
+9. Test result
+10. Remaining warnings
+11. Supabase impact
+12. Environment impact
+13. Unrelated routes touched
+14. Exact local URL
+15. Recommended manual tests
+16. Whether the work is ready to commit
+17. Any blockers or risks
+Then stop and wait for approval.
+---
+## 12. Approval language
+Treat these phrases as approval only for the named action:
+- “Approved to implement”
+- “Approved to commit”
+- “Approved to push”
+- “Approved to open the PR”
+- “Approved to merge”
+- “Approved to apply the migration”
+- “Approved to deploy”
+Approval for implementation does not include approval to commit.
+Approval to commit does not include approval to push.
+Approval to push does not include approval to merge.
+Approval to merge does not include approval to deploy.
+---
+## 13. Efficient execution
+Cursor should work continuously through all routine tasks inside the approved scope.
+Do not stop after every file edit.
+Do not ask repeated questions when the specification already answers them.
+Batch related file edits.
+Run quality checks after implementation rather than after every small edit.
+Only interrupt for:
+- A real scope conflict
+- Possible loss of work
+- Database changes
+- Secret exposure
+- Destructive commands
+- Git history changes
+- Commit, push, merge or deployment approval
+- A business decision not covered by the specification
+---
+## 14. Current product direction
+The application is Free Energy Help AI OS, a UK commercial energy brokerage operating platform.
+Core product areas include:
+- Leads
+- Customers
+- Customer sites
+- Tasks
+- Activities
+- Renewals
+- Quotes
+- Contracts
+- MPANs
+- MPRNs
+- Suppliers
+- Commission intelligence
+- Live transfers
+- AI operations
+- Automation
+- Reporting
+New modules must fit the wider platform architecture rather than operating as isolated prototypes.
