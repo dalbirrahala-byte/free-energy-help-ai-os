@@ -14,9 +14,10 @@ import {
 
 type RenewalsTableProps = {
   records: DemoRenewalRecord[];
+  onStartRenewal: (record: DemoRenewalRecord) => void;
 };
 
-export function RenewalsTable({ records }: RenewalsTableProps) {
+export function RenewalsTable({ records, onStartRenewal }: RenewalsTableProps) {
   if (records.length === 0) {
     return (
       <p className="text-sm text-slate-500">
@@ -61,11 +62,14 @@ export function RenewalsTable({ records }: RenewalsTableProps) {
               <th scope="col" className="px-3 py-3 font-semibold">
                 Account manager
               </th>
+              <th scope="col" className="px-3 py-3 font-semibold">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
             {records.map((record) => (
-              <RenewalTableRow key={record.id} record={record} />
+              <RenewalTableRow key={record.id} record={record} onStartRenewal={onStartRenewal} />
             ))}
           </tbody>
         </table>
@@ -74,7 +78,7 @@ export function RenewalsTable({ records }: RenewalsTableProps) {
       <ul className="space-y-4 lg:hidden">
         {records.map((record) => (
           <li key={record.id}>
-            <RenewalRecordCard record={record} />
+            <RenewalRecordCard record={record} onStartRenewal={onStartRenewal} />
           </li>
         ))}
       </ul>
@@ -82,7 +86,25 @@ export function RenewalsTable({ records }: RenewalsTableProps) {
   );
 }
 
-function RenewalTableRow({ record }: { record: DemoRenewalRecord }) {
+function StartRenewalButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="whitespace-nowrap rounded-xl bg-emerald-500 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-600"
+    >
+      Start Renewal
+    </button>
+  );
+}
+
+function RenewalTableRow({
+  record,
+  onStartRenewal,
+}: {
+  record: DemoRenewalRecord;
+  onStartRenewal: (record: DemoRenewalRecord) => void;
+}) {
   return (
     <Fragment>
       <tr className="border-b border-slate-100 align-top">
@@ -113,9 +135,12 @@ function RenewalTableRow({ record }: { record: DemoRenewalRecord }) {
         </td>
         <td className="px-3 py-4 whitespace-nowrap">{formatDisplayDate(record.lastContact)}</td>
         <td className="px-3 py-4">{record.accountManager}</td>
+        <td className="px-3 py-4">
+          <StartRenewalButton onClick={() => onStartRenewal(record)} />
+        </td>
       </tr>
       <tr className="border-b border-slate-200 bg-slate-50/80">
-        <td colSpan={10} className="hidden px-3 py-3 text-sm text-slate-600 lg:table-cell">
+        <td colSpan={11} className="hidden px-3 py-3 text-sm text-slate-600 lg:table-cell">
           <RenewalDetailBlock record={record} className="grid lg:grid-cols-2" />
         </td>
       </tr>
@@ -123,7 +148,13 @@ function RenewalTableRow({ record }: { record: DemoRenewalRecord }) {
   );
 }
 
-function RenewalRecordCard({ record }: { record: DemoRenewalRecord }) {
+function RenewalRecordCard({
+  record,
+  onStartRenewal,
+}: {
+  record: DemoRenewalRecord;
+  onStartRenewal: (record: DemoRenewalRecord) => void;
+}) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -144,6 +175,9 @@ function RenewalRecordCard({ record }: { record: DemoRenewalRecord }) {
         <Meta label="Manager" value={record.accountManager} />
         <Meta label="Last contact" value={formatDisplayDate(record.lastContact)} />
       </dl>
+      <div className="mt-4">
+        <StartRenewalButton onClick={() => onStartRenewal(record)} />
+      </div>
       <RenewalDetailBlock record={record} className="mt-4" />
     </article>
   );

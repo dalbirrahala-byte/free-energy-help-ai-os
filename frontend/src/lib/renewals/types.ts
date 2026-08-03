@@ -10,6 +10,7 @@ export type DemoRenewalRecord = {
   contractEnd: string;
   daysUntilEnd: number;
   urgencyBand: RenewalUrgencyBand;
+  estimatedAnnualConsumptionKwh: number;
   estimatedAnnualContractValueGbp: number;
   estimatedBrokerCommissionGbp: number;
   customerRiskScore: number;
@@ -21,6 +22,8 @@ export type DemoRenewalRecord = {
   nextTask: string;
   renewalHealthScore: number;
   pipelineWindow: "30" | "60" | "90";
+  /** Live CRM customer id when linked; null on standalone demo rows. */
+  customerId: number | null;
 };
 
 export type RenewalPipelineCounts = {

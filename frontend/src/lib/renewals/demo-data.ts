@@ -21,6 +21,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     siteName: "Unit 4, Riverside Industrial Estate",
     supplier: "EDF Energy",
     contractEnd: "2026-08-15",
+    estimatedAnnualConsumptionKwh: 420000,
     estimatedAnnualContractValueGbp: 48200,
     estimatedBrokerCommissionGbp: 1928,
     customerRiskScore: 62,
@@ -31,6 +32,7 @@ const DEMO_SEEDS: DemoSeed[] = [
       "Demo: Prioritise — contract inside 30 days; request latest half-hourly profile.",
     nextTask: "Call finance lead to confirm signatory",
     renewalHealthScore: 58,
+    customerId: null,
   },
   {
     id: "demo-002",
@@ -38,6 +40,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     siteName: "Green Oak Manchester",
     supplier: "British Gas Lite",
     contractEnd: "2026-08-22",
+    estimatedAnnualConsumptionKwh: 890000,
     estimatedAnnualContractValueGbp: 118400,
     estimatedBrokerCommissionGbp: 4736,
     customerRiskScore: 71,
@@ -48,6 +51,7 @@ const DEMO_SEEDS: DemoSeed[] = [
       "Demo: High value — prepare consolidated quote pack for two sister sites.",
     nextTask: "Send draft term sheet for internal approval",
     renewalHealthScore: 51,
+    customerId: null,
   },
   {
     id: "demo-003",
@@ -55,6 +59,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     siteName: "Cold Store A",
     supplier: "Drax",
     contractEnd: "2026-09-05",
+    estimatedAnnualConsumptionKwh: 612000,
     estimatedAnnualContractValueGbp: 89600,
     estimatedBrokerCommissionGbp: 3584,
     customerRiskScore: 44,
@@ -64,6 +69,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     aiRecommendation: "Demo: Stable relationship — focus on pass-through transparency.",
     nextTask: "Collect LOA and current contract PDF",
     renewalHealthScore: 67,
+    customerId: null,
   },
   {
     id: "demo-004",
@@ -71,6 +77,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     siteName: "Main surgery",
     supplier: "SSE Business Energy",
     contractEnd: "2026-09-20",
+    estimatedAnnualConsumptionKwh: 98000,
     estimatedAnnualContractValueGbp: 22400,
     estimatedBrokerCommissionGbp: 896,
     customerRiskScore: 38,
@@ -80,6 +87,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     aiRecommendation: "Demo: Low complexity SME — standard fixed product suitable.",
     nextTask: "Email comparison table (demo template)",
     renewalHealthScore: 74,
+    customerId: null,
   },
   {
     id: "demo-005",
@@ -87,6 +95,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     siteName: "Depot 12",
     supplier: "E.ON Next",
     contractEnd: "2026-10-01",
+    estimatedAnnualConsumptionKwh: 355000,
     estimatedAnnualContractValueGbp: 67300,
     estimatedBrokerCommissionGbp: 2692,
     customerRiskScore: 55,
@@ -96,6 +105,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     aiRecommendation: "Demo: Check capacity charges if EV expansion proceeds.",
     nextTask: "Site visit — meter and sub-meter check",
     renewalHealthScore: 63,
+    customerId: null,
   },
   {
     id: "demo-006",
@@ -103,6 +113,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     siteName: "Willow House",
     supplier: "Opus Energy",
     contractEnd: "2026-10-18",
+    estimatedAnnualConsumptionKwh: 248000,
     estimatedAnnualContractValueGbp: 54100,
     estimatedBrokerCommissionGbp: 2164,
     customerRiskScore: 48,
@@ -112,6 +123,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     aiRecommendation: "Demo: Seasonal uplift likely — stress-test winter peak.",
     nextTask: "Request 12-month half-hourly export",
     renewalHealthScore: 69,
+    customerId: null,
   },
   {
     id: "demo-007",
@@ -119,6 +131,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     siteName: "Press hall",
     supplier: "Scottish Power",
     contractEnd: "2026-11-02",
+    estimatedAnnualConsumptionKwh: 142000,
     estimatedAnnualContractValueGbp: 31500,
     estimatedBrokerCommissionGbp: 1260,
     customerRiskScore: 33,
@@ -128,6 +141,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     aiRecommendation: "Demo: On track — monitor competitor outreach in Q3.",
     nextTask: "Add to 60-day renewal campaign (demo)",
     renewalHealthScore: 78,
+    customerId: null,
   },
   {
     id: "demo-008",
@@ -135,6 +149,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     siteName: "Hall 2 — Colocation",
     supplier: "TotalEnergies",
     contractEnd: "2026-11-25",
+    estimatedAnnualConsumptionKwh: 1850000,
     estimatedAnnualContractValueGbp: 214000,
     estimatedBrokerCommissionGbp: 8560,
     customerRiskScore: 76,
@@ -145,6 +160,7 @@ const DEMO_SEEDS: DemoSeed[] = [
       "Demo: High risk / high value — escalate to senior broker review.",
     nextTask: "Book QBR with procurement lead",
     renewalHealthScore: 42,
+    customerId: null,
   },
   {
     id: "demo-009",
@@ -152,6 +168,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     siteName: "Grain drying plant",
     supplier: "Corona Energy",
     contractEnd: "2026-12-10",
+    estimatedAnnualConsumptionKwh: 118000,
     estimatedAnnualContractValueGbp: 28700,
     estimatedBrokerCommissionGbp: 1148,
     customerRiskScore: 29,
@@ -161,6 +178,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     aiRecommendation: "Demo: Low risk — continue light-touch nurture.",
     nextTask: "Quarterly check-in email (demo script)",
     renewalHealthScore: 81,
+    customerId: null,
   },
   {
     id: "demo-010",
@@ -168,6 +186,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     siteName: "City centre club",
     supplier: "Yü Energy",
     contractEnd: "2026-08-05",
+    estimatedAnnualConsumptionKwh: 76000,
     estimatedAnnualContractValueGbp: 18900,
     estimatedBrokerCommissionGbp: 756,
     customerRiskScore: 68,
@@ -177,6 +196,7 @@ const DEMO_SEEDS: DemoSeed[] = [
     aiRecommendation: "Demo: Critical window — same-day callback recommended.",
     nextTask: "Priority call — confirm renewal intent",
     renewalHealthScore: 47,
+    customerId: null,
   },
 ];
 
@@ -232,4 +252,8 @@ export function formatDisplayDate(date: string): string {
     month: "short",
     year: "numeric",
   }).format(new Date(`${date}T00:00:00`));
+}
+
+export function formatEac(kwh: number): string {
+  return `${new Intl.NumberFormat("en-GB").format(kwh)} kWh (demo)`;
 }
