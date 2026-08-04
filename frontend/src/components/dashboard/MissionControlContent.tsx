@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { AiControlCentreSection } from "./AiControlCentreSection";
 import { SectionCard } from "./SectionCard";
 import { StatCard } from "./StatCard";
 import type { MissionControlData } from "@/lib/dashboard/types";
@@ -12,14 +13,15 @@ type MissionControlContentProps = {
 export function MissionControlContent({ data }: MissionControlContentProps) {
   return (
     <div className="space-y-8">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         <StatCard title="Total Leads" value={data.kpis.totalLeads} />
         <StatCard title="Customers" value={data.kpis.totalCustomers} />
         <StatCard title="Quotes" value={data.kpis.quotes} />
         <StatCard title="Tasks Due Today" value={data.kpis.tasksDueToday} />
         <StatCard title="Renewals Due" value={data.kpis.renewalsDue} hint="Within 90 days" />
-        <StatCard title="AI Status" value={data.kpis.aiStatus} />
       </div>
+
+      <AiControlCentreSection services={data.aiControlCentre} />
 
       <div className="grid gap-6 xl:grid-cols-3">
         <SectionCard

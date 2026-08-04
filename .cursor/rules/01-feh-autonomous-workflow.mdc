@@ -26,17 +26,18 @@ Cursor must implement only the approved feature scope.
 ---
 ## 2. Default working method
 For every feature:
-1. Inspect the repository.
+1. Inspect the repository (structure, relevant files, and `frontend/package.json` scripts).
 2. Confirm the current branch.
 3. Confirm the working tree state.
 4. Read the relevant existing files.
 5. Preserve current functionality.
 6. Follow the approved specification.
 7. Reuse existing architecture and components.
-8. Implement only within scope.
-9. Run all quality checks.
-10. Report every changed file.
-11. Stop before commit, push, merge, migration or deployment unless explicitly approved.
+8. Implement only within scope — prefer the smallest safe change.
+9. Verify local imports resolve to existing files.
+10. Run `npm run check` from `frontend/` (see §10); do not use stale terminal output.
+11. Report every changed file, manual test steps, and honest warnings.
+12. Stop before commit, push, merge, migration or deployment unless explicitly approved.
 Do not repeatedly ask for confirmation during routine implementation when the requested action is clearly within the approved feature scope.
 ---
 ## 3. Actions Cursor may perform without stopping
@@ -83,6 +84,7 @@ Cursor may run these without repeatedly stopping:
 - npm run lint
 - npm run typecheck
 - npm run build
+- npm run check
 - npm run test
 - npm run dev
 - npx tsc --noEmit
@@ -192,10 +194,19 @@ Preferred structure:
 - tests where practical
 ---
 ## 10. Quality gates
-Before reporting a feature complete, run:
+Before reporting a feature complete, run from `frontend/`:
+
 ```bash
-npm run lint
+npm run check
+```
+
+`npm run check` runs typecheck, then lint, then production build; it stops on the first failure.
+
+Individual scripts remain available:
+
+```bash
 npm run typecheck
+npm run lint
 npm run build
 ```
 ---
@@ -206,18 +217,17 @@ At the end of every implementation, report:
 3. Every file created
 4. Every file modified
 5. Every file deleted
-6. Lint result
-7. Typecheck result
+6. Result of `npm run check` (must have been run fresh for this task)
+7. Lint warnings (if any)
 8. Build result
-9. Test result
-10. Remaining warnings
+9. Test result (if applicable)
+10. Remaining warnings and limitations (honest)
 11. Supabase impact
 12. Environment impact
 13. Unrelated routes touched
-14. Exact local URL
-15. Recommended manual tests
-16. Whether the work is ready to commit
-17. Any blockers or risks
+14. Exact local URL(s) and manual test steps
+15. Whether the work is ready to commit
+16. Any blockers or risks
 Then stop and wait for approval.
 ---
 ## 12. Approval language

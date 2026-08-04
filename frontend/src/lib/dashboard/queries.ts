@@ -9,7 +9,9 @@ import {
   startOfTodayLocal,
   toDateKey,
 } from "./dates";
-import { loadFactoryOpsInfo, resolveAiStatus } from "./factory-meta";
+import { loadAiControlCentreStatus } from "@/lib/ai-control-centre/status";
+
+import { loadFactoryOpsInfo } from "./factory-meta";
 import type {
   ActivityFeedItem,
   DashboardTask,
@@ -349,6 +351,7 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
   }
 
   const factoryOps = await loadFactoryOpsInfo();
+  const aiControlCentre = await loadAiControlCentreStatus(supabaseConnected);
 
   const availabilityParts: string[] = [];
 
@@ -387,8 +390,8 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
       quotes: NOT_CONFIGURED,
       tasksDueToday: formatCount(tasksDueTodayCount, tasksTable.ok),
       renewalsDue: formatCount(renewalsDueCount, sitesTable.ok),
-      aiStatus: resolveAiStatus(factoryOps),
     },
+    aiControlCentre,
     pipeline,
     pipelineConfigured,
     todaysTasks,

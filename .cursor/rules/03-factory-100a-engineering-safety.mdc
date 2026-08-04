@@ -1,0 +1,49 @@
+---
+description: FACTORY-100A — engineering safety, npm run check, and completion standards
+alwaysApply: true
+---
+# FACTORY-100A: Engineering Safety Foundation
+
+## Repository layout
+
+- CRM Next.js app: **`frontend/`**
+- Root launcher: **`Check CRM Health.bat`** → runs `npm run check` in `frontend/`
+- Workflow doc: **`docs/ENGINEERING_WORKFLOW.md`**
+
+## Required check before completion
+
+From `frontend/`:
+
+```bash
+npm run check
+```
+
+Runs **in order**; **stops immediately** if any stage fails:
+
+1. `npm run typecheck`
+2. `npm run lint`
+3. `npm run build`
+
+Do **not** claim a task is complete unless `npm run check` exits **0** on a **fresh run** after your changes.
+
+## Every coding task must
+
+- Inspect existing files, scripts, and conventions **before** editing.
+- Make the **smallest safe change** that meets the approved scope.
+- Verify every **local import** resolves to an existing file.
+- Run **`npm run check`** before reporting completion.
+- **Never** treat stale terminal or dev-server errors as current — re-run checks.
+- **Never** commit, push, open PRs, merge, or deploy without **explicit** human approval.
+- List **every** file created, modified, or deleted.
+- Provide **exact manual testing steps**.
+- Report **warnings and limitations** honestly.
+
+## Dev server and success claims
+
+- Do not claim success if `npm run dev` or the browser shows compile/runtime errors without fixing or clearly reporting them.
+
+## Out of scope (FACTORY-100A)
+
+Do not add Husky, GitHub Actions, Dependabot, security scanners, or testing frameworks unless a later approved FACTORY-100 task says so.
+
+Preserve existing CRM functionality unless the approved spec requires a change.

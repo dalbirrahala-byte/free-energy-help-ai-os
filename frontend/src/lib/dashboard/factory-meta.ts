@@ -79,11 +79,3 @@ export async function loadFactoryOpsInfo(): Promise<FactoryOpsInfo> {
     milestone,
   };
 }
-
-export function resolveAiStatus(factory: FactoryOpsInfo): string {
-  if (factory.documentationStatus === NOT_CONFIGURED) {
-    return NOT_CONFIGURED;
-  }
-
-  return "Factory docs connected";
-}

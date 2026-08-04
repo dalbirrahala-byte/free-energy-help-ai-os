@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { ActivityHistoryActions } from "./ActivityHistoryActions";
+import { CommercialEnergyIntelligenceCard } from "@/components/leads/CommercialEnergyIntelligenceCard";
+import { calculateCommercialEnergyIntelligence } from "@/lib/commercial-energy-intelligence";
 
 type Lead = {
   id: number;
@@ -103,6 +105,8 @@ const leadActivities = (activities ?? []) as Activity[];
 
   const lead = data as Lead;
 
+  const intelligence = calculateCommercialEnergyIntelligence(lead, leadActivities, leadTasks);
+
   async function deleteActivity(formData: FormData) {
     "use server";
 
@@ -184,6 +188,10 @@ const leadActivities = (activities ?? []) as Activity[];
               <Detail label="Lead Created" value={formatDate(lead.created_at)} />
             </div>
           </section>
+        </div>
+
+        <div className="mt-6">
+          <CommercialEnergyIntelligenceCard intelligence={intelligence} />
         </div>
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

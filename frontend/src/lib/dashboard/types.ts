@@ -1,3 +1,5 @@
+import type { ServiceStatusInfo } from "@/lib/ai-control-centre/types";
+
 export type TableAvailability = {
   leads: boolean;
   customers: boolean;
@@ -76,8 +78,8 @@ export type MissionControlData = {
     quotes: string;
     tasksDueToday: string;
     renewalsDue: string;
-    aiStatus: string;
   };
+  aiControlCentre: ServiceStatusInfo[];
   pipeline: PipelineStage[];
   pipelineConfigured: boolean;
   todaysTasks: DashboardTask[];

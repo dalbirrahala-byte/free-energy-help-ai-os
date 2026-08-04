@@ -1,0 +1,34 @@
+---
+description: FACTORY-020-SAFE — npm run check quality gate and completion reporting
+alwaysApply: true
+---
+# FACTORY-020-SAFE: Automated Quality Gate
+
+## Required check before completion
+
+From `frontend/`, run:
+
+```bash
+npm run check
+```
+
+This runs **in order** and must **stop on first failure**:
+
+1. `npm run typecheck`
+2. `npm run lint`
+3. `npm run build`
+
+Do **not** claim a task is complete unless `npm run check` exits successfully.
+
+## Agent behaviour
+
+- Never claim success when `npm run dev` or the browser shows a compile or runtime error without fixing or explicitly reporting it.
+- Before finishing, verify every **local relative import** (e.g. `./Component`) points at a file that exists in the repository.
+- Never commit, push, open PRs, merge, or deploy without explicit human approval.
+- Completion reports must list **every** file created, modified, or deleted.
+- Completion reports must include **exact manual test steps** (route URLs, actions, expected results).
+
+## Scope
+
+- Use existing `typecheck`, `lint`, and `build` scripts in `frontend/package.json`.
+- Do not add Husky or GitHub Actions unless explicitly approved for a separate task.
