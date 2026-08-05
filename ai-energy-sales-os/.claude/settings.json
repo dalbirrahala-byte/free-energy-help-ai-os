@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP_STATUS=%{http_code} TIME=%{time_total}s\\\\n\" --max-time 20 http://localhost:3000/leads/1)",
+      "Bash(curl -s -o /dev/null -w \"HTTP_STATUS=%{http_code} TIME=%{time_total}s\\\\n\" --max-time 20 http://localhost:3000/leads)",
+      "Bash(curl -s -o /dev/null -w \"HTTP_STATUS=%{http_code} TIME=%{time_total}s\\\\n\" --max-time 20 http://localhost:3000/leads/2)",
+      "Bash(curl -s --max-time 20 http://localhost:3000/leads/1)",
+      "Bash(rm -v src/lib/lead-intelligence/index.ts)",
+      "Bash(rmdir src/lib/lead-intelligence)",
+      "Bash(rm -v src/components/leads/LeadIntelligenceCard.tsx)",
+      "Bash(rm -f .dev-server-*.log)",
+      "Bash(disown)"
+    ],
+    "additionalDirectories": [
+      "C:\\Projects\\ai-energy-sales-os\\frontend\\src\\lib\\ai-control-centre",
+      "C:\\Projects\\ai-energy-sales-os\\frontend\\src\\components\\dashboard",
+      "C:\\Projects\\ai-energy-sales-os\\frontend\\src\\lib\\dashboard",
+      "C:\\Projects\\ai-energy-sales-os\\frontend\\src\\lib\\commercial-energy-intelligence"
+    ]
+  }
+}
