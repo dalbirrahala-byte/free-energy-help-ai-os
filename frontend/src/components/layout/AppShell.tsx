@@ -4,11 +4,9 @@ import {
   BarChart3,
   Bot,
   Building2,
-  CalendarDays,
   Cuboid,
   FileText,
   LayoutDashboard,
-  LogOut,
   Brain,
   Menu,
   Network,
@@ -16,7 +14,6 @@ import {
   PoundSterling,
   RefreshCw,
   ScrollText,
-  Settings,
   Factory,
   Sparkles,
   Users,
@@ -26,6 +23,12 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 
+import { LogoutButton } from "./LogoutButton";
+
+// Appointments and Settings were removed from here — both pointed at
+// routes that don't exist (no /appointments or /settings page anywhere in
+// src/app). Neither is part of the Version 1.0 commercial workflow; see
+// docs/PRODUCT_BACKLOG.md for their Post-Launch status.
 const navigation = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/" },
   { name: "AI Operations", icon: Bot, href: "/ai-operations" },
@@ -39,12 +42,10 @@ const navigation = [
   { name: "Customers", icon: Building2, href: "/customers" },
   { name: "Commercial Digital Twin", icon: Cuboid, href: "/commercial-digital-twin" },
   { name: "Quotes", icon: FileText, href: "/quotes" },
-  { name: "Appointments", icon: CalendarDays, href: "/appointments" },
   { name: "Reports", icon: BarChart3, href: "/reports" },
   { name: "Automation Centre", icon: Workflow, href: "/automation" },
   { name: "Workflow Intelligence", icon: Network, href: "/workflow-intelligence" },
   { name: "Enterprise Intelligence", icon: Brain, href: "/enterprise-intelligence" },
-  { name: "Settings", icon: Settings, href: "/settings" },
 ];
 
 type AppShellProps = {
@@ -106,13 +107,7 @@ export function AppShell({
           </nav>
 
           <div className="absolute bottom-0 w-full border-t border-slate-800 p-4">
-            <button
-              type="button"
-              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-300 hover:bg-slate-800 hover:text-white"
-            >
-              <LogOut size={19} />
-              Sign out
-            </button>
+            <LogoutButton />
           </div>
         </aside>
 

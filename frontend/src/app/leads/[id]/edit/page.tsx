@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
+import { requireOperationalPermission } from "@/lib/auth/enforceWrite";
 import { createClient } from "@/lib/supabase/server";
 
 type EditLeadPageProps = {
@@ -50,6 +52,7 @@ export default async function EditLeadPage({
   async function updateLead(formData: FormData) {
     "use server";
 
+    const user = await requireOperationalPermission("records:write");
     const supabase = await createClient();
 
     const companyName = String(
@@ -103,6 +106,21 @@ export default async function EditLeadPage({
         `The lead could not be updated: ${error.message}`,
       );
     }
+
+    const statusChanged = (lead.status || "New") !== (status || "New");
+
+    await recordAuditEvent(
+      supabase,
+      buildAuditEvent({
+        action: statusChanged ? "lead_status_changed" : "lead_updated",
+        actorId: user.id,
+        actorRole: user.role,
+        entityType: "lead",
+        entityId: leadId,
+        result: "success",
+        metadata: statusChanged ? { previousStatus: lead.status, newStatus: status } : null,
+      }),
+    );
 
     revalidatePath("/leads");
     revalidatePath(`/leads/${leadId}`);

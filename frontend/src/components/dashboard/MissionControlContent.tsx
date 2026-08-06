@@ -21,7 +21,11 @@ export function MissionControlContent({ data }: MissionControlContentProps) {
         <StatCard title="Renewals Due" value={data.kpis.renewalsDue} hint="Within 90 days" />
       </div>
 
+      <PriorityActionsSection data={data} />
+
       <AiControlCentreSection services={data.aiControlCentre} />
+
+      <EngineReadinessSection readiness={data.engineReadiness} />
 
       <div className="grid gap-6 xl:grid-cols-3">
         <SectionCard
@@ -260,6 +264,73 @@ export function MissionControlContent({ data }: MissionControlContentProps) {
         </SectionCard>
       </div>
     </div>
+  );
+}
+
+const SEVERITY_DOT_STYLES: Record<MissionControlData["priorityActions"][number]["severity"], string> = {
+  critical: "bg-red-500",
+  warning: "bg-amber-500",
+  info: "bg-blue-500",
+};
+
+function PriorityActionsSection({ data }: { data: MissionControlData }) {
+  const tablesConfigured = data.tables.leads && data.tables.tasks && data.tables.sites && data.tables.customers;
+
+  return (
+    <SectionCard
+      title="Priority Actions"
+      description="Evidence-based — each item here is a real count already shown elsewhere on this page, never a forecast or estimate"
+    >
+      {data.priorityActions.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          {tablesConfigured ? "No priority actions right now." : "Not configured"}
+        </p>
+      ) : (
+        <ul className="space-y-3">
+          {data.priorityActions.map((action) => (
+            <li
+              key={action.id}
+              className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm"
+            >
+              <div className="flex items-center gap-3">
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${SEVERITY_DOT_STYLES[action.severity]}`} />
+                <span className="font-medium text-slate-800">{action.label}</span>
+              </div>
+              <Link href={action.href} className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
+                Review
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </SectionCard>
+  );
+}
+
+function EngineReadinessSection({ readiness }: { readiness: MissionControlData["engineReadiness"] }) {
+  return (
+    <SectionCard
+      title="AI Service Readiness"
+      description="Feature-flag state of the Enterprise Intelligence Engine and AI Workforce Orchestrator"
+    >
+      <ul className="grid gap-4 sm:grid-cols-2">
+        {readiness.map((engine) => (
+          <li key={engine.id} className="rounded-xl border border-slate-200 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-slate-900">{engine.name}</p>
+              <span
+                className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  engine.enabled ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"
+                }`}
+              >
+                {engine.enabled ? (engine.shadowMode ? "Enabled · Shadow" : "Enabled") : "Not Yet Configured"}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-slate-500">{engine.detail}</p>
+          </li>
+        ))}
+      </ul>
+    </SectionCard>
   );
 }
 

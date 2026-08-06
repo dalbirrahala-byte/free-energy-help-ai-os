@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
+import { requireOperationalPermission } from "@/lib/auth/enforceWrite";
 import { createClient } from "@/lib/supabase/server";
 
 type Lead = {
@@ -23,6 +25,7 @@ export default async function NewTaskPage() {
   async function addTask(formData: FormData) {
     "use server";
 
+    const user = await requireOperationalPermission("records:write");
     const supabase = await createClient();
 
     const title = String(formData.get("title") || "").trim();
@@ -41,19 +44,36 @@ export default async function NewTaskPage() {
 
     const leadId = leadIdValue ? Number(leadIdValue) : null;
 
-    const { error } = await supabase.from("tasks").insert({
-      lead_id: leadId,
-      title,
-      due_date: dueDate || null,
-      due_time: dueTime || null,
-      priority: priority || "Medium",
-      status: status || "Open",
-      notes: notes || null,
-    });
+    const { data: inserted, error } = await supabase
+      .from("tasks")
+      .insert({
+        lead_id: leadId,
+        title,
+        due_date: dueDate || null,
+        due_time: dueTime || null,
+        priority: priority || "Medium",
+        status: status || "Open",
+        notes: notes || null,
+      })
+      .select("id")
+      .single();
 
     if (error) {
       throw new Error(`The task could not be saved: ${error.message}`);
     }
+
+    await recordAuditEvent(
+      supabase,
+      buildAuditEvent({
+        action: status === "Completed" ? "task_completed" : "task_created",
+        actorId: user.id,
+        actorRole: user.role,
+        entityType: "task",
+        entityId: inserted?.id ?? null,
+        result: "success",
+        metadata: { leadId, priority: priority || "Medium" },
+      }),
+    );
 
     revalidatePath("/tasks");
     redirect("/tasks");

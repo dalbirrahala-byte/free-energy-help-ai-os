@@ -5,6 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { ActivityHistoryActions } from "./ActivityHistoryActions";
 import { CommercialEnergyIntelligenceCard } from "@/components/leads/CommercialEnergyIntelligenceCard";
 import { calculateCommercialEnergyIntelligence } from "@/lib/commercial-energy-intelligence";
+import { RenewalIntelligenceCard } from "@/components/leads/RenewalIntelligenceCard";
+import { runRenewalShadowDeployment } from "@/lib/intelligence/renewalShadowDeployment";
+import { CommercialIntelligencePanel } from "@/components/leads/CommercialIntelligencePanel";
+import { buildCommercialIntelligenceViewModel } from "@/lib/commercial-intelligence/viewModel";
 
 type Lead = {
   id: number;
@@ -106,6 +110,13 @@ const leadActivities = (activities ?? []) as Activity[];
   const lead = data as Lead;
 
   const intelligence = calculateCommercialEnergyIntelligence(lead, leadActivities, leadTasks);
+  const renewal = runRenewalShadowDeployment(lead).result;
+  const commercialIntelligence = buildCommercialIntelligenceViewModel(
+    lead,
+    leadActivities,
+    leadTasks,
+    renewal.urgency.tier,
+  );
 
   async function deleteActivity(formData: FormData) {
     "use server";
@@ -193,6 +204,16 @@ const leadActivities = (activities ?? []) as Activity[];
         <div className="mt-6">
           <CommercialEnergyIntelligenceCard intelligence={intelligence} />
         </div>
+
+        <div className="mt-6">
+          <RenewalIntelligenceCard renewal={renewal} />
+        </div>
+
+        {commercialIntelligence.visible && (
+          <div className="mt-6">
+            <CommercialIntelligencePanel viewModel={commercialIntelligence} />
+          </div>
+        )}
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900">Notes</h2>

@@ -68,6 +68,24 @@ export type FactoryOpsInfo = {
   milestone: string;
 };
 
+export type EngineReadiness = {
+  id: "enterpriseIntelligenceEngine" | "aiWorkforceOrchestrator";
+  name: string;
+  enabled: boolean;
+  shadowMode: boolean;
+  detail: string;
+};
+
+export type PriorityActionSeverity = "critical" | "warning" | "info";
+
+export type PriorityAction = {
+  id: string;
+  label: string;
+  count: number;
+  href: string;
+  severity: PriorityActionSeverity;
+};
+
 export type MissionControlData = {
   supabaseConnected: boolean;
   environmentLabel: string;
@@ -92,4 +110,6 @@ export type MissionControlData = {
   recentActivity: ActivityFeedItem[];
   factoryOps: FactoryOpsInfo;
   dataAvailabilitySummary: string;
+  engineReadiness: EngineReadiness[];
+  priorityActions: PriorityAction[];
 };

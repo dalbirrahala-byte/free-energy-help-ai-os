@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
+import { requireOperationalPermission } from "@/lib/auth/enforceWrite";
 import { createClient } from "@/lib/supabase/server";
 
 export default function NewLeadPage() {
   async function addLead(formData: FormData) {
     "use server";
 
+    const user = await requireOperationalPermission("records:write");
     const supabase = await createClient();
 
     const companyName = String(formData.get("company_name") || "").trim();
@@ -22,20 +25,37 @@ export default function NewLeadPage() {
       throw new Error("Company name is required.");
     }
 
-    const { error } = await supabase.from("leads").insert({
-      company_name: companyName,
-      contact_name: contactName || null,
-      telephone: telephone || null,
-      email: email || null,
-      supplier: supplier || null,
-      contract_end: contractEnd || null,
-      status: status || "New",
-      notes: notes || null,
-    });
+    const { data: inserted, error } = await supabase
+      .from("leads")
+      .insert({
+        company_name: companyName,
+        contact_name: contactName || null,
+        telephone: telephone || null,
+        email: email || null,
+        supplier: supplier || null,
+        contract_end: contractEnd || null,
+        status: status || "New",
+        notes: notes || null,
+      })
+      .select("id")
+      .single();
 
     if (error) {
       throw new Error(`The lead could not be saved: ${error.message}`);
     }
+
+    await recordAuditEvent(
+      supabase,
+      buildAuditEvent({
+        action: "lead_created",
+        actorId: user.id,
+        actorRole: user.role,
+        entityType: "lead",
+        entityId: inserted?.id ?? null,
+        result: "success",
+        metadata: { status: status || "New" },
+      }),
+    );
 
     revalidatePath("/leads");
     redirect("/leads");

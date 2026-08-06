@@ -30,7 +30,11 @@ These principles come directly from how this product has been built so far, and 
 | v0.1 | CRM Foundation — leads, customers, sites, tasks, activities on Supabase | Delivered |
 | v0.2 | Mission Control dashboard & AI Control Centre V1 (truthful integration status) | Delivered |
 | v0.3 | Lead Intelligence Engine V1A (compact, deterministic lead scoring) | Delivered |
-| v0.4 | Data Foundation Completion — schema gaps closed, contracts & commissions on real data | Planned |
+| v0.3.x | Commercial Intelligence V2 — Renewal Intelligence V2, shadow deployment, and Enterprise Intelligence Engine Gate 5 (evidence-first contracts, additive, not yet wired in) | Delivered |
+| v0.3.y | AI Workforce Orchestrator Gate 6 — 8-worker registry, 2 real workers (Commercial Energy + Renewal Intelligence), 6 honest placeholders, target architecture docs for Marketing/Sales/Executive/Workflow engines | Delivered |
+| v0.3.z | Enterprise Consolidation (Gate 7A), Gate 7 Production Integration, Executive Mission Control extension | Delivered |
+| v0.9 (RC1) | Authentication, RBAC, RLS migrations (written, not yet applied), Audit Logging | Delivered — see `docs/AUTHENTICATION.md`, `docs/AUTHORISATION_AND_RBAC.md`, `docs/SUPABASE_RLS.md`, `docs/AUDIT_LOGGING.md` |
+| v0.4 | Data Foundation Completion — schema gaps closed, contracts & commissions on real data | Planned — **includes the two remaining Version 1.0 commercial-workflow gaps: real quote/tender status and real signed-contract status, see `docs/CUSTOMER_LIFECYCLE.md`** |
 | v0.5 | Real Intelligence Activation — Claude, OpenAI, n8n genuinely connected; Lead Intelligence V2 | Planned |
 | v0.6 | Module Completion — quotes, renewals, reporting, SEO, Gemini all on real data | Planned |
 | v0.7 | AI-Assisted Selling — tender drafting, automated reconciliation, remaining demo modules | Planned |
@@ -122,6 +126,8 @@ Same pattern, for `N8N_BASE_URL`.
 | S4 | Website SEO real health check | Medium |
 | S5 | Gemini activation in AI Control Centre | Small |
 | S6 | Executive Reporting on real data | Large |
+| S7 | ~~Wire Enterprise Intelligence Engine into a real integration point (Gate 7)~~ | **Delivered** |
+| S8 | ~~Wire AI Workforce Orchestrator into a real integration point (Gate 7)~~ | **Delivered** |
 
 ---
 
@@ -159,6 +165,27 @@ Replace `lib/reports/demo-data.ts` with genuine aggregation across leads, custom
 - **Acceptance criteria:** Reporting figures reconcile against the underlying real modules; no placeholder charts remain in production.
 - **Technical dependencies:** Depends on M3, M4, S2, S3 being on real data first — reporting is only as truthful as what it aggregates.
 - **Complexity:** Large.
+
+**S7 — Wire Enterprise Intelligence Engine into a real integration point**
+Gate 5 delivered `lib/feh-enterprise-intelligence/` as a complete, tested, additive contract — orchestrator, capability registry, four real capabilities, two honest placeholders, shadow mode, feature flags — but nothing calls it yet. Gate 7 picks one real integration point (most likely the lead detail page, alongside the existing Commercial Energy Intelligence and Renewal Intelligence cards) and wires it in behind `USE_ENTERPRISE_INTELLIGENCE_ENGINE`.
+- **Acceptance criteria:** Engine output only reaches a user once `USE_ENTERPRISE_INTELLIGENCE_ENGINE=true` is explicitly set; shadow mode remains on by default during initial rollout; existing Commercial Energy Intelligence and Renewal Intelligence cards are unaffected.
+- **Technical dependencies:** `docs/ENTERPRISE_INTELLIGENCE_ENGINE.md`.
+- **Complexity:** Medium.
+
+**S8 — Wire AI Workforce Orchestrator into a real integration point**
+Gate 6 delivered `lib/ai-workforce/` — 8 workers behind one orchestrator, 2 of them real, tested, additive — but nothing calls it yet either. Gate 7 (likely alongside S7) picks a real integration point and wires it in behind `USE_AI_WORKFORCE_ORCHESTRATOR`.
+- **Acceptance criteria:** Orchestrator output only reaches a user once `USE_AI_WORKFORCE_ORCHESTRATOR=true` is explicitly set; placeholder workers render their honest "Not Yet Configured" state if surfaced in any UI, never hidden or silently omitted; existing cards remain unaffected.
+- **Technical dependencies:** `docs/AI_WORKFORCE_ORCHESTRATOR.md`, S7 (shares the same underlying Enterprise Intelligence Engine data for its two real workers).
+- **Complexity:** Medium.
+
+**RC1 follow-ups (Post-Launch unless flagged otherwise)**
+- Apply the three RC1 migrations (`user_roles`, RLS, `audit_log`) to a real Supabase project and complete the manual policy checklist — **blocks actual RC1 sign-off**, see `docs/RELEASE_CHECKLIST.md`.
+- Wire `records:write` enforcement + audit logging into customer creation/update and activity deletion (same pattern as the four already-wired mutations) — small, straightforward.
+- Admin UI for user/role management (today: direct SQL only, see `docs/AUTHENTICATION.md`).
+- Password reset flow, MFA, login-attempt rate limiting.
+- Rename `middleware.ts` → `proxy.ts` (Next.js 16 deprecation notice; functionality unaffected) — re-run the full redirect matrix after, per ADR-009.
+- Retroactively migrate the untracked `leads`/`tasks`/`activities` schema into version control (they predate this repo's one tracked migration).
+- Appointments and Settings nav items were removed from `AppShell` (both pointed at routes that never existed) — rebuild only if either becomes a real, scoped feature.
 
 ### 4.3 Could Have
 

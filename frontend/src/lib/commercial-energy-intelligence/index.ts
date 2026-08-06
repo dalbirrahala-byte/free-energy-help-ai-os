@@ -1,3 +1,7 @@
+import { mostRecentDate as sharedMostRecentDate, daysUntil as sharedDaysUntil, toDateKey } from "../shared/dateUtils.ts";
+import { hasText as sharedHasText } from "../shared/textUtils.ts";
+import type { CanonicalActivity, CanonicalLead, CanonicalTask } from "../shared/domain";
+
 export type Tone = "positive" | "warning" | "critical" | "neutral";
 
 export type IntelligenceMetric = {
@@ -11,18 +15,17 @@ export type IntelligenceMetric = {
   missingFields?: string[];
 };
 
-export type LeadRecord = {
-  company_name: string | null;
-  contact_name: string | null;
-  telephone: string | null;
-  email: string | null;
-  supplier: string | null;
-  contract_end: string | null;
-  status: string | null;
-};
+// Derived from the canonical domain models (lib/shared/domain.ts) — same
+// field set as before, now provably consistent with every other module's
+// view of a lead/activity/task rather than an independently hand-declared
+// duplicate.
+export type LeadRecord = Pick<
+  CanonicalLead,
+  "company_name" | "contact_name" | "telephone" | "email" | "supplier" | "contract_end" | "status"
+>;
 
-export type EngagementActivity = { activity_date: string | null };
-export type EngagementTask = { due_date: string | null; status: string | null };
+export type EngagementActivity = Pick<CanonicalActivity, "activity_date">;
+export type EngagementTask = Pick<CanonicalTask, "due_date" | "status">;
 
 export type CommercialEnergyIntelligence = {
   renewalUrgency: IntelligenceMetric;
@@ -41,45 +44,16 @@ const RENEWAL_URGENT_DAYS = 90;
 const RENEWAL_APPROACHING_DAYS = 180;
 const ENGAGEMENT_RECENT_DAYS = 14;
 
-function hasText(value: string | null): boolean {
-  return Boolean(value && value.trim().length > 0);
-}
+// hasText, daysUntil, mostRecentDate, and the date-key formatter now come
+// from lib/shared — this file previously carried its own byte-identical
+// copies of all four. Logic is unchanged; only the location moved.
+const hasText = sharedHasText;
+const daysUntil = sharedDaysUntil;
+const mostRecentDate = sharedMostRecentDate;
+const todayKey = toDateKey;
 
 function isQualified(status: string | null): boolean {
   return Boolean(status && QUALIFIED_STATUSES.includes(status));
-}
-
-/** Whole days between `today` and a YYYY-MM-DD date key. Negative = in the past. */
-function daysUntil(dateKey: string | null, today: Date): number | null {
-  if (!dateKey) {
-    return null;
-  }
-
-  const target = new Date(`${dateKey}T00:00:00`);
-  if (Number.isNaN(target.getTime())) {
-    return null;
-  }
-
-  const start = new Date(today);
-  start.setHours(0, 0, 0, 0);
-
-  const msPerDay = 24 * 60 * 60 * 1000;
-  return Math.round((target.getTime() - start.getTime()) / msPerDay);
-}
-
-function mostRecentDate(dates: Array<string | null>): string | null {
-  const valid = dates.filter((date): date is string => Boolean(date));
-  if (valid.length === 0) {
-    return null;
-  }
-  return valid.reduce((latest, current) => (current > latest ? current : latest));
-}
-
-function todayKey(today: Date): string {
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function calcRenewalUrgency(lead: LeadRecord, today: Date): IntelligenceMetric {

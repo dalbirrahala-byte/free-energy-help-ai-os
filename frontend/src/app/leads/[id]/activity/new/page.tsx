@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
+import { requireOperationalPermission } from "@/lib/auth/enforceWrite";
 import { createClient } from "@/lib/supabase/server";
 
 type NewActivityPageProps = {
@@ -18,6 +20,8 @@ export default async function NewActivityPage({
   async function saveActivity(formData: FormData) {
     "use server";
 
+    const user = await requireOperationalPermission("records:write");
+
     const activityType = String(formData.get("activity_type") || "");
     const title = String(formData.get("title") || "");
     const details = String(formData.get("details") || "");
@@ -26,18 +30,35 @@ export default async function NewActivityPage({
 
     const supabase = await createClient();
 
-    const { error } = await supabase.from("activities").insert({
-      lead_id: leadId,
-      activity_type: activityType,
-      title,
-      details,
-      activity_date: activityDate || null,
-      activity_time: activityTime || null,
-    });
+    const { data: inserted, error } = await supabase
+      .from("activities")
+      .insert({
+        lead_id: leadId,
+        activity_type: activityType,
+        title,
+        details,
+        activity_date: activityDate || null,
+        activity_time: activityTime || null,
+      })
+      .select("id")
+      .single();
 
     if (error) {
       throw new Error(`Activity could not be saved: ${error.message}`);
     }
+
+    await recordAuditEvent(
+      supabase,
+      buildAuditEvent({
+        action: "activity_recorded",
+        actorId: user.id,
+        actorRole: user.role,
+        entityType: "activity",
+        entityId: inserted?.id ?? null,
+        result: "success",
+        metadata: { leadId, activityType },
+      }),
+    );
 
     revalidatePath(`/leads/${leadId}`);
     redirect(`/leads/${leadId}`);

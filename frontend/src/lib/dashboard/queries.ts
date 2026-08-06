@@ -10,15 +10,12 @@ import {
   toDateKey,
 } from "./dates";
 import { loadAiControlCentreStatus } from "@/lib/ai-control-centre/status";
+import { getFeatureFlagState } from "@/lib/feh-enterprise-intelligence/featureFlags";
+import { getOrchestratorFeatureFlagState } from "@/lib/ai-workforce/featureFlags";
 
 import { loadFactoryOpsInfo } from "./factory-meta";
-import type {
-  ActivityFeedItem,
-  DashboardTask,
-  MissionControlData,
-  PipelineStage,
-  TableAvailability,
-} from "./types";
+import { buildEngineReadiness, buildPriorityActions } from "./priorityActions";
+import type { ActivityFeedItem, DashboardTask, MissionControlData, PipelineStage, TableAvailability } from "./types";
 
 const NOT_CONFIGURED = "Not configured";
 
@@ -189,6 +186,7 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
   }
 
   const followUpLeads: MissionControlData["followUpLeads"] = [];
+  let followUpLeadsTotal = 0;
 
   if (leadsTable.ok && activitiesTable.ok) {
     const { data: leads } = await supabase
@@ -227,6 +225,7 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
       }
     }
 
+    followUpLeadsTotal = followUpLeads.length;
     followUpLeads.splice(8);
   }
 
@@ -353,6 +352,19 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
   const factoryOps = await loadFactoryOpsInfo();
   const aiControlCentre = await loadAiControlCentreStatus(supabaseConnected);
 
+  const engineReadiness = buildEngineReadiness(getFeatureFlagState(), getOrchestratorFeatureFlagState());
+
+  const priorityActions = buildPriorityActions({
+    overdueTasksCount: overdueTasks.length,
+    overdueTasksAvailable: tasksTable.ok,
+    followUpLeadsCount: followUpLeadsTotal,
+    followUpLeadsAvailable: leadsTable.ok && activitiesTable.ok,
+    followUpDays: FOLLOW_UP_DAYS,
+    renewalsDueCount,
+    renewalsDueAvailable: sitesTable.ok && customersTable.ok,
+    renewalWarningDays: RENEWAL_WARNING_DAYS,
+  });
+
   const availabilityParts: string[] = [];
 
   if (leadsTable.ok) {
@@ -404,5 +416,7 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
     recentActivity,
     factoryOps,
     dataAvailabilitySummary,
+    engineReadiness,
+    priorityActions,
   };
 }

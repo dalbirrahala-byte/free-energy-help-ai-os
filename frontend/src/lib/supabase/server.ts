@@ -12,7 +12,25 @@ export async function createClient() {
         getAll() {
           return cookieStore.getAll();
         },
-        setAll() {},
+        setAll(cookiesToSet) {
+          // Called by supabase-js when a session is issued or refreshed.
+          // Previously a no-op, which silently dropped refreshed session
+          // cookies — harmless with no auth in use, but would have caused
+          // unpredictable logouts the moment real sessions existed. Wrapped
+          // in try/catch because Server Components are allowed to call
+          // cookies().set() but will throw if invoked outside a Server
+          // Action/Route Handler; middleware.ts is the actual place session
+          // refresh writes happen on every request, so a failure here (a
+          // plain Server Component reading, not writing, session state) is
+          // expected and safe to ignore rather than crash the render.
+          try {
+            for (const { name, value, options } of cookiesToSet) {
+              cookieStore.set(name, value, options);
+            }
+          } catch {
+            // Expected when called from a Server Component render.
+          }
+        },
       },
     }
   );
