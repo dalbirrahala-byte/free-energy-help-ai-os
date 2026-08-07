@@ -44,7 +44,7 @@ export default function NewCustomerPage() {
       );
     }
 
-    const { error: siteError } = await supabase.from("sites").insert({
+    const { error: siteError } = await supabase.from("customer_sites").insert({
       customer_id: customer.id,
       name: siteName || "Primary site",
       address_line1: addressLine1 || null,

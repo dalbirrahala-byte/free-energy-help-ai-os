@@ -56,7 +56,7 @@ export default async function EditCustomerPage({
   const customer = data as Customer;
 
   const { data: sitesData } = await supabase
-    .from("sites")
+    .from("customer_sites")
     .select(
       "id, name, address_line1, postcode, is_primary, current_supplier, contract_end",
     )
@@ -68,7 +68,7 @@ export default async function EditCustomerPage({
 
   if (!primarySite) {
     const { data: fallbackSite } = await supabase
-      .from("sites")
+      .from("customer_sites")
       .select(
         "id, name, address_line1, postcode, is_primary, current_supplier, contract_end",
       )
@@ -134,7 +134,7 @@ export default async function EditCustomerPage({
 
     if (siteId && Number.isInteger(siteId)) {
       const { error: siteError } = await supabase
-        .from("sites")
+        .from("customer_sites")
         .update(sitePayload)
         .eq("id", siteId)
         .eq("customer_id", customerId);
@@ -146,7 +146,7 @@ export default async function EditCustomerPage({
       }
     } else {
       const { error: siteError } = await supabase
-        .from("sites")
+        .from("customer_sites")
         .insert(sitePayload);
 
       if (siteError) {

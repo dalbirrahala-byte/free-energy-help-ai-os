@@ -14,7 +14,7 @@ type CustomerRow = {
   telephone: string | null;
   email: string | null;
   status: string | null;
-  sites: SiteRow[] | null;
+  customer_sites: SiteRow[] | null;
 };
 
 function formatContractDate(date: string | null) {
@@ -50,7 +50,7 @@ export default async function CustomersPage() {
       telephone,
       email,
       status,
-      sites (
+      customer_sites (
         current_supplier,
         contract_end,
         is_primary
@@ -116,7 +116,7 @@ export default async function CustomersPage() {
                   </tr>
                 ) : (
                   customers.map((customer) => {
-                    const site = primarySite(customer.sites);
+                    const site = primarySite(customer.customer_sites);
 
                     return (
                       <tr

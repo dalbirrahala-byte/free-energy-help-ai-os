@@ -307,7 +307,7 @@ export async function loadCustomer360(
   const customer = data as CustomerRow;
 
   const { data: sitesData } = await supabase
-    .from("sites")
+    .from("customer_sites")
     .select(
       "id, name, address_line1, address_line2, city, postcode, is_primary, current_supplier, contract_end",
     )

@@ -32,7 +32,7 @@ function environmentLabel(): string {
 }
 
 async function tableCount(
-  table: keyof TableAvailability,
+  table: string,
 ): Promise<{ ok: boolean; count: number | null }> {
   const supabase = await createClient();
   const { count, error } = await supabase
@@ -111,7 +111,7 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
     await Promise.all([
       tableCount("leads"),
       tableCount("customers"),
-      tableCount("sites"),
+      tableCount("customer_sites"),
       tableCount("tasks"),
       tableCount("activities"),
     ]);
@@ -233,7 +233,7 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
 
   if (sitesTable.ok && customersTable.ok) {
     const { data: siteRows } = await supabase
-      .from("sites")
+      .from("customer_sites")
       .select(
         "id, name, contract_end, current_supplier, customer_id, customers ( company_name )",
       )
@@ -335,7 +335,7 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
 
   if (sitesTable.ok) {
     const { count } = await supabase
-      .from("sites")
+      .from("customer_sites")
       .select("*", { count: "exact", head: true })
       .not("contract_end", "is", null)
       .lte("contract_end", renewalUntilKey);

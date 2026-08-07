@@ -6,6 +6,7 @@ import {
   Building2,
   Cuboid,
   FileText,
+  Gauge,
   LayoutDashboard,
   Brain,
   Menu,
@@ -46,6 +47,7 @@ const navigation = [
   { name: "Automation Centre", icon: Workflow, href: "/automation" },
   { name: "Workflow Intelligence", icon: Network, href: "/workflow-intelligence" },
   { name: "Enterprise Intelligence", icon: Brain, href: "/enterprise-intelligence" },
+  { name: "Executive Dashboard", icon: Gauge, href: "/executive-intelligence-dashboard" },
 ];
 
 type AppShellProps = {
