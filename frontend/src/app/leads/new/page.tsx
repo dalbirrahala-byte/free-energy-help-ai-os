@@ -20,6 +20,8 @@ export default function NewLeadPage() {
     const contractEnd = String(formData.get("contract_end") || "").trim();
     const status = String(formData.get("status") || "New").trim();
     const notes = String(formData.get("notes") || "").trim();
+    const leadSource = String(formData.get("lead_source") || "").trim();
+    const sourceDetail = String(formData.get("source_detail") || "").trim();
 
     if (!companyName) {
       throw new Error("Company name is required.");
@@ -36,6 +38,8 @@ export default function NewLeadPage() {
         contract_end: contractEnd || null,
         status: status || "New",
         notes: notes || null,
+        lead_source: leadSource || null,
+        source_detail: sourceDetail || null,
       })
       .select("id")
       .single();
@@ -143,6 +147,35 @@ export default function NewLeadPage() {
                 <option>Lost</option>
               </select>
             </div>
+
+            <div>
+              <label
+                htmlFor="lead_source"
+                className="mb-2 block text-sm font-semibold text-slate-700"
+              >
+                Lead Source
+              </label>
+
+              <select
+                id="lead_source"
+                name="lead_source"
+                defaultValue=""
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              >
+                <option value="">Not specified</option>
+                <option>Website</option>
+                <option>Referral</option>
+                <option>Outbound</option>
+                <option>AI Search</option>
+                <option>Import</option>
+                <option>Manual</option>
+              </select>
+            </div>
+
+            <Field
+              label="Source Detail"
+              name="source_detail"
+            />
           </div>
 
           <div className="mt-6">

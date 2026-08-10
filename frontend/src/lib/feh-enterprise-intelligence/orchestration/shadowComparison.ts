@@ -38,6 +38,9 @@ export function shadowCompareRenewal(
     contract_end: lead.contract_end,
     status: lead.status,
     notes: null,
+    lead_source: null,
+    source_detail: null,
+    source_provenance: "user-entered",
   };
 
   const direct = scoreRenewal(v2Lead, today);

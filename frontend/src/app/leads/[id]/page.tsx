@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
+import { requireOperationalPermission } from "@/lib/auth/enforceWrite";
 import { createClient } from "@/lib/supabase/server";
 import { ActivityHistoryActions } from "./ActivityHistoryActions";
 import { CommercialEnergyIntelligenceCard } from "@/components/leads/CommercialEnergyIntelligenceCard";
@@ -21,6 +23,9 @@ type Lead = {
   contract_end: string | null;
   status: string | null;
   notes: string | null;
+  lead_source: string | null;
+  source_detail: string | null;
+  source_provenance: string;
 };
 
 
@@ -82,9 +87,15 @@ export default async function LeadDetailsPage({
   const { data, error } = await supabase
     .from("leads")
     .select(
-      "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes",
+      "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance",
     )
     .eq("id", leadId)
+    .maybeSingle();
+
+  const { data: existingCustomer } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("source_lead_id", leadId)
     .maybeSingle();
 
    const { data: tasks } = await supabase
@@ -149,6 +160,98 @@ const leadActivities = (activities ?? []) as Activity[];
     redirect(`/leads/${submittedLeadId}`);
   }
 
+  async function convertLeadToCustomer(formData: FormData) {
+    "use server";
+
+    const submittedLeadId = Number(formData.get("lead_id"));
+
+    if (!Number.isInteger(submittedLeadId)) {
+      throw new Error("Invalid lead.");
+    }
+
+    const user = await requireOperationalPermission("records:write");
+    const supabase = await createClient();
+
+    const { data: currentLead, error: leadError } = await supabase
+      .from("leads")
+      .select("id, company_name, contact_name, telephone, email, supplier, contract_end, notes, status")
+      .eq("id", submittedLeadId)
+      .maybeSingle();
+
+    if (leadError || !currentLead) {
+      throw new Error("Lead could not be found.");
+    }
+
+    const { data: alreadyConverted } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("source_lead_id", submittedLeadId)
+      .maybeSingle();
+
+    if (alreadyConverted) {
+      redirect(`/customers/${alreadyConverted.id}`);
+    }
+
+    if (!currentLead.company_name) {
+      throw new Error("Lead must have a company name before it can be converted.");
+    }
+
+    const { data: customer, error: customerError } = await supabase
+      .from("customers")
+      .insert({
+        company_name: currentLead.company_name,
+        contact_name: currentLead.contact_name,
+        telephone: currentLead.telephone,
+        email: currentLead.email,
+        status: "Active",
+        notes: currentLead.notes,
+        source_lead_id: submittedLeadId,
+      })
+      .select("id")
+      .single();
+
+    if (customerError || !customer) {
+      throw new Error(
+        `The customer could not be created: ${customerError?.message ?? "Unknown error"}`,
+      );
+    }
+
+    const { error: siteError } = await supabase.from("customer_sites").insert({
+      customer_id: customer.id,
+      name: "Primary site",
+      is_primary: true,
+      current_supplier: currentLead.supplier,
+      contract_end: currentLead.contract_end,
+    });
+
+    if (siteError) {
+      throw new Error(`The primary site could not be created: ${siteError.message}`);
+    }
+
+    const previousStatus = currentLead.status || "New";
+
+    if (previousStatus !== "Won") {
+      await supabase.from("leads").update({ status: "Won" }).eq("id", submittedLeadId);
+
+      await recordAuditEvent(
+        supabase,
+        buildAuditEvent({
+          action: "lead_status_changed",
+          actorId: user.id,
+          actorRole: user.role,
+          entityType: "lead",
+          entityId: submittedLeadId,
+          result: "success",
+          metadata: { previousStatus, newStatus: "Won" },
+        }),
+      );
+    }
+
+    revalidatePath(`/leads/${submittedLeadId}`);
+    revalidatePath("/customers");
+    redirect(`/customers/${customer.id}`);
+  }
+
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-5xl">
@@ -185,6 +288,8 @@ const leadActivities = (activities ?? []) as Activity[];
               <Detail label="Contact Name" value={displayValue(lead.contact_name)} />
               <Detail label="Telephone" value={displayValue(lead.telephone)} />
               <Detail label="Email" value={displayValue(lead.email)} />
+              <Detail label="Lead Source" value={displayValue(lead.lead_source)} />
+              <Detail label="Source Detail" value={displayValue(lead.source_detail)} />
             </div>
           </section>
 
@@ -319,7 +424,26 @@ const leadActivities = (activities ?? []) as Activity[];
     </div>
   )}
 </section>
-        <div className="mt-8 flex justify-end">
+        <div className="mt-8 flex justify-end gap-3">
+          {existingCustomer ? (
+            <Link
+              href={`/customers/${existingCustomer.id}`}
+              className="rounded-xl border border-emerald-500 px-6 py-3 font-semibold text-emerald-600 hover:bg-emerald-50"
+            >
+              View Customer
+            </Link>
+          ) : (
+            <form action={convertLeadToCustomer}>
+              <input type="hidden" name="lead_id" value={lead.id} />
+              <button
+                type="submit"
+                className="rounded-xl border border-emerald-500 px-6 py-3 font-semibold text-emerald-600 hover:bg-emerald-50"
+              >
+                Convert to Customer
+              </button>
+            </form>
+          )}
+
           <Link
   href={`/leads/${lead.id}/edit`}
   className="rounded-xl bg-emerald-500 px-6 py-3 font-semibold text-white hover:bg-emerald-600"

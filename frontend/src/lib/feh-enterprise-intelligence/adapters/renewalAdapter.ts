@@ -37,6 +37,9 @@ export function adaptRenewalIntelligence(context: NormalizedLeadContext, today: 
     contract_end: context.contract_end,
     status: context.status,
     notes: null,
+    lead_source: null,
+    source_detail: null,
+    source_provenance: "user-entered",
   };
 
   const result = scoreRenewal(leadRecord, today);

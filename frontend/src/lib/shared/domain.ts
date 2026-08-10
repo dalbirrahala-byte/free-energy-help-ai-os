@@ -24,6 +24,9 @@ export type CanonicalLead = {
   contract_end: string | null;
   status: string | null;
   notes: string | null;
+  lead_source: string | null;
+  source_detail: string | null;
+  source_provenance: string;
 };
 
 export type CanonicalCustomer = {

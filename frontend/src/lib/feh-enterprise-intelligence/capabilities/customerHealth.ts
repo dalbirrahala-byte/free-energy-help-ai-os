@@ -26,6 +26,9 @@ export const customerHealthCapability: Capability = {
       contract_end: input.lead.contract_end,
       status: input.lead.status,
       notes: null,
+      lead_source: null,
+      source_detail: null,
+      source_provenance: "user-entered",
     };
 
     // scoreCustomerHealth only ever reads activity_date / due_date / status.
