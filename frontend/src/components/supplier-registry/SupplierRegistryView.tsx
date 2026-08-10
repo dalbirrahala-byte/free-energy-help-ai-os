@@ -1,5 +1,6 @@
 import { SectionCard } from "@/components/dashboard/SectionCard";
 import { StatCard } from "@/components/dashboard/StatCard";
+import { AddSupplierForm, AddSupplierProductForm } from "./SupplierRegistryForms";
 import type { SupplierProductsResult, SuppliersResult } from "@/lib/supplier-intelligence/types";
 
 const NOT_CONFIGURED = "Not configured";
@@ -118,6 +119,9 @@ export function SupplierRegistryView({ suppliers, products }: SupplierRegistryVi
           </div>
         )}
       </SectionCard>
+
+      <AddSupplierForm />
+      <AddSupplierProductForm suppliers={suppliers.configured ? suppliers.suppliers : []} />
     </div>
   );
 }

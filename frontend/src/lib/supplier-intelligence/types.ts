@@ -39,3 +39,13 @@ export type SupplierProductsResult = {
   configured: boolean;
   products: SupplierProductRow[];
 };
+
+export type SupplierFormState = {
+  status: "idle" | "success" | "error";
+  message: string;
+};
+
+export const INITIAL_SUPPLIER_FORM_STATE: SupplierFormState = {
+  status: "idle",
+  message: "",
+};

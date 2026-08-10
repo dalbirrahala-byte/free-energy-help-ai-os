@@ -1,0 +1,30 @@
+-- Repair: close the remaining PUBLIC EXECUTE grant on user_can_write().
+--
+-- WHY THIS EXISTS: 20260810110000_harden_function_execute_privileges.sql
+-- revoked anon's EXECUTE on public.user_can_write(), but only removed the
+-- role-specific `anon=X/postgres` ACL entry. Direct inspection of the raw
+-- ACL after that migration showed a SEPARATE, still-present entry:
+--
+--   {=X/postgres, postgres=X/postgres, authenticated=X/postgres, service_role=X/postgres}
+--
+-- The leading `=X/postgres` entry (no role name before `=`) is Postgres's
+-- notation for a grant to PUBLIC. Every role, including anon, is
+-- implicitly a member of PUBLIC, so this entry alone was still giving
+-- anon effective EXECUTE access regardless of the anon-specific revoke.
+-- This PUBLIC grant predates all of this week's hardening work — it was
+-- present from the moment user_can_write() was first created in
+-- 20260809100000 (Factory 022 Stage 1) and was never targeted by any
+-- migration since, unlike is_admin() (created later), which received an
+-- explicit REVOKE ALL ... FROM PUBLIC as part of its own creation review
+-- and carries no such entry today.
+--
+-- SCOPE: this migration issues exactly one statement, touching only the
+-- EXECUTE privilege on public.user_can_write() for the PUBLIC
+-- pseudo-role. It does not touch any table, row, RLS policy,
+-- application code, historical migration, or any other function
+-- (including is_admin(), which is already clean and unaffected).
+--
+-- SAFE / IDEMPOTENT: revoking an already-revoked privilege is a no-op,
+-- not an error, so this is safe to run more than once.
+
+revoke execute on function public.user_can_write() from public;
