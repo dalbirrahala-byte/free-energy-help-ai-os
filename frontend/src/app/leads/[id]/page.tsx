@@ -11,6 +11,8 @@ import { RenewalIntelligenceCard } from "@/components/leads/RenewalIntelligenceC
 import { runRenewalShadowDeployment } from "@/lib/intelligence/renewalShadowDeployment";
 import { CommercialIntelligencePanel } from "@/components/leads/CommercialIntelligencePanel";
 import { buildCommercialIntelligenceViewModel } from "@/lib/commercial-intelligence/viewModel";
+import { LeadPriorityCard } from "@/components/leads/LeadPriorityCard";
+import { loadLeadIntelligence } from "@/lib/revenue-engine/loadLeadIntelligence";
 
 type Lead = {
   id: number;
@@ -128,6 +130,7 @@ const leadActivities = (activities ?? []) as Activity[];
     leadTasks,
     renewal.urgency.tier,
   );
+  const priority = await loadLeadIntelligence(supabase, lead, new Date());
 
   async function deleteActivity(formData: FormData) {
     "use server";
@@ -312,6 +315,10 @@ const leadActivities = (activities ?? []) as Activity[];
 
         <div className="mt-6">
           <RenewalIntelligenceCard renewal={renewal} />
+        </div>
+
+        <div className="mt-6">
+          <LeadPriorityCard priority={priority} />
         </div>
 
         {commercialIntelligence.visible && (
