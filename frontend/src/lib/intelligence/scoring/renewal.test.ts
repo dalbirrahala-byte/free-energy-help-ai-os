@@ -16,6 +16,9 @@ function makeLead(contractEnd: string | null): LeadRecord {
     contract_end: contractEnd,
     status: "New",
     notes: null,
+    lead_source: null,
+    source_detail: null,
+    source_provenance: "user-entered",
   };
 }
 
