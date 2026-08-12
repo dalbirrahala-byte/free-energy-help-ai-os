@@ -3,8 +3,8 @@
 import { Zap } from "lucide-react";
 import { useState } from "react";
 
+import { submitQuoteEnquiry } from "@/app/business-energy-quote/actions";
 import { RENEWAL_TIMING_OPTIONS } from "@/lib/website-leads/constants";
-import { createWebsiteLeadFromForm } from "@/lib/website-leads/storage";
 import type { WebsiteLeadFormInput } from "@/lib/website-leads/types";
 import {
   hasFormErrors,
@@ -21,9 +21,24 @@ const INITIAL_FORM: WebsiteLeadFormInput = {
   consent: false,
 };
 
-export function BusinessEnergyQuoteForm() {
+type BusinessEnergyQuoteFormProps = {
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  utmTerm?: string | null;
+  utmContent?: string | null;
+};
+
+export function BusinessEnergyQuoteForm({
+  utmSource = null,
+  utmMedium = null,
+  utmCampaign = null,
+  utmTerm = null,
+  utmContent = null,
+}: BusinessEnergyQuoteFormProps) {
   const [form, setForm] = useState<WebsiteLeadFormInput>(INITIAL_FORM);
   const [submitted, setSubmitted] = useState(false);
+  const [pending, setPending] = useState(false);
   const [errors, setErrors] = useState<ReturnType<typeof validateWebsiteLeadForm>>({});
 
   function updateField<K extends keyof WebsiteLeadFormInput>(
@@ -38,21 +53,55 @@ export function BusinessEnergyQuoteForm() {
     });
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+
+    if (pending) {
+      return;
+    }
+
     const validation = validateWebsiteLeadForm(form);
     if (hasFormErrors(validation)) {
       setErrors(validation);
       return;
     }
 
+    setPending(true);
+
+    // The authoritative record lives in Supabase, submitted only through
+    // the approved public.ingest_public_lead(...) function (Factory 024
+    // Phase 2B) via this Server Action — the browser never talks to the
+    // database directly, and a failed submission is never shown as a
+    // successful one.
+    const payload = new FormData();
+    payload.set("businessName", form.businessName);
+    payload.set("contactName", form.contactName);
+    payload.set("telephone", form.telephone);
+    payload.set("email", form.email);
+    payload.set("postcode", form.postcode);
+    payload.set("renewalTiming", form.renewalTiming);
+    payload.set("consent", form.consent ? "true" : "false");
+    if (utmSource) payload.set("utm_source", utmSource);
+    if (utmMedium) payload.set("utm_medium", utmMedium);
+    if (utmCampaign) payload.set("utm_campaign", utmCampaign);
+    if (utmTerm) payload.set("utm_term", utmTerm);
+    if (utmContent) payload.set("utm_content", utmContent);
+
     try {
-      createWebsiteLeadFromForm(form);
+      const result = await submitQuoteEnquiry(payload);
+
+      if (!result.success) {
+        setErrors(result.errors);
+        return;
+      }
+
       setSubmitted(true);
       setForm(INITIAL_FORM);
       setErrors({});
     } catch {
       setErrors({ form: "We could not save your enquiry. Please try again." });
+    } finally {
+      setPending(false);
     }
   }
 
@@ -180,9 +229,10 @@ export function BusinessEnergyQuoteForm() {
 
       <button
         type="submit"
-        className="mt-6 w-full rounded-xl bg-emerald-500 px-5 py-3.5 text-base font-semibold text-white hover:bg-emerald-600 sm:w-auto"
+        disabled={pending}
+        className="mt-6 w-full rounded-xl bg-emerald-500 px-5 py-3.5 text-base font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        Request My Energy Review
+        {pending ? "Submitting…" : "Request My Energy Review"}
       </button>
     </form>
   );

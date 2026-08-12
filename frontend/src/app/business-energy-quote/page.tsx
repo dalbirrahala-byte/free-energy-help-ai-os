@@ -11,7 +11,22 @@ export const metadata: Metadata = {
     "Request a no-obligation UK commercial energy review with an experienced consultant.",
 };
 
-export default function BusinessEnergyQuotePage() {
+type BusinessEnergyQuotePageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function firstValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+  return value ?? null;
+}
+
+export default async function BusinessEnergyQuotePage({
+  searchParams,
+}: BusinessEnergyQuotePageProps) {
+  const params = await searchParams;
+
   return (
     <div className="min-h-screen bg-slate-100">
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:py-14">
@@ -43,11 +58,17 @@ export default function BusinessEnergyQuotePage() {
         </ul>
 
         <div className="mt-10">
-          <BusinessEnergyQuoteForm />
+          <BusinessEnergyQuoteForm
+            utmSource={firstValue(params.utm_source)}
+            utmMedium={firstValue(params.utm_medium)}
+            utmCampaign={firstValue(params.utm_campaign)}
+            utmTerm={firstValue(params.utm_term)}
+            utmContent={firstValue(params.utm_content)}
+          />
         </div>
 
         <p className="mt-8 text-center text-xs text-slate-500">
-          Demo MVP — enquiries are stored in your browser only until CRM integration is configured.
+          Your enquiry is submitted securely to our energy consultant team.
         </p>
       </div>
     </div>
