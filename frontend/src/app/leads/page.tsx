@@ -8,7 +8,7 @@ export default async function LeadsPage() {
   const { data, error } = await supabase
     .from("leads")
     .select(
-      "id, company_name, contact_name, telephone, email, supplier, contract_end, status, notes",
+      "id, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source",
     )
     .order("created_at", { ascending: false });
 

@@ -28,6 +28,11 @@ type Lead = {
   lead_source: string | null;
   source_detail: string | null;
   source_provenance: string;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_term: string | null;
+  utm_content: string | null;
 };
 
 
@@ -89,7 +94,7 @@ export default async function LeadDetailsPage({
   const { data, error } = await supabase
     .from("leads")
     .select(
-      "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance",
+      "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance, utm_source, utm_medium, utm_campaign, utm_term, utm_content",
     )
     .eq("id", leadId)
     .maybeSingle();
@@ -121,6 +126,9 @@ const leadActivities = (activities ?? []) as Activity[];
   }
 
   const lead = data as Lead;
+  const hasCampaignAttribution = Boolean(
+    lead.utm_source || lead.utm_medium || lead.utm_campaign || lead.utm_term || lead.utm_content,
+  );
 
   const intelligence = calculateCommercialEnergyIntelligence(lead, leadActivities, leadTasks);
   const renewal = runRenewalShadowDeployment(lead).result;
@@ -293,6 +301,7 @@ const leadActivities = (activities ?? []) as Activity[];
               <Detail label="Email" value={displayValue(lead.email)} />
               <Detail label="Lead Source" value={displayValue(lead.lead_source)} />
               <Detail label="Source Detail" value={displayValue(lead.source_detail)} />
+              <Detail label="Source Provenance" value={displayValue(lead.source_provenance)} />
             </div>
           </section>
 
@@ -308,6 +317,23 @@ const leadActivities = (activities ?? []) as Activity[];
             </div>
           </section>
         </div>
+
+        {hasCampaignAttribution && (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-bold text-slate-900">Campaign Attribution</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              UTM parameters recorded when this lead arrived — only shown when present.
+            </p>
+
+            <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {lead.utm_source && <Detail label="UTM Source" value={lead.utm_source} />}
+              {lead.utm_medium && <Detail label="UTM Medium" value={lead.utm_medium} />}
+              {lead.utm_campaign && <Detail label="UTM Campaign" value={lead.utm_campaign} />}
+              {lead.utm_term && <Detail label="UTM Term" value={lead.utm_term} />}
+              {lead.utm_content && <Detail label="UTM Content" value={lead.utm_content} />}
+            </div>
+          </section>
+        )}
 
         <div className="mt-6">
           <CommercialEnergyIntelligenceCard intelligence={intelligence} />

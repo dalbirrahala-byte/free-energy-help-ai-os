@@ -15,6 +15,7 @@ export type CrmLeadRow = {
   contract_end: string | null;
   status: string | null;
   notes: string | null;
+  lead_source: string | null;
 };
 
 type LeadsPageClientProps = {
@@ -84,6 +85,7 @@ export function LeadsPageClient({ crmLeads, supabaseError }: LeadsPageClientProp
               <thead className="border-b border-slate-200 bg-slate-50">
                 <tr>
                   <th className="px-5 py-4 font-semibold">Company</th>
+                  <th className="px-5 py-4 font-semibold">Source</th>
                   <th className="px-5 py-4 font-semibold">Contact</th>
                   <th className="px-5 py-4 font-semibold">Telephone</th>
                   <th className="px-5 py-4 font-semibold">Supplier</th>
@@ -95,7 +97,7 @@ export function LeadsPageClient({ crmLeads, supabaseError }: LeadsPageClientProp
               <tbody>
                 {crmLeads.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-5 py-12 text-center text-slate-500">
+                    <td colSpan={8} className="px-5 py-12 text-center text-slate-500">
                       No CRM leads in Supabase yet.
                     </td>
                   </tr>
@@ -107,6 +109,9 @@ export function LeadsPageClient({ crmLeads, supabaseError }: LeadsPageClientProp
                     >
                       <td className="px-5 py-4 font-semibold text-slate-900">
                         {lead.company_name || "Unnamed company"}
+                      </td>
+                      <td className="px-5 py-4 text-slate-600">
+                        {lead.lead_source || "Not specified"}
                       </td>
                       <td className="px-5 py-4 text-slate-600">
                         {lead.contact_name || "Not provided"}
