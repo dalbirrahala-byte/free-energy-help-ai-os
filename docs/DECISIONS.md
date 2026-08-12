@@ -111,3 +111,52 @@ This is the first ADR log for this project. Format: one numbered entry per decis
 **Decision**: `middleware.ts` (now `src/middleware.ts`) must live inside `src/` for any project using that directory structure, confirmed by moving the file and re-running the exact same redirect matrix, which then passed for all six protected routes and both public routes.
 
 **Consequences**: This is recorded as an ADR, not just a code fix, because the failure mode is dangerous specifically for security-relevant files: a wrongly-placed middleware doesn't error, doesn't warn, and doesn't fail the build — it just silently does nothing, which for an auth gate means silently granting full access. Any future move or restructuring of `middleware.ts` (e.g. the pending rename to `proxy.ts` — see `docs/AUTHENTICATION.md`) must be followed by the same live redirect-matrix check before being trusted, not just a clean build.
+
+---
+
+## ADR-010: `ingest_public_lead` is the canonical Secure Lead Gateway for every future acquisition channel
+
+**Date**: Factory 025A (Secure Lead Gateway & Attribution, discovery + MVP)
+
+**Context**: Factory 025A was scoped to design a controlled, auditable ingestion boundary in front of future acquisition channels (Meta/Facebook, LinkedIn, WhatsApp, AI Voice, Reddit, AI-search traffic — Factories 025B-F), without pulling any of that channel work forward. Discovery found that Factory 024 had already built exactly this boundary for the one live channel (the public website quote form): `public.ingest_public_lead()` (`supabase/migrations/20260812110000_ingest_public_lead_function.sql`) is `SECURITY DEFINER`, `SET search_path = ''`, exposes a fixed named-parameter contract (no `id`/`status`/`source_provenance` pass-through), performs its own server-side validation independent of the caller, and is granted `EXECUTE` to `anon` only — never `authenticated`, never a service-role key anywhere in this project. Building a second, parallel ingestion mechanism for future channels would duplicate a already-reviewed, already-hardened trust boundary for no benefit.
+
+**Decision**: `public.ingest_public_lead()` is the canonical Secure Lead Gateway. Every future channel adapter (025B-F) translates its external payload into this same named-parameter contract rather than inventing its own CRM-writing logic or a per-channel ingestion function/table. The existing `leads` attribution columns are the canonical attribution model — no new schema was introduced in 025A:
+- `lead_source` — the **channel** (`"Website"` today; future values such as `"facebook"`, `"linkedin"`, `"whatsapp"`, `"voice"`, `"ai_search"`, `"reddit"`, `"referral"`, `"manual"` should follow the same free-text convention already in use — there is no CHECK constraint to update).
+- `source_detail` — the specific provider, page, or entry point (already used for `"Business energy quote form"`).
+- `utm_source`/`utm_medium`/`utm_campaign`/`utm_term`/`utm_content` — campaign attribution; non-UTM channels (WhatsApp, Voice) may repurpose these same columns for a channel-specific campaign/template identifier rather than requiring new columns.
+- `source_provenance` — trust tier (`user-entered`/`ai-inferred`/`verified`), unchanged.
+- `consent_given` — unchanged; the RPC re-validates this server-side rather than trusting a pass-through value, and that discipline must hold for every future adapter too.
+
+One gap was identified and deliberately deferred, not built now: there is no external-system lead/event id column, so a future webhook-based channel (Meta, WhatsApp — likely 025C/D) that needs replay/idempotency protection will need that column then, not speculatively today. Similarly, `ingest_public_lead` is only reachable today from this app's own Server Actions — no `app/api/**` route exists anywhere in the codebase — so the first webhook-based channel will need a real HTTP entry point in front of this same gateway function; that is explicitly out of 025A's scope.
+
+**Consequences**: A future implementer adding a channel should extend/call `ingest_public_lead` (or a like-shaped successor with the same hardening properties), not create `ingest_public_lead_facebook`, a second `leads`-like table, or a direct table INSERT policy for `anon`. Any change to `ingest_public_lead`'s validated behaviour, or any new grant/RLS policy, requires its own explicit review — this ADR authorises reuse of the existing contract, not modification of it.
+
+---
+
+## ADR-011: Advisory-only duplicate detection and audit logging for public lead ingestion (Factory 025A MVP)
+
+**Date**: Factory 025A (Secure Lead Gateway & Attribution, MVP implementation)
+
+**Context**: Discovery found two real gaps on the one live ingestion channel: (1) no duplicate-lead detection exists anywhere, and `ingest_public_lead` performs a blind INSERT with no lookup by email/telephone; (2) anonymous public submissions produce no audit trail — `ingest_public_lead` never writes to `public.audit_log`, and neither did the calling Server Action. Both were scoped as Should-Have-Soon items compatible with a zero-migration MVP.
+
+**Decision**: Duplicate detection (`lib/revenue-engine/duplicateDetection.ts`) is a pure, read-only function that matches leads by normalised email/telephone against the existing `leads` table (via the already-authenticated server client, under the existing `leads_select_authenticated` RLS policy — no new query privilege). It is surfaced on `/leads/[id]` as `PotentialDuplicatesCard`, which renders only when matches exist and never merges, updates, rejects, or deletes a record — a human reviews and decides, identical in spirit to the existing advisory-only `LeadPriorityCard`/routing-recommendation pattern. `ingest_public_lead`'s own validated INSERT behaviour is untouched.
+
+Audit logging for the public quote form (`business-energy-quote/actions.ts`) reuses the existing `recordAuditEvent`/`buildAuditEvent` helpers (`lib/audit/log.ts`) with a new `"public_lead_ingested"` action, recording only `lead_source`, whether UTM parameters were present, and (on failure) the same generic, already-scrubbed message `mapIngestError` produces for the user — never company/contact/email/phone. **Known limitation**: `audit_log`'s current RLS policy (`audit_log_insert_self`, `supabase/migrations/20260806120000_repair_rls_and_audit_log.sql`) grants `INSERT` to `authenticated` only; there is no `anon` policy. Since the quote form runs as `anon`, this insert is rejected by RLS today and silently swallowed by `recordAuditEvent`'s existing graceful-degradation behaviour (a server-side `console.warn`, never a thrown error) — the same "safe to add before the underlying access exists" pattern already documented in `lib/audit/log.ts`'s own header comment. No RLS/grant/migration change was made to fix this, per 025A's explicit constraints; the call site is wired and ready to start persisting the moment a separately-approved future change grants that access (most likely: the write moves inside `ingest_public_lead` itself under `SECURITY DEFINER`, rather than granting `anon` a table-level insert on `audit_log`).
+
+**Consequences**: Anyone relying on `audit_log` for public-channel ingestion provenance today will find no rows for it — the gap is now visible in code and in this ADR rather than silently absent. Closing it requires a separate, explicit decision (most likely extending `ingest_public_lead` to write its own audit row, since it already bypasses RLS by design as `SECURITY DEFINER`) — not a broadened `anon` grant on `audit_log`.
+
+*Superseded in part by ADR-012: the success-path half of this known limitation is closed there. The failure-path half remains exactly as described above.*
+
+---
+
+## ADR-012: Success-path public ingestion audit event moved inside `ingest_public_lead`, not granted to `anon`
+
+**Date**: Factory 025A (audit/RLS gap security review + fix)
+
+**Context**: ADR-011 recorded a known limitation: the application-layer audit write for a successful public lead submission is rejected by `audit_log`'s RLS (`audit_log_insert_self` grants `INSERT` to `authenticated` only, no `anon` policy) and silently degrades. A dedicated security review (Factory 025A audit/RLS gap discovery) was run specifically to find a fix that does not grant `anon` any access to `audit_log`, does not weaken RLS, and does not introduce a service-role key or a second public RPC.
+
+**Decision**: `public.ingest_public_lead()` (`supabase/migrations/20260812120000_ingest_public_lead_audit_log.sql`, a new forward-only migration — the already-applied `20260812110000` file was not edited) now writes its own `audit_log` row for the **success** path only, immediately after the `leads` row it just inserted, inside the same transaction. Because the function is `SECURITY DEFINER` and already bypasses `leads`' RLS to perform that insert on `anon`'s behalf, the same mechanism lets it write `audit_log` too — no grant or policy on either table changed. The audit insert is wrapped in its own exception-swallowing sub-block (`begin ... exception when others then null; end;`) so a failure there can never undo or block the lead that was just committed; the function still returns the new lead's id either way. Metadata is limited to `lead_source`, `utm_source`, `utm_medium`, `utm_campaign` — never company/contact/email/phone/notes.
+
+The application-layer success-path `recordAuditEvent` call in `business-energy-quote/actions.ts` (added in the original 025A MVP pass) was removed as redundant with this authoritative DB-side event. The **failure/rejection** path audit call in that same file is unchanged and keeps the limitation described in ADR-011: a `raise exception` aborts the whole transaction, so a failure audit row cannot safely be written from inside the function without either an autonomous-transaction mechanism (a new Postgres extension) or changing the function's exception-based error contract — both judged out of scope for this fix. Closing the failure-path gap is a separate, future decision.
+
+**Consequences**: Successful public lead submissions now have an authoritative, minimal-PII audit trail as soon as this migration is applied — rejected/invalid submissions still do not, and that gap is recorded here rather than silently absent. Any future change to `ingest_public_lead`'s error-handling contract (exceptions vs. return codes) should revisit whether failure-path auditing becomes safely possible at that point.

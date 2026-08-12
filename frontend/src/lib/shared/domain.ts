@@ -27,6 +27,18 @@ export type CanonicalLead = {
   lead_source: string | null;
   source_detail: string | null;
   source_provenance: string;
+  // Factory 025A: optional so every existing caller — including
+  // prioritization.test.ts's makeLead() and the leads/[id] page's own
+  // locally-declared Lead type — stays assignable without being updated.
+  // These mirror the nullable/not-null shape of the real leads columns
+  // (added by Factory 024's leads_source_attribution / leads_attribution_
+  // and_consent migrations) whenever a caller does supply them.
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
+  consent_given?: boolean;
 };
 
 export type CanonicalCustomer = {

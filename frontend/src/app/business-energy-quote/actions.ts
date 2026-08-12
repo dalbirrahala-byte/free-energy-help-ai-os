@@ -9,7 +9,35 @@
 // lead_source and source_detail are hardcoded constants below, never read
 // from the client payload — this is the one discipline the approved
 // Phase 2A/2B security design requires the caller to uphold correctly.
+//
+// Factory 025A: the SUCCESS case's authoritative audit_log row is now
+// written inside public.ingest_public_lead() itself (see
+// supabase/migrations/20260812120000_ingest_public_lead_audit_log.sql) —
+// that SECURITY DEFINER function already bypasses RLS to write
+// public.leads on this anonymous caller's behalf, so it can do the same
+// for audit_log without granting `anon` any access to that table. An
+// application-layer success audit call here would be redundant with that
+// authoritative DB-side event, so it was removed.
+//
+// The FAILURE/rejection case is still recorded from here, not from the
+// database function, because a rejection (consent_required, invalid_email,
+// etc.) raises a Postgres exception that aborts the whole transaction —
+// making a failure audit row survive that would require either an
+// autonomous-transaction mechanism or changing this function's exception-
+// based error contract, both out of scope for the approved fix. This
+// failure-path call carries the same known limitation as before: audit_
+// log's current RLS policy (audit_log_insert_self) grants INSERT to
+// `authenticated` only, so as `anon` this insert is rejected by RLS today
+// and recordAuditEvent swallows that into a server-side console.warn —
+// wired in now, ready to persist once a separately-approved future change
+// (most likely extending the DB function's error contract) closes that
+// specific gap too.
+//
+// Metadata deliberately excludes company/contact/email/phone — only the
+// lead_source constant, whether UTM parameters were present, and the same
+// generic, already-scrubbed message mapIngestError produces for the user.
 
+import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
 import { createClient } from "@/lib/supabase/server";
 import { renewalTimingLabel } from "@/lib/website-leads/labels";
 import type { WebsiteLeadFormErrors, WebsiteLeadFormInput } from "@/lib/website-leads/types";
@@ -105,8 +133,25 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
     p_additional_context: additionalContext,
   });
 
+  const hasUtm = Boolean(utmMedium || utmCampaign || utmTerm || utmContent || utmSource !== DEFAULT_UTM_SOURCE);
+
   if (error || typeof data !== "number") {
-    return { success: false, errors: { form: mapIngestError(error?.message) } };
+    const safeReason = mapIngestError(error?.message);
+
+    await recordAuditEvent(
+      supabase,
+      buildAuditEvent({
+        action: "public_lead_ingested",
+        actorId: null,
+        actorRole: null,
+        entityType: "lead",
+        entityId: null,
+        result: "failure",
+        metadata: { leadSource: LEAD_SOURCE, hasUtm, reason: safeReason },
+      }),
+    );
+
+    return { success: false, errors: { form: safeReason } };
   }
 
   return { success: true, leadId: data };

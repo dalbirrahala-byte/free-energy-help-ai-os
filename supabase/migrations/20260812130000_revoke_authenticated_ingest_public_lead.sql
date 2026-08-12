@@ -1,0 +1,53 @@
+-- Factory 025A: forward-fix — remove authenticated's unused EXECUTE
+-- privilege on public.ingest_public_lead.
+--
+-- WHY THIS EXISTS: a dedicated security review (Factory 025A grant
+-- divergence discovery) found that public.ingest_public_lead's live
+-- EXECUTE grants include `authenticated`, even though this function's
+-- own creating migration (20260812110000_ingest_public_lead_function.sql)
+-- states in its own header: "authenticated is deliberately NOT granted
+-- EXECUTE here — internal staff already have a richer, permission-checked
+-- INSERT path... that this narrow function is not meant to replace or
+-- duplicate."
+--
+-- This is not the result of that migration ever running incorrectly, and
+-- applying it (or this file) does not, by itself, prove or disprove
+-- whether 20260812110000 was ever executed — CREATE OR REPLACE FUNCTION
+-- does not reset an existing function's privileges, and a
+-- `revoke all on function ... from public` statement only ever removes
+-- the PUBLIC pseudo-role's own ACL entry. `authenticated`'s access
+-- instead comes from Supabase's project-level default privilege, which
+-- automatically grants EXECUTE to `authenticated` (and `service_role`) on
+-- every new function created by the `postgres` role, as its own directly
+-- recorded ACL entry — a separate mechanism, untouched by anything in
+-- 20260812110000 or 20260812120000.
+--
+-- A full codebase search (frontend/src) found exactly one caller of
+-- ingest_public_lead anywhere in this application: the anonymous public
+-- quote-form Server Action (business-energy-quote/actions.ts), which uses
+-- the standard anon/publishable-key server client. No authenticated or
+-- internal code path calls this function anywhere — internal staff lead
+-- creation uses the existing, separate leads_insert_write_roles RLS-gated
+-- INSERT path instead. authenticated's EXECUTE grant on this function is
+-- therefore unused by any legitimate workflow in this codebase and is
+-- removed here as a least-privilege correction.
+--
+-- SCOPE: exactly one statement. Does not touch the function body,
+-- SECURITY DEFINER, search_path, anon's EXECUTE grant, PUBLIC's grant
+-- (already absent — untouched here), any RLS policy, any table-level
+-- grant, or any other function. No table, schema, or data is referenced.
+--
+-- SAFE / IDEMPOTENT: REVOKE is safe to rerun under Postgres privilege
+-- semantics — revoking a privilege a role does not currently hold
+-- succeeds as a no-op, it does not raise an error. This statement can be
+-- applied more than once with no additional effect beyond the first run.
+
+revoke execute on function public.ingest_public_lead(
+  text, text, text, text, text, boolean, text, text, text, text, text, text, text
+) from authenticated;
+
+-- ROLLBACK (documented, not executed): re-grant if a future, separately-
+-- approved caller genuinely needs this access —
+-- grant execute on function public.ingest_public_lead(
+--   text, text, text, text, text, boolean, text, text, text, text, text, text, text
+-- ) to authenticated;

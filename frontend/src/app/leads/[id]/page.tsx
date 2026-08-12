@@ -13,6 +13,8 @@ import { CommercialIntelligencePanel } from "@/components/leads/CommercialIntell
 import { buildCommercialIntelligenceViewModel } from "@/lib/commercial-intelligence/viewModel";
 import { LeadPriorityCard } from "@/components/leads/LeadPriorityCard";
 import { loadLeadIntelligence } from "@/lib/revenue-engine/loadLeadIntelligence";
+import { PotentialDuplicatesCard } from "@/components/leads/PotentialDuplicatesCard";
+import { loadPotentialDuplicateLeads } from "@/lib/revenue-engine/duplicateDetection";
 
 type Lead = {
   id: number;
@@ -139,6 +141,7 @@ const leadActivities = (activities ?? []) as Activity[];
     renewal.urgency.tier,
   );
   const priority = await loadLeadIntelligence(supabase, lead, new Date());
+  const potentialDuplicates = await loadPotentialDuplicateLeads(supabase, lead);
 
   async function deleteActivity(formData: FormData) {
     "use server";
@@ -317,6 +320,12 @@ const leadActivities = (activities ?? []) as Activity[];
             </div>
           </section>
         </div>
+
+        {potentialDuplicates.length > 0 && (
+          <div className="mt-6">
+            <PotentialDuplicatesCard matches={potentialDuplicates} />
+          </div>
+        )}
 
         {hasCampaignAttribution && (
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

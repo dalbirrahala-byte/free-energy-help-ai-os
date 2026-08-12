@@ -18,6 +18,7 @@ export type AuditAction =
   | "lead_created"
   | "lead_updated"
   | "lead_status_changed"
+  | "public_lead_ingested"
   | "task_created"
   | "task_completed"
   | "activity_recorded"
