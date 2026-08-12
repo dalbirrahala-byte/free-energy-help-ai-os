@@ -36,8 +36,20 @@
 // Metadata deliberately excludes company/contact/email/phone — only the
 // lead_source constant, whether UTM parameters were present, and the same
 // generic, already-scrubbed message mapIngestError produces for the user.
+//
+// Factory 025B: when no explicit utm_source query parameter was present,
+// the fallback value is now the analytics-only acquisition-origin
+// classification computed server-side in business-energy-quote/page.tsx
+// (classifyAcquisitionOrigin.ts) from the inbound page-load request's
+// Referer/Host headers, instead of the previous hardcoded "direct"
+// literal. Precedence is unchanged: an explicit utm_source always wins;
+// the classifier only ever fills the gap when one is absent. The value
+// arrives here as an ordinary form field and is validated against the
+// fixed AcquisitionOrigin vocabulary before use — never trusted blindly,
+// same discipline as every other field on this form.
 
 import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
+import { isAcquisitionOrigin } from "@/lib/website-leads/classifyAcquisitionOrigin";
 import { createClient } from "@/lib/supabase/server";
 import { renewalTimingLabel } from "@/lib/website-leads/labels";
 import type { WebsiteLeadFormErrors, WebsiteLeadFormInput } from "@/lib/website-leads/types";
@@ -46,7 +58,7 @@ import { hasFormErrors, isValidRenewalTiming, validateWebsiteLeadForm } from "@/
 const LEAD_SOURCE = "Website";
 const SOURCE_DETAIL = "Business energy quote form";
 
-/** Applied only when no utm_source query parameter was present on the landing URL. */
+/** Ultimate fallback if even the acquisition-origin classification is missing or invalid. */
 const DEFAULT_UTM_SOURCE = "direct";
 
 const GENERIC_ERROR = "We could not save your enquiry. Please try again.";
@@ -109,11 +121,19 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
   }
   const additionalContext = contextParts.length > 0 ? contextParts.join(" ") : null;
 
-  const utmSource = cleanUtmValue(formData.get("utm_source")) ?? DEFAULT_UTM_SOURCE;
+  const explicitUtmSource = cleanUtmValue(formData.get("utm_source"));
   const utmMedium = cleanUtmValue(formData.get("utm_medium"));
   const utmCampaign = cleanUtmValue(formData.get("utm_campaign"));
   const utmTerm = cleanUtmValue(formData.get("utm_term"));
   const utmContent = cleanUtmValue(formData.get("utm_content"));
+
+  const acquisitionOriginRaw = formData.get("acquisition_origin");
+  const acquisitionOriginFallback =
+    typeof acquisitionOriginRaw === "string" && isAcquisitionOrigin(acquisitionOriginRaw)
+      ? acquisitionOriginRaw
+      : DEFAULT_UTM_SOURCE;
+
+  const utmSource = explicitUtmSource ?? acquisitionOriginFallback;
 
   const supabase = await createClient();
 
@@ -133,7 +153,11 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
     p_additional_context: additionalContext,
   });
 
-  const hasUtm = Boolean(utmMedium || utmCampaign || utmTerm || utmContent || utmSource !== DEFAULT_UTM_SOURCE);
+  // Reflects genuine explicit campaign attribution only — deliberately
+  // independent of whether the acquisition-origin fallback filled in
+  // utmSource, so audit metadata isn't misleadingly marked "has UTM" for
+  // organic/direct/referral traffic that just happened to get classified.
+  const hasUtm = Boolean(explicitUtmSource || utmMedium || utmCampaign || utmTerm || utmContent);
 
   if (error || typeof data !== "number") {
     const safeReason = mapIngestError(error?.message);

@@ -4,6 +4,7 @@ import { Zap } from "lucide-react";
 import { useState } from "react";
 
 import { submitQuoteEnquiry } from "@/app/business-energy-quote/actions";
+import type { AcquisitionOrigin } from "@/lib/website-leads/classifyAcquisitionOrigin";
 import { RENEWAL_TIMING_OPTIONS } from "@/lib/website-leads/constants";
 import type { WebsiteLeadFormInput } from "@/lib/website-leads/types";
 import {
@@ -27,6 +28,8 @@ type BusinessEnergyQuoteFormProps = {
   utmCampaign?: string | null;
   utmTerm?: string | null;
   utmContent?: string | null;
+  /** Factory 025B: analytics-only fallback used server-side only when utmSource is absent — see classifyAcquisitionOrigin.ts. */
+  acquisitionOrigin?: AcquisitionOrigin | null;
 };
 
 export function BusinessEnergyQuoteForm({
@@ -35,6 +38,7 @@ export function BusinessEnergyQuoteForm({
   utmCampaign = null,
   utmTerm = null,
   utmContent = null,
+  acquisitionOrigin = null,
 }: BusinessEnergyQuoteFormProps) {
   const [form, setForm] = useState<WebsiteLeadFormInput>(INITIAL_FORM);
   const [submitted, setSubmitted] = useState(false);
@@ -86,6 +90,7 @@ export function BusinessEnergyQuoteForm({
     if (utmCampaign) payload.set("utm_campaign", utmCampaign);
     if (utmTerm) payload.set("utm_term", utmTerm);
     if (utmContent) payload.set("utm_content", utmContent);
+    if (acquisitionOrigin) payload.set("acquisition_origin", acquisitionOrigin);
 
     try {
       const result = await submitQuoteEnquiry(payload);

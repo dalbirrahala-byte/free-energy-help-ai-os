@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 
 import {
   BusinessEnergyQuoteForm,
   PublicBrandHeader,
 } from "@/components/website-leads/BusinessEnergyQuoteForm";
+import { classifyAcquisitionOrigin } from "@/lib/website-leads/classifyAcquisitionOrigin";
 
 export const metadata: Metadata = {
   title: "Compare Business Energy Prices | Free Energy Help",
@@ -26,6 +28,18 @@ export default async function BusinessEnergyQuotePage({
   searchParams,
 }: BusinessEnergyQuotePageProps) {
   const params = await searchParams;
+
+  // Factory 025B: analytics-only acquisition-origin fallback, used only
+  // when no explicit utm_source is present on the URL (see
+  // classifyAcquisitionOrigin.ts and business-energy-quote/actions.ts for
+  // the full precedence rule). Referer/Host headers are browser-derived
+  // and untrusted — this value is never used for anything beyond
+  // attribution reporting.
+  const requestHeaders = await headers();
+  const acquisitionOrigin = classifyAcquisitionOrigin({
+    referrer: requestHeaders.get("referer"),
+    siteHostname: requestHeaders.get("host"),
+  }).origin;
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -64,6 +78,7 @@ export default async function BusinessEnergyQuotePage({
             utmCampaign={firstValue(params.utm_campaign)}
             utmTerm={firstValue(params.utm_term)}
             utmContent={firstValue(params.utm_content)}
+            acquisitionOrigin={acquisitionOrigin}
           />
         </div>
 
