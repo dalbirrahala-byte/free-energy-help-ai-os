@@ -19,19 +19,15 @@
 // application-layer success audit call here would be redundant with that
 // authoritative DB-side event, so it was removed.
 //
-// The FAILURE/rejection case is still recorded from here, not from the
-// database function, because a rejection (consent_required, invalid_email,
-// etc.) raises a Postgres exception that aborts the whole transaction —
-// making a failure audit row survive that would require either an
-// autonomous-transaction mechanism or changing this function's exception-
-// based error contract, both out of scope for the approved fix. This
-// failure-path call carries the same known limitation as before: audit_
-// log's current RLS policy (audit_log_insert_self) grants INSERT to
-// `authenticated` only, so as `anon` this insert is rejected by RLS today
-// and recordAuditEvent swallows that into a server-side console.warn —
-// wired in now, ready to persist once a separately-approved future change
-// (most likely extending the DB function's error contract) closes that
-// specific gap too.
+// The FAILURE/rejection case is still recorded from here, not from
+// ingest_public_lead itself, because a rejection (consent_required,
+// invalid_email, etc.) raises a Postgres exception that aborts the whole
+// transaction — an audit insert placed before the raise would be rolled
+// back with it. As of Factory 026A this call goes through the separate
+// public.record_public_lead_rejection(...) RPC (its own, independent
+// transaction) instead of a direct client-side audit_log insert, so it
+// persists even though ingest_public_lead's own attempt did not — see the
+// Factory 026A note below for the full reasoning.
 //
 // Metadata deliberately excludes company/contact/email/phone — only the
 // lead_source constant, whether UTM parameters were present, and the same
@@ -47,8 +43,16 @@
 // arrives here as an ordinary form field and is validated against the
 // fixed AcquisitionOrigin vocabulary before use — never trusted blindly,
 // same discipline as every other field on this form.
+//
+// Factory 026A: the failure/rejection audit event below is now written
+// via the approved public.record_public_lead_rejection(...) RPC (see
+// supabase/migrations/20260814100000_public_lead_rejection_audit_
+// function.sql) instead of a direct client-side audit_log insert.
+// audit_log has no anon INSERT policy — and per the Factory 026A
+// decision, must not gain one — so this reaches it the same way
+// ingest_public_lead itself already reaches public.leads: through a
+// narrow SECURITY DEFINER function, not a new RLS grant.
 
-import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
 import { isAcquisitionOrigin } from "@/lib/website-leads/classifyAcquisitionOrigin";
 import { createClient } from "@/lib/supabase/server";
 import { renewalTimingLabel } from "@/lib/website-leads/labels";
@@ -160,20 +164,20 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
   const hasUtm = Boolean(explicitUtmSource || utmMedium || utmCampaign || utmTerm || utmContent);
 
   if (error || typeof data !== "number") {
+    const rawReason = error?.message ?? "unknown";
     const safeReason = mapIngestError(error?.message);
 
-    await recordAuditEvent(
-      supabase,
-      buildAuditEvent({
-        action: "public_lead_ingested",
-        actorId: null,
-        actorRole: null,
-        entityType: "lead",
-        entityId: null,
-        result: "failure",
-        metadata: { leadSource: LEAD_SOURCE, hasUtm, reason: safeReason },
-      }),
-    );
+    // Never surfaced to the caller and never blocks the (already scrubbed)
+    // error message returned below — an audit-write failure must not
+    // become a worse user-facing error than the original rejection.
+    const { error: auditError } = await supabase.rpc("record_public_lead_rejection", {
+      p_reason: rawReason,
+      p_lead_source: LEAD_SOURCE,
+      p_has_utm: hasUtm,
+    });
+    if (auditError) {
+      console.warn(`[Audit] Failed to persist public lead rejection: ${auditError.message}`);
+    }
 
     return { success: false, errors: { form: safeReason } };
   }
