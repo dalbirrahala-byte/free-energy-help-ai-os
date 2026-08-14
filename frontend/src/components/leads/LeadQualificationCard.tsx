@@ -1,5 +1,5 @@
 import { SectionCard } from "@/components/dashboard/SectionCard";
-import { QualificationBadge, NextActionBadge } from "@/components/leads/RevenueBadges";
+import { QualificationReadinessBadge, NextActionBadge } from "@/components/leads/RevenueBadges";
 import type { LeadQualificationResult } from "@/lib/revenue-engine/qualification";
 import type { NextActionResult } from "@/lib/revenue-engine/nextAction";
 import type { ActivityRecencySummary } from "@/lib/revenue-engine/activityRecency";
@@ -23,17 +23,17 @@ function formatLastActivity(summary: ActivityRecencySummary): string {
 export function LeadQualificationCard({ qualification, nextAction, activityRecency }: LeadQualificationCardProps) {
   return (
     <SectionCard
-      title="Calculated Qualification & Next Action"
+      title="Qualification Readiness & Next Action"
       description="Deterministic, calculated from information already on file — not the lead's pipeline status above. No AI is used."
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <div className="rounded-xl border border-slate-200 p-4">
-          <p className="text-sm font-medium text-slate-500">Calculated qualification</p>
+          <p className="text-sm font-medium text-slate-500">Qualification readiness</p>
           <p className="mt-1 text-lg font-bold text-slate-900">
-            {qualification.qualificationLabel} ({qualification.metCount}/{qualification.totalCount})
+            {qualification.readinessLabel} ({qualification.metCount}/{qualification.totalCount})
           </p>
           <div className="mt-2">
-            <QualificationBadge label={qualification.qualificationLabel} />
+            <QualificationReadinessBadge label={qualification.readinessLabel} />
           </div>
           <p className="mt-2 text-xs text-slate-500">{qualification.explanation}</p>
           <p className="mt-2 text-[11px] text-slate-400">

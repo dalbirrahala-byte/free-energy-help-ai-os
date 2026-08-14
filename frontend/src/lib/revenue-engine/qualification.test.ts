@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { calculateLeadQualification, qualificationLabelFromCount, QUALIFICATION_BANDS } from "./qualification.ts";
+import {
+  calculateLeadQualification,
+  qualificationReadinessLabelFromCount,
+  QUALIFICATION_READINESS_BANDS,
+} from "./qualification.ts";
 
 const RECENT = { isRecent: true };
 const NOT_RECENT = { isRecent: false };
@@ -20,33 +24,33 @@ function makeLead(overrides: Partial<Parameters<typeof calculateLeadQualificatio
   };
 }
 
-test(`${QUALIFICATION_BANDS.qualified} criteria met classifies as Qualified (lower boundary)`, () => {
-  assert.equal(qualificationLabelFromCount(QUALIFICATION_BANDS.qualified), "Qualified");
+test(`${QUALIFICATION_READINESS_BANDS.fullyReady} criteria met classifies as Fully Ready (lower boundary)`, () => {
+  assert.equal(qualificationReadinessLabelFromCount(QUALIFICATION_READINESS_BANDS.fullyReady), "Fully Ready");
 });
 
-test(`${QUALIFICATION_BANDS.qualified - 1} criteria met classifies as Partially Qualified`, () => {
-  assert.equal(qualificationLabelFromCount(QUALIFICATION_BANDS.qualified - 1), "Partially Qualified");
+test(`${QUALIFICATION_READINESS_BANDS.fullyReady - 1} criteria met classifies as Partially Ready`, () => {
+  assert.equal(qualificationReadinessLabelFromCount(QUALIFICATION_READINESS_BANDS.fullyReady - 1), "Partially Ready");
 });
 
-test(`${QUALIFICATION_BANDS.partiallyQualified - 1} criteria met classifies as Unqualified`, () => {
-  assert.equal(qualificationLabelFromCount(QUALIFICATION_BANDS.partiallyQualified - 1), "Unqualified");
+test(`${QUALIFICATION_READINESS_BANDS.partiallyReady - 1} criteria met classifies as Not Ready`, () => {
+  assert.equal(qualificationReadinessLabelFromCount(QUALIFICATION_READINESS_BANDS.partiallyReady - 1), "Not Ready");
 });
 
-test("a lead with every field present and recent activity is fully Qualified (6/6)", () => {
+test("a lead with every field present and recent activity is Fully Ready (6/6)", () => {
   const result = calculateLeadQualification(makeLead(), RECENT);
   assert.equal(result.metCount, 6);
   assert.equal(result.totalCount, 6);
-  assert.equal(result.qualificationLabel, "Qualified");
+  assert.equal(result.readinessLabel, "Fully Ready");
   assert.ok(result.criteria.every((c) => c.met));
 });
 
-test("a lead with only company and contact info is Partially Qualified", () => {
+test("a lead with only company and contact info is Not Ready (below the Partially Ready threshold)", () => {
   const result = calculateLeadQualification(
     makeLead({ supplier: null, contract_end: null, lead_source: null }),
     NOT_RECENT,
   );
   assert.equal(result.metCount, 2);
-  assert.equal(result.qualificationLabel, "Unqualified");
+  assert.equal(result.readinessLabel, "Not Ready");
 });
 
 test("contact details require both a name and at least one contact method", () => {
@@ -66,7 +70,7 @@ test("recent activity criterion is read from the supplied activityRecency, not r
   assert.equal(recent.metCount, 6);
 });
 
-test("an empty lead with no activity is Unqualified (0/6)", () => {
+test("an empty lead with no activity is Not Ready (0/6)", () => {
   const result = calculateLeadQualification(
     makeLead({
       contact_name: null,
@@ -80,7 +84,7 @@ test("an empty lead with no activity is Unqualified (0/6)", () => {
     NOT_RECENT,
   );
   assert.equal(result.metCount, 0);
-  assert.equal(result.qualificationLabel, "Unqualified");
+  assert.equal(result.readinessLabel, "Not Ready");
 });
 
 test("leadId in the result always matches the input lead's id", () => {
@@ -91,4 +95,10 @@ test("leadId in the result always matches the input lead's id", () => {
 test("identical input always produces identical output (deterministic)", () => {
   const lead = makeLead();
   assert.deepEqual(calculateLeadQualification(lead, RECENT), calculateLeadQualification(lead, RECENT));
+});
+
+test("readinessLabel values never collide with pipeline status vocabulary (e.g. the pipeline status 'Qualified')", () => {
+  const labels: string[] = ["Fully Ready", "Partially Ready", "Not Ready"];
+  assert.ok(!labels.includes("Qualified"));
+  assert.ok(!labels.includes("Unqualified"));
 });

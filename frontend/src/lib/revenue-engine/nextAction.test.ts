@@ -9,7 +9,7 @@ import type { ActivityRecencySummary } from "./activityRecency.ts";
 function makeQualification(overrides: Partial<LeadQualificationResult> = {}): LeadQualificationResult {
   return {
     leadId: 1,
-    qualificationLabel: "Qualified",
+    readinessLabel: "Fully Ready",
     criteria: [],
     metCount: 6,
     totalCount: 6,
@@ -64,17 +64,17 @@ test("Lost status always yields No immediate action", () => {
   assert.equal(result.action, "No immediate action");
 });
 
-test("Unqualified lead always yields Request missing information, even if high priority", () => {
+test("Not Ready lead always yields Request missing information, even if high priority", () => {
   const result = determineNextAction(
     makeInput({
-      qualification: makeQualification({ qualificationLabel: "Unqualified", metCount: 1 }),
+      qualification: makeQualification({ readinessLabel: "Not Ready", metCount: 1 }),
       priority: makePriority({ priorityLabel: "Critical" }),
     }),
   );
   assert.equal(result.action, "Request missing information");
 });
 
-test("qualified lead never contacted yields Call lead", () => {
+test("fully-ready lead never contacted yields Call lead", () => {
   const result = determineNextAction(
     makeInput({ activityRecency: makeActivityRecency({ hasActivity: false, lastActivityDate: null, daysSinceLastActivity: null, isRecent: false, isStale: true }) }),
   );
@@ -111,7 +111,7 @@ test("medium priority, stale activity yields Follow up", () => {
   assert.equal(result.action, "Follow up");
 });
 
-test("qualified, recently actioned, low/medium priority yields No immediate action", () => {
+test("fully ready, recently actioned, low/medium priority yields No immediate action", () => {
   const result = determineNextAction(
     makeInput({
       priority: makePriority({ priorityLabel: "Low" }),
@@ -124,8 +124,18 @@ test("qualified, recently actioned, low/medium priority yields No immediate acti
 test("reason text always references the actual evidence, not a generic placeholder", () => {
   const result = determineNextAction(
     makeInput({
-      qualification: makeQualification({ qualificationLabel: "Unqualified", metCount: 2, totalCount: 6 }),
+      qualification: makeQualification({ readinessLabel: "Not Ready", metCount: 2, totalCount: 6 }),
     }),
   );
   assert.match(result.reason, /2 of 6/);
+});
+
+test("pipeline status 'Qualified' and calculated readiness 'Fully Ready' are independent — a lead can carry either or both without one implying the other", () => {
+  // Pipeline status "Qualified" but calculated readiness is Not Ready (a human progressed the
+  // lead before the data was actually complete) — still yields Request missing information,
+  // proving determineNextAction reads `qualification.readinessLabel`, not `status`.
+  const result = determineNextAction(
+    makeInput({ status: "Qualified", qualification: makeQualification({ readinessLabel: "Not Ready", metCount: 1 }) }),
+  );
+  assert.equal(result.action, "Request missing information");
 });

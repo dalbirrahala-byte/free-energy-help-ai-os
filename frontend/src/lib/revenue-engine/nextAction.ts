@@ -32,13 +32,15 @@ const HIGH_URGENCY_LABELS = new Set<LeadPriorityResult["priorityLabel"]>(["Criti
 
 /**
  * `status` here is the lead's pipeline/lifecycle status (`leads.status`,
- * e.g. "New" / "Qualified" / "Won") — a human-set CRM field. `qualification`
- * is the unrelated CALCULATED assessment from qualification.ts (see that
- * file's header for the "Qualified" naming collision between the two).
- * Reading both in the same function is intentional and exactly why this
- * comment exists here: do not conflate `status === "Qualified"` with
- * `qualification.qualificationLabel === "Qualified"` — they answer
- * different questions and can disagree.
+ * e.g. "New" / "Qualified" / "Won") — a human-set CRM field, values
+ * unchanged since Tier 1. `qualification` is the unrelated CALCULATED
+ * qualification-readiness assessment from qualification.ts
+ * (`readinessLabel`: "Fully Ready" / "Partially Ready" / "Not Ready" as of
+ * Tier 2 — deliberately renamed so it can never collide with a pipeline
+ * status value like "Qualified"). Reading both in the same function is
+ * intentional: `status` answers "what stage is a human treating this lead
+ * as," `qualification.readinessLabel` answers "does this lead have enough
+ * data to act on" — different questions that can disagree.
  */
 export type NextActionInput = {
   qualification: LeadQualificationResult;
@@ -50,7 +52,7 @@ export type NextActionInput = {
 /**
  * Rules are applied in order and the first match wins:
  * 1. Closed lead (Won/Lost) -> No immediate action.
- * 2. Unqualified (missing core data) -> Request missing information first.
+ * 2. Not Ready (missing core data) -> Request missing information first.
  * 3. Never contacted -> Call lead.
  * 4. High/Critical priority, no recent activity -> Follow up.
  * 5. High/Critical priority, recently actioned -> Review opportunity.
@@ -67,7 +69,7 @@ export function determineNextAction(input: NextActionInput): NextActionResult {
     };
   }
 
-  if (qualification.qualificationLabel === "Unqualified") {
+  if (qualification.readinessLabel === "Not Ready") {
     return {
       action: "Request missing information",
       reason: `Only ${qualification.metCount} of ${qualification.totalCount} qualification criteria are met — gather missing details before investing further follow-up time.`,
@@ -108,6 +110,6 @@ export function determineNextAction(input: NextActionInput): NextActionResult {
 
   return {
     action: "No immediate action",
-    reason: "Lead is qualified, recently actioned, and not high priority.",
+    reason: "Lead has sufficient qualification readiness, was recently actioned, and is not high priority.",
   };
 }

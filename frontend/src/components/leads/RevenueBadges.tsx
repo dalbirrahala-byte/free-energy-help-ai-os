@@ -4,7 +4,7 @@
 // each declaring its own copy of the colour map.
 
 import type { PriorityLabel } from "@/lib/revenue-engine/prioritization";
-import type { QualificationLabel } from "@/lib/revenue-engine/qualification";
+import type { QualificationReadinessLabel } from "@/lib/revenue-engine/qualification";
 import type { NextActionLabel } from "@/lib/revenue-engine/nextAction";
 
 function Badge({ className, label, title }: { className: string; label: string; title?: string }) {
@@ -29,25 +29,27 @@ export function PriorityBadge({ label }: { label: PriorityLabel }) {
   return <Badge className={PRIORITY_BADGE_STYLES[label]} label={label} />;
 }
 
-const QUALIFICATION_BADGE_STYLES: Record<QualificationLabel, string> = {
-  Qualified: "bg-emerald-100 text-emerald-800",
-  "Partially Qualified": "bg-amber-100 text-amber-900",
-  Unqualified: "bg-slate-200 text-slate-700",
+const QUALIFICATION_READINESS_BADGE_STYLES: Record<QualificationReadinessLabel, string> = {
+  "Fully Ready": "bg-emerald-100 text-emerald-800",
+  "Partially Ready": "bg-amber-100 text-amber-900",
+  "Not Ready": "bg-slate-200 text-slate-700",
 };
 
 /**
- * `title` disambiguates this CALCULATED qualification badge from the
- * lead's pipeline status badge — one of the seven pipeline status values is
- * also literally "Qualified". See qualification.ts's file header for the
- * full explanation of why these are two different concepts that happen to
- * share a word.
+ * `title` clarifies this is the CALCULATED qualification-readiness badge,
+ * distinct from the lead's pipeline status badge. As of Factory 024 Phase
+ * 2A Tier 2 the label vocabulary itself ("Fully Ready" / "Partially Ready"
+ * / "Not Ready") no longer shares any word with the pipeline status
+ * vocabulary — see qualification.ts's file header for the history of why
+ * that mattered (Tier 1 originally used "Qualified", which collided with
+ * the pipeline status value of the same name).
  */
-export function QualificationBadge({ label }: { label: QualificationLabel }) {
+export function QualificationReadinessBadge({ label }: { label: QualificationReadinessLabel }) {
   return (
     <Badge
-      className={QUALIFICATION_BADGE_STYLES[label]}
+      className={QUALIFICATION_READINESS_BADGE_STYLES[label]}
       label={label}
-      title={`Calculated qualification: ${label} (data completeness — not pipeline status)`}
+      title={`Qualification readiness: ${label} (data completeness — not pipeline status)`}
     />
   );
 }
