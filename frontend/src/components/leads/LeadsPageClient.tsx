@@ -4,6 +4,8 @@ import Link from "next/link";
 
 import { WebsiteLeadsPanel } from "@/components/website-leads/WebsiteLeadsPanel";
 import { useNewWebsiteLeadCount, useWebsiteLeads } from "@/lib/website-leads/useWebsiteLeads";
+import { PriorityBadge, QualificationBadge, NextActionBadge } from "@/components/leads/RevenueBadges";
+import type { LeadRevenueView } from "@/lib/revenue-engine/leadRevenueView";
 
 export type CrmLeadRow = {
   id: number;
@@ -21,7 +23,22 @@ export type CrmLeadRow = {
 type LeadsPageClientProps = {
   crmLeads: CrmLeadRow[];
   supabaseError: boolean;
+  revenueViews: Record<number, LeadRevenueView>;
 };
+
+function formatLastActivity(view: LeadRevenueView | undefined): string {
+  if (!view) {
+    return "Not assessed";
+  }
+  const { activityRecency } = view;
+  if (!activityRecency.hasActivity || activityRecency.daysSinceLastActivity === null) {
+    return "No activity yet";
+  }
+  const days = activityRecency.daysSinceLastActivity;
+  if (days <= 0) return "Today";
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
+}
 
 function formatContractDate(date: string | null) {
   if (!date) {
@@ -35,7 +52,7 @@ function formatContractDate(date: string | null) {
   }).format(new Date(`${date}T00:00:00`));
 }
 
-export function LeadsPageClient({ crmLeads, supabaseError }: LeadsPageClientProps) {
+export function LeadsPageClient({ crmLeads, supabaseError, revenueViews }: LeadsPageClientProps) {
   const websiteLeads = useWebsiteLeads();
   const newCount = useNewWebsiteLeadCount();
 
@@ -91,55 +108,84 @@ export function LeadsPageClient({ crmLeads, supabaseError }: LeadsPageClientProp
                   <th className="px-5 py-4 font-semibold">Supplier</th>
                   <th className="px-5 py-4 font-semibold">Contract End</th>
                   <th className="px-5 py-4 font-semibold">Status</th>
+                  <th className="px-5 py-4 font-semibold">Qualification</th>
+                  <th className="px-5 py-4 font-semibold">Priority</th>
+                  <th className="px-5 py-4 font-semibold">Next Action</th>
+                  <th className="px-5 py-4 font-semibold">Last Activity</th>
                   <th className="px-5 py-4 font-semibold">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {crmLeads.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-12 text-center text-slate-500">
+                    <td colSpan={12} className="px-5 py-12 text-center text-slate-500">
                       No CRM leads in Supabase yet.
                     </td>
                   </tr>
                 ) : (
-                  crmLeads.map((lead) => (
-                    <tr
-                      key={lead.id}
-                      className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
-                    >
-                      <td className="px-5 py-4 font-semibold text-slate-900">
-                        {lead.company_name || "Unnamed company"}
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">
-                        {lead.lead_source || "Not specified"}
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">
-                        {lead.contact_name || "Not provided"}
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">
-                        {lead.telephone || "Not provided"}
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">
-                        {lead.supplier || "Not provided"}
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">
-                        {formatContractDate(lead.contract_end)}
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                          {lead.status || "New"}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <Link
-                          href={`/leads/${lead.id}`}
-                          className="font-semibold text-emerald-600 hover:text-emerald-700"
-                        >
-                          View
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
+                  crmLeads.map((lead) => {
+                    const view = revenueViews[lead.id];
+                    return (
+                      <tr
+                        key={lead.id}
+                        className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                      >
+                        <td className="px-5 py-4 font-semibold text-slate-900">
+                          {lead.company_name || "Unnamed company"}
+                        </td>
+                        <td className="px-5 py-4 text-slate-600">
+                          {lead.lead_source || "Not specified"}
+                        </td>
+                        <td className="px-5 py-4 text-slate-600">
+                          {lead.contact_name || "Not provided"}
+                        </td>
+                        <td className="px-5 py-4 text-slate-600">
+                          {lead.telephone || "Not provided"}
+                        </td>
+                        <td className="px-5 py-4 text-slate-600">
+                          {lead.supplier || "Not provided"}
+                        </td>
+                        <td className="px-5 py-4 text-slate-600">
+                          {formatContractDate(lead.contract_end)}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                            {lead.status || "New"}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4">
+                          {view ? (
+                            <QualificationBadge label={view.qualification.qualificationLabel} />
+                          ) : (
+                            <span className="text-xs text-slate-400">Not assessed</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          {view ? (
+                            <PriorityBadge label={view.priority.priorityLabel} />
+                          ) : (
+                            <span className="text-xs text-slate-400">Not assessed</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          {view ? (
+                            <NextActionBadge label={view.nextAction.action} />
+                          ) : (
+                            <span className="text-xs text-slate-400">Not assessed</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-slate-600">{formatLastActivity(view)}</td>
+                        <td className="px-5 py-4">
+                          <Link
+                            href={`/leads/${lead.id}`}
+                            className="font-semibold text-emerald-600 hover:text-emerald-700"
+                          >
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

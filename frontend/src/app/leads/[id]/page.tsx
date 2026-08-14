@@ -15,6 +15,10 @@ import { LeadPriorityCard } from "@/components/leads/LeadPriorityCard";
 import { loadLeadIntelligence } from "@/lib/revenue-engine/loadLeadIntelligence";
 import { PotentialDuplicatesCard } from "@/components/leads/PotentialDuplicatesCard";
 import { loadPotentialDuplicateLeads } from "@/lib/revenue-engine/duplicateDetection";
+import { LeadQualificationCard } from "@/components/leads/LeadQualificationCard";
+import { summarizeActivityRecency } from "@/lib/revenue-engine/activityRecency";
+import { calculateLeadQualification } from "@/lib/revenue-engine/qualification";
+import { determineNextAction } from "@/lib/revenue-engine/nextAction";
 
 type Lead = {
   id: number;
@@ -140,8 +144,12 @@ const leadActivities = (activities ?? []) as Activity[];
     leadTasks,
     renewal.urgency.tier,
   );
-  const priority = await loadLeadIntelligence(supabase, lead, new Date());
+  const today = new Date();
+  const priority = await loadLeadIntelligence(supabase, lead, today);
   const potentialDuplicates = await loadPotentialDuplicateLeads(supabase, lead);
+  const activityRecency = summarizeActivityRecency(leadActivities, today);
+  const qualification = calculateLeadQualification(lead, activityRecency);
+  const nextAction = determineNextAction({ qualification, priority, activityRecency, status: lead.status });
 
   async function deleteActivity(formData: FormData) {
     "use server";
@@ -354,6 +362,14 @@ const leadActivities = (activities ?? []) as Activity[];
 
         <div className="mt-6">
           <LeadPriorityCard priority={priority} />
+        </div>
+
+        <div className="mt-6">
+          <LeadQualificationCard
+            qualification={qualification}
+            nextAction={nextAction}
+            activityRecency={activityRecency}
+          />
         </div>
 
         {commercialIntelligence.visible && (

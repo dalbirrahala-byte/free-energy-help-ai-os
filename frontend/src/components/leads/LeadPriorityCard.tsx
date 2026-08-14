@@ -1,23 +1,9 @@
 import type { ReactNode } from "react";
 
 import { SectionCard } from "@/components/dashboard/SectionCard";
-import type { LeadPriorityResult, PriorityLabel } from "@/lib/revenue-engine/prioritization";
+import type { LeadPriorityResult } from "@/lib/revenue-engine/prioritization";
 import { deriveRoutingRecommendation } from "@/lib/revenue-engine/routingRecommendation";
-
-const PRIORITY_BADGE_STYLES: Record<PriorityLabel, string> = {
-  Critical: "bg-red-100 text-red-800",
-  High: "bg-amber-100 text-amber-900",
-  Medium: "bg-yellow-100 text-yellow-800",
-  Low: "bg-slate-200 text-slate-700",
-};
-
-function PriorityBadge({ label }: { label: PriorityLabel }) {
-  return (
-    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${PRIORITY_BADGE_STYLES[label]}`}>
-      {label}
-    </span>
-  );
-}
+import { PriorityBadge } from "@/components/leads/RevenueBadges";
 
 function Tile({
   label,
