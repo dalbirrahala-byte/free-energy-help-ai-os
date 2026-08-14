@@ -108,7 +108,7 @@ export function LeadsPageClient({ crmLeads, supabaseError, revenueViews }: Leads
                   <th className="px-5 py-4 font-semibold">Supplier</th>
                   <th className="px-5 py-4 font-semibold">Contract End</th>
                   <th className="px-5 py-4 font-semibold">Status</th>
-                  <th className="px-5 py-4 font-semibold">Qualification</th>
+                  <th className="px-5 py-4 font-semibold">Qualification (Calculated)</th>
                   <th className="px-5 py-4 font-semibold">Priority</th>
                   <th className="px-5 py-4 font-semibold">Next Action</th>
                   <th className="px-5 py-4 font-semibold">Last Activity</th>

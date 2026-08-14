@@ -1,3 +1,5 @@
+import type { PriorityLabel } from "@/lib/revenue-engine/prioritization";
+
 export const TRANSFER_STATUS_VALUES = [
   "Waiting",
   "Calling",
@@ -11,9 +13,12 @@ export const TRANSFER_STATUS_VALUES = [
 
 export type TransferStatus = (typeof TRANSFER_STATUS_VALUES)[number];
 
-export const PRIORITY_VALUES = ["Critical", "High", "Medium", "Low"] as const;
-
-export type TransferPriority = (typeof PRIORITY_VALUES)[number];
+// Reuses the revenue-engine's canonical priority scale rather than declaring
+// a second, coincidentally-identical one — see Factory 024 Phase 2A
+// architecture review. Names/values kept identical for backward
+// compatibility with existing callers (PriorityBadge, LiveTransferFilters).
+export type TransferPriority = PriorityLabel;
+export const PRIORITY_VALUES: readonly TransferPriority[] = ["Critical", "High", "Medium", "Low"] as const;
 
 export type FuelType = "Electricity" | "Gas" | "Dual fuel" | "Unknown";
 

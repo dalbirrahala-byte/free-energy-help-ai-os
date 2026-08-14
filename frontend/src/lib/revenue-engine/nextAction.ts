@@ -30,6 +30,16 @@ const CLOSED_STATUSES = new Set(["Won", "Lost"]);
 
 const HIGH_URGENCY_LABELS = new Set<LeadPriorityResult["priorityLabel"]>(["Critical", "High"]);
 
+/**
+ * `status` here is the lead's pipeline/lifecycle status (`leads.status`,
+ * e.g. "New" / "Qualified" / "Won") — a human-set CRM field. `qualification`
+ * is the unrelated CALCULATED assessment from qualification.ts (see that
+ * file's header for the "Qualified" naming collision between the two).
+ * Reading both in the same function is intentional and exactly why this
+ * comment exists here: do not conflate `status === "Qualified"` with
+ * `qualification.qualificationLabel === "Qualified"` — they answer
+ * different questions and can disagree.
+ */
 export type NextActionInput = {
   qualification: LeadQualificationResult;
   priority: LeadPriorityResult;

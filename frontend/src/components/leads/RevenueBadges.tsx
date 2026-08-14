@@ -7,9 +7,14 @@ import type { PriorityLabel } from "@/lib/revenue-engine/prioritization";
 import type { QualificationLabel } from "@/lib/revenue-engine/qualification";
 import type { NextActionLabel } from "@/lib/revenue-engine/nextAction";
 
-function Badge({ className, label }: { className: string; label: string }) {
+function Badge({ className, label, title }: { className: string; label: string; title?: string }) {
   return (
-    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${className}`}>{label}</span>
+    <span
+      title={title}
+      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${className}`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -30,8 +35,21 @@ const QUALIFICATION_BADGE_STYLES: Record<QualificationLabel, string> = {
   Unqualified: "bg-slate-200 text-slate-700",
 };
 
+/**
+ * `title` disambiguates this CALCULATED qualification badge from the
+ * lead's pipeline status badge — one of the seven pipeline status values is
+ * also literally "Qualified". See qualification.ts's file header for the
+ * full explanation of why these are two different concepts that happen to
+ * share a word.
+ */
 export function QualificationBadge({ label }: { label: QualificationLabel }) {
-  return <Badge className={QUALIFICATION_BADGE_STYLES[label]} label={label} />;
+  return (
+    <Badge
+      className={QUALIFICATION_BADGE_STYLES[label]}
+      label={label}
+      title={`Calculated qualification: ${label} (data completeness — not pipeline status)`}
+    />
+  );
 }
 
 const NEXT_ACTION_BADGE_STYLES: Record<NextActionLabel, string> = {

@@ -19,50 +19,8 @@ import { LeadQualificationCard } from "@/components/leads/LeadQualificationCard"
 import { summarizeActivityRecency } from "@/lib/revenue-engine/activityRecency";
 import { calculateLeadQualification } from "@/lib/revenue-engine/qualification";
 import { determineNextAction } from "@/lib/revenue-engine/nextAction";
+import type { CanonicalLead, CanonicalActivity, CanonicalTask } from "@/lib/shared/domain";
 
-type Lead = {
-  id: number;
-  created_at: string;
-  company_name: string | null;
-  contact_name: string | null;
-  telephone: string | null;
-  email: string | null;
-  supplier: string | null;
-  contract_end: string | null;
-  status: string | null;
-  notes: string | null;
-  lead_source: string | null;
-  source_detail: string | null;
-  source_provenance: string;
-  utm_source: string | null;
-  utm_medium: string | null;
-  utm_campaign: string | null;
-  utm_term: string | null;
-  utm_content: string | null;
-};
-
-
-type Activity = {
-  id: number;
-  activity_type: string | null;
-  title: string | null;
-  details: string | null;
-  activity_date: string | null;
-  activity_time: string | null;
-  created_at: string;
-};
-
-type Task = {
-  id: number;
-  title: string | null;
-  due_date: string | null;
-  due_time: string | null;
-  priority: string | null;
-  status: string | null;
-  notes: string | null;
-
-};
-  
 type LeadPageProps = {
   params: Promise<{
     id: string;
@@ -117,7 +75,7 @@ export default async function LeadDetailsPage({
   .eq("lead_id", leadId)
   .order("due_date", { ascending: true })
   .order("due_time", { ascending: true }); 
-const leadTasks = (tasks ?? []) as Task[];
+const leadTasks = (tasks ?? []) as CanonicalTask[];
 
 const { data: activities } = await supabase
   .from("activities")
@@ -126,12 +84,12 @@ const { data: activities } = await supabase
   .order("activity_date", { ascending: false })
   .order("activity_time", { ascending: false });
 
-const leadActivities = (activities ?? []) as Activity[];
+const leadActivities = (activities ?? []) as CanonicalActivity[];
   if (error || !data) {
     notFound();
   }
 
-  const lead = data as Lead;
+  const lead = data as CanonicalLead;
   const hasCampaignAttribution = Boolean(
     lead.utm_source || lead.utm_medium || lead.utm_campaign || lead.utm_term || lead.utm_content,
   );

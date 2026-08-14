@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
 import { requireOperationalPermission } from "@/lib/auth/enforceWrite";
 import { createClient } from "@/lib/supabase/server";
+import { PIPELINE_STATUSES } from "@/lib/dashboard/dates";
 
 type EditLeadPageProps = {
   params: Promise<{
@@ -207,13 +208,9 @@ export default async function EditLeadPage({
                 defaultValue={lead.status || "New"}
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               >
-                <option>New</option>
-                <option>Contacted</option>
-                <option>Qualified</option>
-                <option>Quote Sent</option>
-                <option>Negotiation</option>
-                <option>Won</option>
-                <option>Lost</option>
+                {PIPELINE_STATUSES.map((status) => (
+                  <option key={status}>{status}</option>
+                ))}
               </select>
             </div>
           </div>

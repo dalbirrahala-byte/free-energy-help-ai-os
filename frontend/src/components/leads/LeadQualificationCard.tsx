@@ -23,12 +23,12 @@ function formatLastActivity(summary: ActivityRecencySummary): string {
 export function LeadQualificationCard({ qualification, nextAction, activityRecency }: LeadQualificationCardProps) {
   return (
     <SectionCard
-      title="Qualification & Next Action"
-      description="Deterministic qualification and recommended next action based only on information already on file. No AI is used."
+      title="Calculated Qualification & Next Action"
+      description="Deterministic, calculated from information already on file — not the lead's pipeline status above. No AI is used."
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <div className="rounded-xl border border-slate-200 p-4">
-          <p className="text-sm font-medium text-slate-500">Qualification</p>
+          <p className="text-sm font-medium text-slate-500">Calculated qualification</p>
           <p className="mt-1 text-lg font-bold text-slate-900">
             {qualification.qualificationLabel} ({qualification.metCount}/{qualification.totalCount})
           </p>
@@ -36,6 +36,9 @@ export function LeadQualificationCard({ qualification, nextAction, activityRecen
             <QualificationBadge label={qualification.qualificationLabel} />
           </div>
           <p className="mt-2 text-xs text-slate-500">{qualification.explanation}</p>
+          <p className="mt-2 text-[11px] text-slate-400">
+            Data-completeness assessment, distinct from this lead&apos;s pipeline status.
+          </p>
         </div>
 
         <div className="rounded-xl border border-slate-200 p-4">
