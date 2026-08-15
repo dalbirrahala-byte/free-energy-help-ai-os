@@ -39,6 +39,15 @@ export type CanonicalLead = {
   utm_term?: string | null;
   utm_content?: string | null;
   consent_given?: boolean;
+  // Factory 027: persisted lead-quality classification (Hot/Warm/Nurture/
+  // Reject). Optional for the same reason as the utm_*/consent_given
+  // fields above — every existing caller stays assignable without being
+  // updated. Written only by lib/revenue-engine/syncLeadQualification.ts
+  // from an authenticated context; never by the anon ingestion functions.
+  qualification_classification?: string | null;
+  qualification_score?: number | null;
+  qualification_reasons?: unknown;
+  qualification_computed_at?: string | null;
 };
 
 export type CanonicalCustomer = {

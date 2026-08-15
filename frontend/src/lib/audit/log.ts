@@ -25,7 +25,8 @@ export type AuditAction =
   | "contract_status_changed"
   | "renewal_status_changed"
   | "permission_denied"
-  | "admin_change";
+  | "admin_change"
+  | "lead_qualification_scored";
 
 export type AuditResult = "success" | "failure" | "denied";
 

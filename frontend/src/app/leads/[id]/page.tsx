@@ -16,9 +16,12 @@ import { loadLeadIntelligence } from "@/lib/revenue-engine/loadLeadIntelligence"
 import { PotentialDuplicatesCard } from "@/components/leads/PotentialDuplicatesCard";
 import { loadPotentialDuplicateLeads } from "@/lib/revenue-engine/duplicateDetection";
 import { LeadQualificationCard } from "@/components/leads/LeadQualificationCard";
-import { summarizeActivityRecency } from "@/lib/revenue-engine/activityRecency";
+import { summarizeActivityRecency, type ActivityRecencyInput } from "@/lib/revenue-engine/activityRecency";
 import { calculateLeadQualification } from "@/lib/revenue-engine/qualification";
 import { determineNextAction } from "@/lib/revenue-engine/nextAction";
+import { LeadQualityCard } from "@/components/leads/LeadQualityCard";
+import { classifyLeadQuality, isMarketingEligible } from "@/lib/revenue-engine/leadQualityClassification";
+import { syncLeadQualification } from "@/lib/revenue-engine/syncLeadQualification";
 import type { CanonicalLead, CanonicalActivity, CanonicalTask } from "@/lib/shared/domain";
 
 type LeadPageProps = {
@@ -58,7 +61,7 @@ export default async function LeadDetailsPage({
   const { data, error } = await supabase
     .from("leads")
     .select(
-      "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance, utm_source, utm_medium, utm_campaign, utm_term, utm_content",
+      "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance, utm_source, utm_medium, utm_campaign, utm_term, utm_content, consent_given, qualification_classification, qualification_score, qualification_computed_at",
     )
     .eq("id", leadId)
     .maybeSingle();
@@ -108,6 +111,48 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
   const activityRecency = summarizeActivityRecency(leadActivities, today);
   const qualification = calculateLeadQualification(lead, activityRecency);
   const nextAction = determineNextAction({ qualification, priority, activityRecency, status: lead.status });
+  const quality = classifyLeadQuality(lead, priority, qualification, potentialDuplicates);
+  const marketingEligible = isMarketingEligible(lead, quality.classification);
+
+  async function recomputeQualification(formData: FormData) {
+    "use server";
+
+    const submittedLeadId = Number(formData.get("lead_id"));
+    if (!Number.isInteger(submittedLeadId)) {
+      throw new Error("Invalid lead.");
+    }
+
+    const user = await requireOperationalPermission("records:write");
+    const supabase = await createClient();
+
+    const { data: currentLead, error: leadError } = await supabase
+      .from("leads")
+      .select(
+        "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance, consent_given, qualification_classification, qualification_score",
+      )
+      .eq("id", submittedLeadId)
+      .maybeSingle();
+
+    if (leadError || !currentLead) {
+      throw new Error("Lead could not be found.");
+    }
+
+    const { data: activityRows } = await supabase
+      .from("activities")
+      .select("activity_date")
+      .eq("lead_id", submittedLeadId);
+
+    await syncLeadQualification(
+      supabase,
+      currentLead as CanonicalLead,
+      (activityRows ?? []) as ActivityRecencyInput[],
+      { id: user.id, role: user.role },
+      new Date(),
+    );
+
+    revalidatePath(`/leads/${submittedLeadId}`);
+    redirect(`/leads/${submittedLeadId}`);
+  }
 
   async function deleteActivity(formData: FormData) {
     "use server";
@@ -327,6 +372,18 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
             qualification={qualification}
             nextAction={nextAction}
             activityRecency={activityRecency}
+          />
+        </div>
+
+        <div className="mt-6">
+          <LeadQualityCard
+            leadId={lead.id}
+            quality={quality}
+            marketingEligible={marketingEligible}
+            consentGiven={lead.consent_given === true}
+            persistedClassification={lead.qualification_classification ?? null}
+            persistedComputedAt={lead.qualification_computed_at ?? null}
+            recomputeQualification={recomputeQualification}
           />
         </div>
 

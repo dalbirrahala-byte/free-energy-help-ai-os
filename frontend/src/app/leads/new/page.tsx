@@ -5,6 +5,8 @@ import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
 import { requireOperationalPermission } from "@/lib/auth/enforceWrite";
 import { createClient } from "@/lib/supabase/server";
 import { PIPELINE_STATUSES } from "@/lib/dashboard/dates";
+import { syncLeadQualification } from "@/lib/revenue-engine/syncLeadQualification";
+import type { CanonicalLead } from "@/lib/shared/domain";
 
 export default function NewLeadPage() {
   async function addLead(formData: FormData) {
@@ -61,6 +63,38 @@ export default function NewLeadPage() {
         metadata: { status: status || "New" },
       }),
     );
+
+    if (inserted?.id) {
+      // Best-effort: an initial qualification score is a convenience, not a
+      // requirement for the lead to exist — never block or fail lead
+      // creation if this degrades (matches the audit call above, which is
+      // also fire-and-forget with respect to the primary action).
+      try {
+        const leadForClassification: CanonicalLead = {
+          id: inserted.id,
+          created_at: new Date().toISOString(),
+          company_name: companyName,
+          contact_name: contactName || null,
+          telephone: telephone || null,
+          email: email || null,
+          supplier: supplier || null,
+          contract_end: contractEnd || null,
+          status: status || "New",
+          notes: notes || null,
+          lead_source: leadSource || null,
+          source_detail: sourceDetail || null,
+          source_provenance: "user-entered",
+        };
+
+        await syncLeadQualification(supabase, leadForClassification, [], { id: user.id, role: user.role }, new Date());
+      } catch (syncError) {
+        console.warn(
+          `[Qualification] Failed to score newly created lead ${inserted.id}: ${
+            syncError instanceof Error ? syncError.message : String(syncError)
+          }`,
+        );
+      }
+    }
 
     revalidatePath("/leads");
     redirect("/leads");

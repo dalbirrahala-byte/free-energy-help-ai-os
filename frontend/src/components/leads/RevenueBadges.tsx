@@ -6,6 +6,7 @@
 import type { PriorityLabel } from "@/lib/revenue-engine/prioritization";
 import type { QualificationReadinessLabel } from "@/lib/revenue-engine/qualification";
 import type { NextActionLabel } from "@/lib/revenue-engine/nextAction";
+import type { LeadQualityClassification } from "@/lib/revenue-engine/leadQualityClassification";
 
 function Badge({ className, label, title }: { className: string; label: string; title?: string }) {
   return (
@@ -64,4 +65,31 @@ const NEXT_ACTION_BADGE_STYLES: Record<NextActionLabel, string> = {
 
 export function NextActionBadge({ label }: { label: NextActionLabel }) {
   return <Badge className={NEXT_ACTION_BADGE_STYLES[label]} label={label} />;
+}
+
+const LEAD_QUALITY_BADGE_STYLES: Record<LeadQualityClassification, string> = {
+  Hot: "bg-red-100 text-red-800",
+  Warm: "bg-amber-100 text-amber-900",
+  Nurture: "bg-blue-100 text-blue-800",
+  Reject: "bg-slate-800 text-white",
+};
+
+/**
+ * Factory 027's persisted Hot/Warm/Nurture/Reject classification —
+ * deliberately a distinct component/vocabulary from PriorityBadge
+ * (Critical/High/Medium/Low) and QualificationReadinessBadge (Fully
+ * Ready/Partially Ready/Not Ready), even though it's derived from both.
+ */
+export function LeadQualityBadge({ label }: { label: LeadQualityClassification }) {
+  return (
+    <Badge
+      className={LEAD_QUALITY_BADGE_STYLES[label]}
+      label={label}
+      title={
+        label === "Reject"
+          ? "Lead quality: Reject — advisory only, the record is not hidden or deleted"
+          : `Lead quality: ${label}`
+      }
+    />
+  );
 }
