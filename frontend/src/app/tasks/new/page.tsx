@@ -12,7 +12,18 @@ type Lead = {
   contact_name: string | null;
 };
 
-export default async function NewTaskPage() {
+type NewTaskPageProps = {
+  /**
+   * Factory 029: optional pre-fill from a lead's "Recommended Action" card
+   * (`?lead_id=&title=`). Pre-fills the form only — the task is never
+   * created until the salesperson reviews and submits it themselves.
+   */
+  searchParams: Promise<{ lead_id?: string; title?: string }>;
+};
+
+export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
+  const { lead_id: prefillLeadId, title: prefillTitle } = await searchParams;
+
   const supabase = await createClient();
 
   const { data } = await supabase
@@ -99,6 +110,13 @@ export default async function NewTaskPage() {
           </p>
         </div>
 
+        {prefillLeadId && (
+          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            Pre-filled from that lead&apos;s Recommended Action — review and edit before saving. Nothing is created until you click
+            &quot;Save Task&quot;.
+          </div>
+        )}
+
         <form
           action={addTask}
           className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
@@ -118,6 +136,7 @@ export default async function NewTaskPage() {
                 name="title"
                 type="text"
                 required
+                defaultValue={prefillTitle ?? ""}
                 placeholder="For example: Call customer about renewal"
                 className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
@@ -134,7 +153,7 @@ export default async function NewTaskPage() {
               <select
                 id="lead_id"
                 name="lead_id"
-                defaultValue=""
+                defaultValue={prefillLeadId ?? ""}
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               >
                 <option value="">No lead selected</option>

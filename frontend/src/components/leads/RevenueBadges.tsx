@@ -7,6 +7,7 @@ import type { PriorityLabel } from "@/lib/revenue-engine/prioritization";
 import type { QualificationReadinessLabel } from "@/lib/revenue-engine/qualification";
 import type { NextActionLabel } from "@/lib/revenue-engine/nextAction";
 import type { LeadQualityClassification } from "@/lib/revenue-engine/leadQualityClassification";
+import type { LeadActionRecommendationLabel } from "@/lib/revenue-engine/leadActionRecommendation";
 
 function Badge({ className, label, title }: { className: string; label: string; title?: string }) {
   return (
@@ -92,4 +93,25 @@ export function LeadQualityBadge({ label }: { label: LeadQualityClassification }
       }
     />
   );
+}
+
+const LEAD_ACTION_RECOMMENDATION_BADGE_STYLES: Record<LeadActionRecommendationLabel, string> = {
+  "Call now — priority contact": "bg-red-100 text-red-800",
+  "Renewal follow-up": "bg-orange-100 text-orange-900",
+  "Request LOA": "bg-purple-100 text-purple-800",
+  "Request energy bill": "bg-amber-100 text-amber-900",
+  "Verify contract/end-date information": "bg-amber-100 text-amber-900",
+  "Manual review": "bg-blue-100 text-blue-800",
+  "Nurture — follow-up later": "bg-slate-200 text-slate-700",
+  "Hold — no action": "bg-slate-200 text-slate-700",
+  "Rejected — no sales action": "bg-slate-800 text-white",
+};
+
+/**
+ * Factory 029's "Recommended Action" — a business-specific refinement shown
+ * alongside (never instead of) NextActionBadge. NextActionBadge answers "is
+ * this urgent"; this answers "what exact next step."
+ */
+export function LeadActionRecommendationBadge({ label }: { label: LeadActionRecommendationLabel }) {
+  return <Badge className={LEAD_ACTION_RECOMMENDATION_BADGE_STYLES[label]} label={label} title={`Recommended action: ${label}`} />;
 }
