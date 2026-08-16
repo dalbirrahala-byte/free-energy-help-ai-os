@@ -24,7 +24,31 @@ import { classifyLeadQuality, isMarketingEligible } from "@/lib/revenue-engine/l
 import { syncLeadQualification } from "@/lib/revenue-engine/syncLeadQualification";
 import { LeadActionRecommendationCard } from "@/components/leads/LeadActionRecommendationCard";
 import { deriveLeadActionRecommendation } from "@/lib/revenue-engine/leadActionRecommendation";
+import { buildLeadCampaignAttribution } from "@/lib/campaign-attribution/leadCampaignAttribution";
+import type { LeadQualityClassification } from "@/lib/revenue-engine/leadQualityClassification";
 import type { CanonicalLead, CanonicalActivity, CanonicalTask } from "@/lib/shared/domain";
+
+// Factory 034: display-only labels for the structured campaign attribution
+// view. Purely cosmetic — the underlying values come unchanged from
+// Factory 033's parseCampaignAttribution.ts; this map is never consulted
+// by any parsing/eligibility/qualification logic.
+const CAMPAIGN_PLATFORM_LABELS: Record<string, string> = {
+  linkedin: "LinkedIn",
+  meta: "Meta (Facebook/Instagram)",
+  reddit: "Reddit",
+};
+
+const CAMPAIGN_MESSAGE_FAMILY_LABELS: Record<string, string> = {
+  "paying-too-much": "Paying too much for business energy?",
+  "contract-ending": "Contract ending soon?",
+  "confused-by-bill": "Confused by your business energy bill?",
+};
+
+const CAMPAIGN_CREATIVE_FAMILY_LABELS: Record<string, string> = {
+  professionals: "UK business professionals",
+  "commercial-kitchen": "Commercial kitchen",
+  refrigeration: "Supermarket/commercial refrigeration",
+};
 
 type LeadPageProps = {
   params: Promise<{
@@ -116,6 +140,16 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
   const quality = classifyLeadQuality(lead, priority, qualification, potentialDuplicates);
   const marketingEligible = isMarketingEligible(lead, quality.classification);
   const actionRecommendation = deriveLeadActionRecommendation(lead, quality, qualification, priority, nextAction);
+  const campaignAttribution = buildLeadCampaignAttribution({
+    id: lead.id,
+    lead_source: lead.lead_source,
+    qualification_classification: (lead.qualification_classification ?? null) as LeadQualityClassification | null,
+    utm_source: lead.utm_source ?? null,
+    utm_medium: lead.utm_medium ?? null,
+    utm_campaign: lead.utm_campaign ?? null,
+    utm_content: lead.utm_content ?? null,
+    utm_term: lead.utm_term ?? null,
+  });
 
   async function recomputeQualification(formData: FormData) {
     "use server";
@@ -344,17 +378,53 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
         {hasCampaignAttribution && (
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-bold text-slate-900">Campaign Attribution</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              UTM parameters recorded when this lead arrived — only shown when present.
-            </p>
 
-            <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {lead.utm_source && <Detail label="UTM Source" value={lead.utm_source} />}
-              {lead.utm_medium && <Detail label="UTM Medium" value={lead.utm_medium} />}
-              {lead.utm_campaign && <Detail label="UTM Campaign" value={lead.utm_campaign} />}
-              {lead.utm_term && <Detail label="UTM Term" value={lead.utm_term} />}
-              {lead.utm_content && <Detail label="UTM Content" value={lead.utm_content} />}
-            </div>
+            {campaignAttribution.attribution ? (
+              <>
+                <p className="mt-1 text-sm text-slate-500">
+                  Recognised as a Free Energy Help Campaign Set 01 lead — decoded from the UTM parameters recorded when
+                  this lead arrived.
+                </p>
+
+                <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  <Detail
+                    label="Platform"
+                    value={CAMPAIGN_PLATFORM_LABELS[campaignAttribution.attribution.platform] ?? campaignAttribution.attribution.platform}
+                  />
+                  <Detail
+                    label="Message"
+                    value={
+                      CAMPAIGN_MESSAGE_FAMILY_LABELS[campaignAttribution.attribution.messageFamily] ??
+                      campaignAttribution.attribution.messageFamily
+                    }
+                  />
+                  <Detail
+                    label="Creative"
+                    value={
+                      CAMPAIGN_CREATIVE_FAMILY_LABELS[campaignAttribution.attribution.creativeFamily] ??
+                      campaignAttribution.attribution.creativeFamily
+                    }
+                  />
+                  <Detail label="Channel type" value={campaignAttribution.attribution.medium} />
+                  <Detail label="Variant" value={campaignAttribution.attribution.variant ?? "Not specified"} />
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-sm text-slate-500">
+                  UTM parameters recorded when this lead arrived — only shown when present. These do not match the
+                  Free Energy Help Campaign Set 01 convention, so they are shown as recorded rather than decoded.
+                </p>
+
+                <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  {lead.utm_source && <Detail label="UTM Source" value={lead.utm_source} />}
+                  {lead.utm_medium && <Detail label="UTM Medium" value={lead.utm_medium} />}
+                  {lead.utm_campaign && <Detail label="UTM Campaign" value={lead.utm_campaign} />}
+                  {lead.utm_term && <Detail label="UTM Term" value={lead.utm_term} />}
+                  {lead.utm_content && <Detail label="UTM Content" value={lead.utm_content} />}
+                </div>
+              </>
+            )}
           </section>
         )}
 
