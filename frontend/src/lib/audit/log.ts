@@ -26,7 +26,19 @@ export type AuditAction =
   | "renewal_status_changed"
   | "permission_denied"
   | "admin_change"
-  | "lead_qualification_scored";
+  | "lead_qualification_scored"
+  // Factory 031: Action Eligibility / Authorization Audit boundary. These
+  // describe only the existing, human-controlled task-creation workflow
+  // passing (or being blocked by) the eligibility gate — never a customer
+  // being contacted, a message being sent, or any external system being
+  // invoked. "action_authorized" means "the manual workflow may proceed,"
+  // nothing more. Dispatch-related states (dispatched, delivered,
+  // call_completed, etc.) belong to a separately approved future factory
+  // and must not be added here.
+  | "action_requested"
+  | "action_eligibility_checked"
+  | "action_authorized"
+  | "action_eligibility_blocked";
 
 export type AuditResult = "success" | "failure" | "denied";
 

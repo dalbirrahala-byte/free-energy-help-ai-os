@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { deriveLeadActionRecommendation } from "./leadActionRecommendation.ts";
+import { deriveLeadActionRecommendation, isLeadActionRecommendationLabel } from "./leadActionRecommendation.ts";
 import type { LeadQualityResult, LeadQualityClassification } from "./leadQualityClassification.ts";
 import type { LeadQualificationResult, QualificationCriterion } from "./qualification.ts";
 import type { LeadPriorityResult, PriorityFactor } from "./prioritization.ts";
@@ -317,4 +317,29 @@ test("reason text never claims an action was already completed for the Request e
     makeNextAction(),
   );
   assert.doesNotMatch(loaResult.reason, completedLanguage);
+});
+
+test("isLeadActionRecommendationLabel (Factory 031) recognises every real recommendation label", () => {
+  const labels = [
+    "Call now — priority contact",
+    "Renewal follow-up",
+    "Request LOA",
+    "Request energy bill",
+    "Verify contract/end-date information",
+    "Manual review",
+    "Nurture — follow-up later",
+    "Hold — no action",
+    "Rejected — no sales action",
+  ];
+
+  for (const label of labels) {
+    assert.equal(isLeadActionRecommendationLabel(label), true, `expected "${label}" to be recognised`);
+  }
+});
+
+test("isLeadActionRecommendationLabel rejects arbitrary free text (e.g. a manually typed task title), never fuzzy-matching", () => {
+  assert.equal(isLeadActionRecommendationLabel(""), false);
+  assert.equal(isLeadActionRecommendationLabel("Call the customer"), false);
+  assert.equal(isLeadActionRecommendationLabel("call now — priority contact"), false);
+  assert.equal(isLeadActionRecommendationLabel("Request LOA "), false);
 });

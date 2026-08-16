@@ -43,6 +43,29 @@ export type LeadActionRecommendation = {
   reason: string;
 };
 
+const ALL_LABELS: readonly LeadActionRecommendationLabel[] = [
+  "Call now — priority contact",
+  "Renewal follow-up",
+  "Request LOA",
+  "Request energy bill",
+  "Verify contract/end-date information",
+  "Manual review",
+  "Nurture — follow-up later",
+  "Hold — no action",
+  "Rejected — no sales action",
+];
+
+/**
+ * Factory 031: identifies whether a plain string (e.g. a value read back
+ * from a pre-filled form field) is a genuine recommendation label, so a
+ * caller can tell "this task submission is linked to a Recommended Action"
+ * from "this is an ordinary, unrelated manual task" without guessing or
+ * fuzzy-matching free text.
+ */
+export function isLeadActionRecommendationLabel(value: string): value is LeadActionRecommendationLabel {
+  return (ALL_LABELS as readonly string[]).includes(value);
+}
+
 /**
  * Recommendations that describe a state (rejected, on hold) rather than a
  * step worth turning into a task. Single source of truth shared by
