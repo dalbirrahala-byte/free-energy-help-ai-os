@@ -5,6 +5,9 @@ import { redirect } from "next/navigation";
 import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
 import { requireOperationalPermission } from "@/lib/auth/enforceWrite";
 import { createClient } from "@/lib/supabase/server";
+import { isLeadActionRecommendationLabel } from "@/lib/revenue-engine/leadActionRecommendation";
+import { buildActionControlAuditSequence, enforceActionEligibility } from "@/lib/revenue-engine/actionControlAudit";
+import type { LeadQualityClassification } from "@/lib/revenue-engine/leadQualityClassification";
 
 type Lead = {
   id: number;
@@ -54,6 +57,44 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
     }
 
     const leadId = leadIdValue ? Number(leadIdValue) : null;
+    const recommendedAction = String(formData.get("recommended_action") || "").trim();
+
+    // Factory 031: Action Eligibility / Authorization Audit boundary. Only
+    // runs when this submission is linked to a Recommended Action (the
+    // hidden field below is populated exclusively by Factory 029/030's
+    // pre-fill links) and the lead has a real, persisted classification —
+    // an ordinary manual task, or one for an unscored lead, never enters
+    // this block and is completely unaffected. Within this narrow path,
+    // an ineligible result (Reject lead, or a marketing action without
+    // consent) is recorded honestly in the audit trail and then genuinely
+    // blocks this task from being created — enforceActionEligibility()
+    // throws using this file's own existing validation pattern (see the
+    // title check above). "action_authorized" means only "the existing
+    // manual workflow may proceed" — no customer is contacted and no
+    // external system is invoked anywhere in this file, whether the
+    // result is authorized or blocked.
+    if (leadId && isLeadActionRecommendationLabel(recommendedAction)) {
+      const { data: leadForEligibility } = await supabase
+        .from("leads")
+        .select("id, consent_given, qualification_classification")
+        .eq("id", leadId)
+        .maybeSingle();
+
+      if (leadForEligibility?.qualification_classification) {
+        const { eligibility, events } = buildActionControlAuditSequence(
+          leadForEligibility,
+          leadForEligibility.qualification_classification as LeadQualityClassification,
+          recommendedAction,
+          { id: user.id, role: user.role },
+        );
+
+        for (const event of events) {
+          await recordAuditEvent(supabase, event);
+        }
+
+        enforceActionEligibility(eligibility);
+      }
+    }
 
     const { data: inserted, error } = await supabase
       .from("tasks")
@@ -121,6 +162,9 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
           action={addTask}
           className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
         >
+          {/* Factory 031: carries the originating Recommended Action label through to addTask so the eligibility/audit sequence can run, independent of whatever the salesperson edits the visible title to below. */}
+          <input type="hidden" name="recommended_action" value={prefillTitle ?? ""} />
+
           <div className="grid gap-6 md:grid-cols-2">
             <div className="md:col-span-2">
               <label
