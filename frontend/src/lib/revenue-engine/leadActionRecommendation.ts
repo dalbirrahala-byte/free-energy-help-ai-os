@@ -43,6 +43,19 @@ export type LeadActionRecommendation = {
   reason: string;
 };
 
+/**
+ * Recommendations that describe a state (rejected, on hold) rather than a
+ * step worth turning into a task. Single source of truth shared by
+ * LeadActionRecommendationCard.tsx (lead detail page) and Factory 030's
+ * Controlled Action Queue, so both surfaces agree on when "Create task" is
+ * offered without duplicating the rule.
+ */
+const NO_TASK_ACTIONS = new Set<LeadActionRecommendationLabel>(["Rejected — no sales action", "Hold — no action"]);
+
+export function isTaskEligibleRecommendation(action: LeadActionRecommendationLabel): boolean {
+  return !NO_TASK_ACTIONS.has(action);
+}
+
 /** Mirrors nextAction.ts's own closed-pipeline-status gate (Won/Lost) — checked inline rather than imported so nextAction.ts stays completely untouched. */
 const CLOSED_STATUSES = new Set(["Won", "Lost"]);
 
