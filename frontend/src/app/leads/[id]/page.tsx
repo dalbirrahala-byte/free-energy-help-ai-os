@@ -22,6 +22,8 @@ import { determineNextAction } from "@/lib/revenue-engine/nextAction";
 import { LeadQualityCard } from "@/components/leads/LeadQualityCard";
 import { classifyLeadQuality, isMarketingEligible } from "@/lib/revenue-engine/leadQualityClassification";
 import { syncLeadQualification } from "@/lib/revenue-engine/syncLeadQualification";
+import { LeadActionRecommendationCard } from "@/components/leads/LeadActionRecommendationCard";
+import { deriveLeadActionRecommendation } from "@/lib/revenue-engine/leadActionRecommendation";
 import type { CanonicalLead, CanonicalActivity, CanonicalTask } from "@/lib/shared/domain";
 
 type LeadPageProps = {
@@ -113,6 +115,7 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
   const nextAction = determineNextAction({ qualification, priority, activityRecency, status: lead.status });
   const quality = classifyLeadQuality(lead, priority, qualification, potentialDuplicates);
   const marketingEligible = isMarketingEligible(lead, quality.classification);
+  const actionRecommendation = deriveLeadActionRecommendation(lead, quality, qualification, priority, nextAction);
 
   async function recomputeQualification(formData: FormData) {
     "use server";
@@ -385,6 +388,10 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
             persistedComputedAt={lead.qualification_computed_at ?? null}
             recomputeQualification={recomputeQualification}
           />
+        </div>
+
+        <div className="mt-6">
+          <LeadActionRecommendationCard recommendation={actionRecommendation} />
         </div>
 
         {commercialIntelligence.visible && (
