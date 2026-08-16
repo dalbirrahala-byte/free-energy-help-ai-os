@@ -38,7 +38,14 @@ export type AuditAction =
   | "action_requested"
   | "action_eligibility_checked"
   | "action_authorized"
-  | "action_eligibility_blocked";
+  | "action_eligibility_blocked"
+  // Factory 032: Revenue Execution Orchestration. Describes only that an
+  // in-memory execution PLAN was prepared (or refused) from an already-
+  // authorized Factory 031 action — never that anything was actually sent,
+  // called, or dispatched. This module has no adapter and no route; these
+  // events exist purely for orchestration-decision traceability.
+  | "execution_plan_created"
+  | "execution_plan_blocked";
 
 export type AuditResult = "success" | "failure" | "denied";
 
