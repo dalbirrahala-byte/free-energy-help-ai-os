@@ -2,20 +2,14 @@ import Link from "next/link";
 
 import { SectionCard } from "@/components/dashboard/SectionCard";
 import { LeadActionRecommendationBadge } from "@/components/leads/RevenueBadges";
-import type { LeadActionRecommendation } from "@/lib/revenue-engine/leadActionRecommendation";
+import { isTaskEligibleRecommendation, type LeadActionRecommendation } from "@/lib/revenue-engine/leadActionRecommendation";
 
 type LeadActionRecommendationCardProps = {
   recommendation: LeadActionRecommendation;
 };
 
-/** Recommendations that describe a state (rejected, on hold, nurture) rather than a step worth turning into a task. */
-const NO_TASK_ACTIONS = new Set<LeadActionRecommendation["action"]>([
-  "Rejected — no sales action",
-  "Hold — no action",
-]);
-
 export function LeadActionRecommendationCard({ recommendation }: LeadActionRecommendationCardProps) {
-  const offerTask = !NO_TASK_ACTIONS.has(recommendation.action);
+  const offerTask = isTaskEligibleRecommendation(recommendation.action);
 
   return (
     <SectionCard

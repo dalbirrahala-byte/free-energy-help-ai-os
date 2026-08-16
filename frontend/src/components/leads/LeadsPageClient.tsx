@@ -8,6 +8,7 @@ import { useNewWebsiteLeadCount, useWebsiteLeads } from "@/lib/website-leads/use
 import { PriorityBadge, QualificationReadinessBadge, NextActionBadge, LeadQualityBadge } from "@/components/leads/RevenueBadges";
 import type { LeadRevenueView } from "@/lib/revenue-engine/leadRevenueView";
 import type { LeadQualityClassification } from "@/lib/revenue-engine/leadQualityClassification";
+import { leadWorklistRank } from "@/lib/revenue-engine/leadWorklistOrder";
 
 export type CrmLeadRow = {
   id: number;
@@ -34,24 +35,6 @@ type LeadsPageClientProps = {
   /** Factory 028: bulk-scores every lead with qualification_classification IS NULL, reusing syncLeadQualification.ts per lead. */
   recomputeUnscoredLeadQualifications: () => void;
 };
-
-/**
- * Operational worklist order per the approved Factory 028 design: work the
- * Hot/Warm/Nurture leads first, know which leads still need scoring, and
- * keep Reject out of the default working queue without ever deleting it.
- */
-const WORKLIST_RANK: Record<string, number> = {
-  Hot: 0,
-  Warm: 1,
-  Nurture: 2,
-  __unscored__: 3,
-  Reject: 4,
-};
-
-function worklistRank(classification: string | null | undefined): number {
-  if (!classification) return WORKLIST_RANK.__unscored__;
-  return WORKLIST_RANK[classification] ?? WORKLIST_RANK.__unscored__;
-}
 
 const QUALITY_COUNT_CHIP_STYLES: Record<string, string> = {
   Hot: "border-red-200 bg-red-50 text-red-800",
@@ -128,7 +111,7 @@ export function LeadsPageClient({
       : crmLeads.filter((lead) => lead.qualification_classification !== "Reject");
 
     return [...visible].sort((a, b) => {
-      const rankDiff = worklistRank(a.qualification_classification) - worklistRank(b.qualification_classification);
+      const rankDiff = leadWorklistRank(a.qualification_classification) - leadWorklistRank(b.qualification_classification);
       if (rankDiff !== 0) return rankDiff;
 
       // Within the same classification, prioritise by the already-computed
@@ -153,6 +136,12 @@ export function LeadsPageClient({
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <Link
+              href="/action-queue"
+              className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+            >
+              Action Queue
+            </Link>
             <Link
               href="/business-energy-quote"
               className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50"
