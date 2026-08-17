@@ -228,3 +228,62 @@ test("qualification_reasons in a shape other than an array of {factor, detail} d
   const queue = buildActionQueue([lead], { 60: makeView() }, {});
   assert.equal(queue.rejected[0].recommendation?.action, "Rejected — no sales action");
 });
+
+// --- Factory 037: eligibility (reuses Factory 031's evaluateActionEligibility unchanged) ---
+
+test("eligibility is computed for an actionable item using a direct-response action, independent of consent", () => {
+  const lead = makeLead({ id: 70, qualification_classification: "Hot", consent_given: undefined });
+  const view = makeView({ priorityFactors: [{ factor: "Renewal urgency", weight: 0.6, value: 100, contribution: 60, explanation: "Overdue." }] });
+
+  const queue = buildActionQueue([lead], { 70: view }, {});
+
+  assert.equal(queue.actionable[0].recommendation?.action, "Call now — priority contact");
+  assert.equal(queue.actionable[0].eligibility?.eligible, true);
+  assert.equal(queue.actionable[0].eligibility?.basis, "direct-response-allowed");
+});
+
+test("eligibility is null for an unscored item — nothing to evaluate yet", () => {
+  const lead = makeLead({ id: 71, qualification_classification: null });
+
+  const queue = buildActionQueue([lead], {}, {});
+
+  assert.equal(queue.unscored[0].recommendation, null);
+  assert.equal(queue.unscored[0].eligibility, null);
+});
+
+test("a marketing-classified recommendation without consent still appears in the actionable queue (never hidden), with eligibility.eligible false", () => {
+  const lead = makeLead({ id: 72, qualification_classification: "Warm", consent_given: false });
+  const view = makeView(); // default priorityFactors -> renewal urgency 15 (< 40) -> Warm resolves to "Nurture — follow-up later"
+
+  const queue = buildActionQueue([lead], { 72: view }, {});
+
+  assert.equal(queue.actionable[0].recommendation?.action, "Nurture — follow-up later");
+  assert.equal(queue.actionable[0].eligibility?.eligible, false);
+  assert.equal(queue.actionable[0].eligibility?.basis, "marketing-consent-missing");
+});
+
+test("the same marketing-classified recommendation WITH consent on file is eligible", () => {
+  const lead = makeLead({ id: 73, qualification_classification: "Warm", consent_given: true });
+  const view = makeView();
+
+  const queue = buildActionQueue([lead], { 73: view }, {});
+
+  assert.equal(queue.actionable[0].recommendation?.action, "Nurture — follow-up later");
+  assert.equal(queue.actionable[0].eligibility?.eligible, true);
+  assert.equal(queue.actionable[0].eligibility?.basis, "marketing-allowed");
+});
+
+test("a Reject-classified lead's eligibility is also computed (not left null), and is always ineligible with basis 'rejected' — reused from Factory 031, never re-implemented", () => {
+  const lead = makeLead({ id: 74, qualification_classification: "Reject", consent_given: true });
+
+  const queue = buildActionQueue([lead], { 74: makeView() }, {});
+
+  assert.notEqual(queue.rejected[0].eligibility, null);
+  assert.equal(queue.rejected[0].eligibility?.eligible, false);
+  assert.equal(queue.rejected[0].eligibility?.basis, "rejected");
+});
+
+test("a lead with no consent_given field at all (undefined, matching every pre-Factory-037 fixture) never throws", () => {
+  const lead = makeLead({ id: 75, qualification_classification: "Warm" });
+  assert.doesNotThrow(() => buildActionQueue([lead], { 75: makeView() }, {}));
+});

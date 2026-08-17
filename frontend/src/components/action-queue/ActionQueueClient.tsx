@@ -48,7 +48,10 @@ function TaskSummaryLine({ item }: { item: ActionQueueItem }) {
 }
 
 function ActionQueueRow({ item, allowTask }: { item: ActionQueueItem; allowTask: boolean }) {
-  const offerTask = allowTask && item.recommendation !== null && isTaskEligibleRecommendation(item.recommendation.action);
+  const actionEligibleLabel = item.recommendation !== null && isTaskEligibleRecommendation(item.recommendation.action);
+  const offerTask = allowTask && actionEligibleLabel && item.eligibility?.eligible === true;
+  // Factory 037: reuses Factory 031's already-computed eligibility.eligible unchanged — never re-derived here.
+  const showBlockedNotice = allowTask && actionEligibleLabel && item.eligibility !== null && !item.eligibility.eligible;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -65,6 +68,12 @@ function ActionQueueRow({ item, allowTask }: { item: ActionQueueItem; allowTask:
       </div>
 
       {item.recommendation && <p className="mt-3 text-sm text-slate-600">{item.recommendation.reason}</p>}
+
+      {showBlockedNotice && item.eligibility && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          <span className="font-semibold">Not eligible to proceed:</span> {item.eligibility.reason}
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <TaskSummaryLine item={item} />

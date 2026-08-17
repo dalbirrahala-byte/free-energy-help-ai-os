@@ -18,6 +18,7 @@
 
 import { leadWorklistRank } from "./leadWorklistOrder.ts";
 import { deriveLeadActionRecommendation, type LeadActionRecommendation } from "./leadActionRecommendation.ts";
+import { evaluateActionEligibility, type ActionEligibilityResult } from "./actionEligibility.ts";
 import type { LeadRevenueView } from "./leadRevenueView.ts";
 import type { LeadQualityClassification } from "./leadQualityClassification.ts";
 
@@ -81,6 +82,8 @@ export type ActionQueueLeadInput = {
   qualification_score: number | null;
   /** Factory 027's persisted jsonb reasons array — read only to recover a Reject lead's real reject reason, never to re-derive classification. */
   qualification_reasons: unknown;
+  /** Factory 037: optional so existing callers/fixtures stay valid unchanged — Factory 031's evaluateActionEligibility() degrades a missing value the same way it always has (treated as no consent on file). */
+  consent_given?: boolean | null;
 };
 
 export type ActionQueueItem = {
@@ -91,6 +94,8 @@ export type ActionQueueItem = {
   score: number | null;
   /** Null only when the lead has never been scored — there is nothing honest to recommend yet. */
   recommendation: LeadActionRecommendation | null;
+  /** Factory 037: Factory 031's already-computed eligibility verdict for `recommendation.action` — null exactly when recommendation is null (an unscored lead has nothing to check eligibility for). Never re-derives eligibility logic, only calls evaluateActionEligibility() unchanged. */
+  eligibility: ActionEligibilityResult | null;
   tasks: ActionQueueTaskSummary;
 };
 
@@ -140,6 +145,7 @@ export function buildActionQueue(
         classification: classification ?? null,
         score: lead.qualification_score,
         recommendation: null,
+        eligibility: null,
         tasks,
       });
       continue;
@@ -153,6 +159,12 @@ export function buildActionQueue(
       view.nextAction,
     );
 
+    const eligibility = evaluateActionEligibility(
+      { id: lead.id, consent_given: lead.consent_given ?? undefined },
+      classification,
+      recommendation.action,
+    );
+
     const item: ActionQueueItem = {
       leadId: lead.id,
       companyName: lead.company_name,
@@ -160,6 +172,7 @@ export function buildActionQueue(
       classification,
       score: lead.qualification_score,
       recommendation,
+      eligibility,
       tasks,
     };
 
