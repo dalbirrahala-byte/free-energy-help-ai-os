@@ -10,7 +10,7 @@ import type { CanonicalLead } from "@/lib/shared/domain";
 // anything on this page.
 
 const LEAD_COLUMNS =
-  "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance, qualification_classification, qualification_score, qualification_reasons";
+  "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance, qualification_classification, qualification_score, qualification_reasons, consent_given";
 
 export default async function ActionQueuePage() {
   const supabase = await createClient();
@@ -40,6 +40,7 @@ export default async function ActionQueuePage() {
     qualification_classification: (lead.qualification_classification ?? null) as ActionQueueLeadInput["qualification_classification"],
     qualification_score: lead.qualification_score ?? null,
     qualification_reasons: lead.qualification_reasons,
+    consent_given: lead.consent_given,
   }));
 
   const queue = buildActionQueue(queueInputs, revenueViews, tasksByLead);
