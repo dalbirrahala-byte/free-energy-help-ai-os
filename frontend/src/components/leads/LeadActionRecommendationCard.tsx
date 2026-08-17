@@ -3,13 +3,18 @@ import Link from "next/link";
 import { SectionCard } from "@/components/dashboard/SectionCard";
 import { LeadActionRecommendationBadge } from "@/components/leads/RevenueBadges";
 import { isTaskEligibleRecommendation, type LeadActionRecommendation } from "@/lib/revenue-engine/leadActionRecommendation";
+import type { ActionEligibilityResult } from "@/lib/revenue-engine/actionEligibility";
 
 type LeadActionRecommendationCardProps = {
   recommendation: LeadActionRecommendation;
+  /** Factory 036: Factory 031's already-computed eligibility verdict for this exact recommendation, previewed here so a blocked action (e.g. marketing consent missing) is visible before a rep clicks through, rather than only discovered as a thrown error on the task-creation form. */
+  eligibility: ActionEligibilityResult;
 };
 
-export function LeadActionRecommendationCard({ recommendation }: LeadActionRecommendationCardProps) {
-  const offerTask = isTaskEligibleRecommendation(recommendation.action);
+export function LeadActionRecommendationCard({ recommendation, eligibility }: LeadActionRecommendationCardProps) {
+  const actionEligibleLabel = isTaskEligibleRecommendation(recommendation.action);
+  const offerTask = actionEligibleLabel && eligibility.eligible;
+  const showBlockedNotice = actionEligibleLabel && !eligibility.eligible;
 
   return (
     <SectionCard
@@ -22,6 +27,12 @@ export function LeadActionRecommendationCard({ recommendation }: LeadActionRecom
           <LeadActionRecommendationBadge label={recommendation.action} />
         </div>
         <p className="mt-3 text-sm text-slate-600">{recommendation.reason}</p>
+
+        {showBlockedNotice && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <span className="font-semibold">Not eligible to proceed:</span> {eligibility.reason}
+          </div>
+        )}
 
         {offerTask && (
           <Link

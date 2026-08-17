@@ -24,6 +24,7 @@ import { classifyLeadQuality, isMarketingEligible } from "@/lib/revenue-engine/l
 import { syncLeadQualification } from "@/lib/revenue-engine/syncLeadQualification";
 import { LeadActionRecommendationCard } from "@/components/leads/LeadActionRecommendationCard";
 import { deriveLeadActionRecommendation } from "@/lib/revenue-engine/leadActionRecommendation";
+import { evaluateActionEligibility } from "@/lib/revenue-engine/actionEligibility";
 import { buildLeadCampaignAttribution } from "@/lib/campaign-attribution/leadCampaignAttribution";
 import type { LeadQualityClassification } from "@/lib/revenue-engine/leadQualityClassification";
 import type { CanonicalLead, CanonicalActivity, CanonicalTask } from "@/lib/shared/domain";
@@ -140,6 +141,7 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
   const quality = classifyLeadQuality(lead, priority, qualification, potentialDuplicates);
   const marketingEligible = isMarketingEligible(lead, quality.classification);
   const actionRecommendation = deriveLeadActionRecommendation(lead, quality, qualification, priority, nextAction);
+  const actionEligibility = evaluateActionEligibility(lead, quality.classification, actionRecommendation.action);
   const campaignAttribution = buildLeadCampaignAttribution({
     id: lead.id,
     lead_source: lead.lead_source,
@@ -461,7 +463,7 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
         </div>
 
         <div className="mt-6">
-          <LeadActionRecommendationCard recommendation={actionRecommendation} />
+          <LeadActionRecommendationCard recommendation={actionRecommendation} eligibility={actionEligibility} />
         </div>
 
         {commercialIntelligence.visible && (
