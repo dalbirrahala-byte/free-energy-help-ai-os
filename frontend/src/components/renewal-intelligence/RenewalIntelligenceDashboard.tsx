@@ -32,6 +32,18 @@ function daysRemainingLabel(row: RenewalIntelligenceRow): string {
   return `${row.daysRemaining} days`;
 }
 
+/**
+ * Factory 038: reuses Factory 029's exact pre-fill pattern
+ * (/tasks/new?customer_id=&title=) — applied to a customer's renewal
+ * instead of a lead recommendation. This never creates a task itself; it
+ * only pre-fills the existing, unmodified task form. The human still
+ * reviews and explicitly clicks "Save Task".
+ */
+function renewalTaskHref(row: RenewalIntelligenceRow): string {
+  const title = `Renewal follow-up — ${row.siteName} — ends ${row.contractEndLabel}`;
+  return `/tasks/new?customer_id=${row.customerId}&title=${encodeURIComponent(title)}`;
+}
+
 export function RenewalIntelligenceDashboard({ data }: RenewalIntelligenceDashboardProps) {
   const { configured, summary, rows } = data;
 
@@ -107,12 +119,20 @@ export function RenewalIntelligenceDashboard({ data }: RenewalIntelligenceDashbo
                       <StatusBadge row={row} />
                     </td>
                     <td className="px-3 py-4">
-                      <Link
-                        href={`/customers/${row.customerId}`}
-                        className="font-semibold text-emerald-600 hover:text-emerald-700"
-                      >
-                        View
-                      </Link>
+                      <div className="flex flex-col items-start gap-1.5">
+                        <Link
+                          href={`/customers/${row.customerId}`}
+                          className="font-semibold text-emerald-600 hover:text-emerald-700"
+                        >
+                          View
+                        </Link>
+                        <Link
+                          href={renewalTaskHref(row)}
+                          className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Create task for this renewal
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}

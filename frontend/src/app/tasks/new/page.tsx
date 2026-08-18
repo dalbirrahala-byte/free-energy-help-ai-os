@@ -15,26 +15,36 @@ type Lead = {
   contact_name: string | null;
 };
 
+type Customer = {
+  id: number;
+  company_name: string | null;
+  contact_name: string | null;
+};
+
 type NewTaskPageProps = {
   /**
    * Factory 029: optional pre-fill from a lead's "Recommended Action" card
-   * (`?lead_id=&title=`). Pre-fills the form only — the task is never
-   * created until the salesperson reviews and submits it themselves.
+   * (`?lead_id=&title=`). Factory 038: optional pre-fill from the Renewal
+   * Intelligence dashboard (`?customer_id=&title=`) — the same pattern,
+   * applied to an existing customer's renewal instead of a lead
+   * recommendation. Either way this only pre-fills the form — the task is
+   * never created until the salesperson reviews and submits it themselves.
    */
-  searchParams: Promise<{ lead_id?: string; title?: string }>;
+  searchParams: Promise<{ lead_id?: string; customer_id?: string; title?: string }>;
 };
 
 export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
-  const { lead_id: prefillLeadId, title: prefillTitle } = await searchParams;
+  const { lead_id: prefillLeadId, customer_id: prefillCustomerId, title: prefillTitle } = await searchParams;
 
   const supabase = await createClient();
 
-  const { data } = await supabase
-    .from("leads")
-    .select("id, company_name, contact_name")
-    .order("company_name", { ascending: true });
+  const [{ data: leadRows }, { data: customerRows }] = await Promise.all([
+    supabase.from("leads").select("id, company_name, contact_name").order("company_name", { ascending: true }),
+    supabase.from("customers").select("id, company_name, contact_name").order("company_name", { ascending: true }),
+  ]);
 
-  const leads: Lead[] = data ?? [];
+  const leads: Lead[] = leadRows ?? [];
+  const customers: Customer[] = customerRows ?? [];
 
   async function addTask(formData: FormData) {
     "use server";
@@ -57,6 +67,16 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
     }
 
     const leadId = leadIdValue ? Number(leadIdValue) : null;
+
+    // Factory 038: mirrors the lead_id parsing above, plus an explicit
+    // NaN guard so a malformed/tampered customer_id (e.g. a hand-edited
+    // query string) degrades to "no customer selected" rather than
+    // inserting an invalid value — the <select> below only ever submits a
+    // real customer id or an empty string, so this guard only matters for
+    // input that didn't come from the form itself.
+    const customerIdValue = String(formData.get("customer_id") || "").trim();
+    const customerId = customerIdValue && !Number.isNaN(Number(customerIdValue)) ? Number(customerIdValue) : null;
+
     const recommendedAction = String(formData.get("recommended_action") || "").trim();
 
     // Factory 031: Action Eligibility / Authorization Audit boundary. Only
@@ -100,6 +120,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
       .from("tasks")
       .insert({
         lead_id: leadId,
+        customer_id: customerId,
         title,
         due_date: dueDate || null,
         due_time: dueTime || null,
@@ -123,7 +144,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
         entityType: "task",
         entityId: inserted?.id ?? null,
         result: "success",
-        metadata: { leadId, priority: priority || "Medium" },
+        metadata: { leadId, customerId, priority: priority || "Medium" },
       }),
     );
 
@@ -151,10 +172,19 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
           </p>
         </div>
 
-        {prefillLeadId && (
+        {(prefillLeadId || prefillCustomerId) && (
           <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-            Pre-filled from that lead&apos;s Recommended Action — review and edit before saving. Nothing is created until you click
-            &quot;Save Task&quot;.
+            {prefillCustomerId ? (
+              <>
+                Pre-filled from that customer&apos;s renewal on Renewal Intelligence — review and edit before saving. Nothing is
+                created until you click &quot;Save Task&quot;.
+              </>
+            ) : (
+              <>
+                Pre-filled from that lead&apos;s Recommended Action — review and edit before saving. Nothing is created until you
+                click &quot;Save Task&quot;.
+              </>
+            )}
           </div>
         )}
 
@@ -207,6 +237,33 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
                     {lead.company_name || "Unnamed company"}
                     {lead.contact_name
                       ? ` — ${lead.contact_name}`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="customer_id"
+                className="mb-2 block text-sm font-semibold text-slate-700"
+              >
+                Link to Customer
+              </label>
+
+              <select
+                id="customer_id"
+                name="customer_id"
+                defaultValue={prefillCustomerId ?? ""}
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+              >
+                <option value="">No customer selected</option>
+
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.company_name || "Unnamed company"}
+                    {customer.contact_name
+                      ? ` — ${customer.contact_name}`
                       : ""}
                   </option>
                 ))}
