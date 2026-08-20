@@ -45,7 +45,21 @@ export type AuditAction =
   // called, or dispatched. This module has no adapter and no route; these
   // events exist purely for orchestration-decision traceability.
   | "execution_plan_created"
-  | "execution_plan_blocked";
+  | "execution_plan_blocked"
+  // Factory 041: organisation identity-matching and suppression-record
+  // storage. "identity_match_proposed" describes only that a candidate
+  // organisation match was computed and (by a future, separately
+  // authorized writer) persisted to public.identity_match_candidates for
+  // human review — never that two records were merged or that any
+  // organisation/contact/lead/customer row was changed.
+  // "suppression_record_created" describes only that a do-not-contact
+  // record was stored — never that any contact attempt occurred. Neither
+  // value has a call site yet in this factory: the pure matching module
+  // and the suppression_records migration are read/storage-only in this
+  // phase, and the writer that would emit these events is deliberately
+  // deferred to a later, separately authorized phase.
+  | "identity_match_proposed"
+  | "suppression_record_created";
 
 export type AuditResult = "success" | "failure" | "denied";
 
