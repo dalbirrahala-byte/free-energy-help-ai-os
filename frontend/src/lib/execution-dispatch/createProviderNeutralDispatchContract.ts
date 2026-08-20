@@ -39,6 +39,18 @@
 // the contract construction -- both sides are compared and copied
 // exactly as persisted.
 //
+// CONTACT-ID PROVENANCE (hardening, Phase 11): the contract's
+// `contactId` is copied from `decision.evidence.contactId` -- Phase 8's
+// own exposed `record.contact_id` -- and NEVER accepted from any caller
+// input (there is no contactId field on `ExecutionDispatchRequest` at
+// all, so there is nothing to cross-check or be confused with). This
+// closes the analogous trust-boundary gap for contact identity that the
+// idempotency-key hardening above closed for idempotency: a downstream
+// consumer (Phase 11) can trust `contract.contactId` as the sole
+// authoritative source for which contact a destination may ever be
+// resolved for, with no path by which a different contact's identifier
+// could ever reach the sealed contract.
+//
 // WHY THIS MODULE ALSO RECEIVES THE ORIGINAL REQUEST: beyond the
 // idempotency cross-check above, this module also cross-checks the
 // request's channel (and, when supplied, actionId) against the values
@@ -118,6 +130,8 @@ export type ProviderNeutralDispatchContract = {
   readonly actionId: string;
   /** The Phase 7 canonical idempotency key, sourced from decision.evidence.idempotencyKey and passed through unchanged -- see module header. */
   readonly idempotencyKey: string;
+  /** The Phase 7 canonical contact_id, sourced from decision.evidence.contactId -- NEVER a caller-supplied value. Added for Phase 11 contact-id provenance hardening; an internal identifier, not destination PII. */
+  readonly contactId: number;
   readonly channel: ContactChannel;
   readonly policyVersion: string;
   readonly humanApprovalState: string;
@@ -140,6 +154,11 @@ function isUsableToken(value: string | null | undefined): boolean {
   if (value == null) return false;
   const trimmed = value.trim();
   return trimmed.length > 0 && trimmed.length <= MAX_TOKEN_LENGTH;
+}
+
+/** Same structural-validity rule used for contact identifiers elsewhere in this chain: a positive integer, nothing else. */
+function isPositiveInteger(value: number | null | undefined): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
 /**
@@ -253,6 +272,15 @@ export function createProviderNeutralDispatchContract(
     return blocked("blocked", "Outreach eligibility", "decision.evidence.outreachEligibilityStatus is missing or blank.");
   }
 
+  // Contact-id provenance (hardened, Phase 11) -- the contract's
+  // contactId comes ONLY from decision.evidence.contactId (Phase 8's own
+  // exposed record.contact_id). There is no caller-suppliable
+  // contactId on ExecutionDispatchRequest to cross-check against or be
+  // confused with -- this value has exactly one possible source.
+  if (!isPositiveInteger(evidence.contactId)) {
+    return blocked("blocked", "Contact identity", "decision.evidence.contactId is missing or not a positive integer -- no persisted canonical contact reference to build a contract from.");
+  }
+
   const contract: ProviderNeutralDispatchContract = Object.freeze({
     authorizationRecordId: evidence.authorizationRecordId,
     actionId: evidence.actionId as string,
@@ -260,6 +288,9 @@ export function createProviderNeutralDispatchContract(
     // key), NOT request.idempotencyKey -- passed through EXACTLY, no
     // trim/rewrite/normalise/regenerate/case-fold. See module header.
     idempotencyKey: evidence.idempotencyKey as string,
+    // Sourced from decision.evidence.contactId (the persisted canonical
+    // contact reference), never from any caller input. See module header.
+    contactId: evidence.contactId as number,
     channel: decision.requestedChannel,
     policyVersion: evidence.policyVersion as string,
     humanApprovalState: evidence.humanApprovalState as string,

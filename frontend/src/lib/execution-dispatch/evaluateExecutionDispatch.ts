@@ -58,6 +58,12 @@
 // so that a downstream consumer (Phase 9) can establish its own
 // provenance chain back to the Phase 7 record, rather than trusting
 // whatever idempotency key its own caller happened to supply.
+//
+// CONTACT-ID PROVENANCE (Phase 11 hardening): `ExecutionDispatchEvidence
+// .contactId` exposes the same persisted `record.contact_id` -- again
+// NEVER a caller-supplied value -- so that Phase 9/11 can establish an
+// unbroken provenance chain from the Phase 7 record to whichever contact
+// a destination may ever be resolved for.
 
 import type { createClient } from "../supabase/server";
 import type { ContactChannel } from "../compliance/evaluateContactPermission.ts";
@@ -74,7 +80,7 @@ export type ExecutionDispatchRequest = {
   requestedChannel: ContactChannel;
 };
 
-/** Only the columns dispatch evaluation needs -- deliberately excludes organisation_id/contact_id/source_id/campaign_id/evidence/notes (data minimisation; none of those are needed for this decision). */
+/** Only the columns dispatch evaluation needs, plus `contact_id` (added for Phase 11 contact-id provenance hardening) -- still deliberately excludes organisation_id/source_id/campaign_id/evidence/notes (data minimisation; none of those are needed for this decision). */
 export type PersistedExecutionAuthorizationRecord = {
   id: number;
   action_id: string;
@@ -88,6 +94,7 @@ export type PersistedExecutionAuthorizationRecord = {
   execution_performed: boolean;
   execution_performed_at: string | null;
   execution_reference: string | null;
+  contact_id: number | null;
 };
 
 export type ExecutionDispatchStatus = "ready_for_dispatch" | "blocked" | "needs_review" | "evaluation_failed";
@@ -99,6 +106,8 @@ export type ExecutionDispatchEvidence = {
   actionId: string | null;
   /** The persisted Phase 7 canonical idempotency_key, taken from `record.idempotency_key` -- NEVER from the request. Null when there is no persisted record (or the read failed). An internal execution identifier, not destination PII. */
   idempotencyKey: string | null;
+  /** The persisted Phase 7 `record.contact_id` -- NEVER a caller-supplied value. Null when there is no persisted record (or the read failed). Added for Phase 11 contact-id provenance hardening: this is the sole authoritative source for which contact a resolved destination may ever belong to. */
+  contactId: number | null;
   requestedChannel: ContactChannel;
   persistedChannel: string | null;
   authorizationStatus: string | null;
@@ -152,6 +161,7 @@ function buildEvidence(
     authorizationRecordId: record?.id ?? null,
     actionId: record?.action_id ?? null,
     idempotencyKey: record?.idempotency_key ?? null,
+    contactId: record?.contact_id ?? null,
     requestedChannel: request.requestedChannel,
     persistedChannel: record?.requested_channel ?? null,
     authorizationStatus: record?.authorization_status ?? null,
@@ -329,7 +339,7 @@ export async function evaluateExecutionDispatchWithLookup(
   const { data, error } = await supabase
     .from("execution_authorizations")
     .select(
-      "id, action_id, idempotency_key, requested_channel, authorization_status, human_approval_state, policy_version, expires_at, outreach_eligibility_status, execution_performed, execution_performed_at, execution_reference",
+      "id, action_id, idempotency_key, requested_channel, authorization_status, human_approval_state, policy_version, expires_at, outreach_eligibility_status, execution_performed, execution_performed_at, execution_reference, contact_id",
     )
     .eq("idempotency_key", request.idempotencyKey)
     .maybeSingle();

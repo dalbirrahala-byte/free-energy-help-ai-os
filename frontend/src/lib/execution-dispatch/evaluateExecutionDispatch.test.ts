@@ -24,6 +24,7 @@ function record(overrides: Partial<PersistedExecutionAuthorizationRecord> = {}):
     execution_performed: false,
     execution_performed_at: null,
     execution_reference: null,
+    contact_id: 42,
     ...overrides,
   };
 }
@@ -342,6 +343,59 @@ test("provenance: a database read error (evaluation_failed) → evidence.idempot
   const result = await evaluateExecutionDispatchWithLookup(supabase, request(), EVAL_TIME);
   assert.equal(result.status, "evaluation_failed");
   assert.equal(result.evidence.idempotencyKey, null);
+});
+
+// --- Targeted hardening: evidence.contactId provenance (Phase 11) ---
+// Phase 9/11 must be able to derive a persisted-canonical contactId from
+// evidence alone, sourced from record.contact_id, never from the request.
+
+// 1. Phase 8 evidence exposes the persisted contact_id.
+test("provenance: ready_for_dispatch evidence.contactId equals the persisted record's contact_id", () => {
+  const result = evaluateExecutionDispatch(record({ contact_id: 42 }), request(), EVAL_TIME);
+  assert.equal(result.status, "ready_for_dispatch");
+  assert.equal(result.evidence.contactId, 42);
+});
+
+// 2. evidence.contactId originates from the persisted record, not caller input.
+test("provenance: evidence.contactId comes from record.contact_id regardless of request content (request carries no contactId field at all)", () => {
+  const result = evaluateExecutionDispatch(record({ contact_id: 42, authorization_status: "blocked" }), request(), EVAL_TIME);
+  assert.equal(result.evidence.contactId, 42);
+});
+
+// 3. no-record evidence.contactId is null.
+test("provenance: no persisted record (null) → evidence.contactId is null", () => {
+  const result = evaluateExecutionDispatch(null, request(), EVAL_TIME);
+  assert.equal(result.evidence.contactId, null);
+});
+
+// 4. DB-read-failure evidence.contactId is null.
+test("provenance: a database read error (evaluation_failed) → evidence.contactId is null", async () => {
+  const supabase = {
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                async maybeSingle() {
+                  return { data: null, error: { message: "connection reset" } };
+                },
+              };
+            },
+          };
+        },
+      };
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+  const result = await evaluateExecutionDispatchWithLookup(supabase, request(), EVAL_TIME);
+  assert.equal(result.status, "evaluation_failed");
+  assert.equal(result.evidence.contactId, null);
+});
+
+test("provenance: persisted record with null contact_id → evidence.contactId is null", () => {
+  const result = evaluateExecutionDispatch(record({ contact_id: null }), request(), EVAL_TIME);
+  assert.equal(result.evidence.contactId, null);
 });
 
 // 24. missing policy version → blocked

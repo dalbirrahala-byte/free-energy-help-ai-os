@@ -26,6 +26,7 @@ function record(overrides: Partial<PersistedExecutionAuthorizationRecord> = {}):
     execution_performed: false,
     execution_performed_at: null,
     execution_reference: null,
+    contact_id: 42,
     ...overrides,
   };
 }
@@ -55,6 +56,7 @@ function rawDecision(overrides: Partial<ExecutionDispatchDecision> = {}): Execut
       authorizationRecordId: 1,
       actionId: "action-123",
       idempotencyKey: "idem-key-abc-123",
+      contactId: 42,
       requestedChannel: "EMAIL",
       persistedChannel: "EMAIL",
       authorizationStatus: "authorised",
@@ -472,6 +474,39 @@ test("authorizationRecordId is preserved from decision.evidence exactly", () => 
   const decision = readyDecision({ id: 42 });
   const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
   assert.equal(result.contract?.authorizationRecordId, 42);
+});
+
+// --- Targeted hardening: contact-id provenance (Phase 11) ---
+
+test("provenance: valid decision.evidence.contactId is copied into the sealed contract exactly", () => {
+  const decision = readyDecision({ contact_id: 777 });
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.status, "contract_ready");
+  assert.equal(result.contract?.contactId, 777);
+});
+
+test("provenance: missing decision.evidence.contactId (null) → blocked, no contract", () => {
+  const decision = readyDecision({ contact_id: null });
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.status, "blocked");
+  assert.equal(result.contract, null);
+});
+
+test("provenance: invalid decision.evidence.contactId (zero/negative/non-integer) → blocked, no contract", () => {
+  for (const bad of [0, -1, 1.5]) {
+    const decision = rawDecision({ evidence: { ...rawDecision().evidence, contactId: bad } });
+    const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+    assert.equal(result.status, "blocked");
+    assert.equal(result.contract, null);
+  }
+});
+
+test("provenance: contract.contactId cannot be substituted -- there is no caller-suppliable contactId field on ExecutionDispatchRequest", () => {
+  const decision = readyDecision({ contact_id: 42 });
+  const requestKeys = Object.keys(request());
+  assert.equal(requestKeys.includes("contactId"), false);
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.contract?.contactId, 42);
 });
 
 test("policyVersion is preserved from decision.evidence exactly", () => {

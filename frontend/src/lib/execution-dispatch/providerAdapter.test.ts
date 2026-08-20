@@ -16,6 +16,7 @@ function contract(overrides: Partial<ProviderNeutralDispatchContract> = {}): Pro
     authorizationRecordId: 1,
     actionId: "action-123",
     idempotencyKey: "idem-key-abc-123",
+    contactId: 42,
     channel: "EMAIL",
     policyVersion: "feh-execution-authorization-policy@0.1.0-factory041",
     humanApprovalState: "approved",
