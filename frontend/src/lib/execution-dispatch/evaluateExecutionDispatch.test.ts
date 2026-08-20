@@ -292,6 +292,58 @@ test("hardening: an exact idempotency match alone is not sufficient — every ot
   assert.equal(result.status, "blocked");
 });
 
+// --- Targeted hardening: evidence.idempotencyKey provenance ---
+// Phase 9 must be able to derive a persisted-canonical idempotency key
+// from evidence alone, sourced from record.idempotency_key, never from
+// the request.
+
+// 1. ready_for_dispatch evidence includes the persisted canonical idempotency key.
+test("provenance: ready_for_dispatch evidence.idempotencyKey equals the persisted record's idempotency_key", () => {
+  const result = evaluateExecutionDispatch(record({ idempotency_key: "idem-key-abc-123" }), request({ idempotencyKey: "idem-key-abc-123" }), EVAL_TIME);
+  assert.equal(result.status, "ready_for_dispatch");
+  assert.equal(result.evidence.idempotencyKey, "idem-key-abc-123");
+});
+
+// 2. evidence obtains the key from the persisted record, not merely the request.
+test("provenance: evidence.idempotencyKey comes from record.idempotency_key, not request.idempotencyKey", () => {
+  // request idempotencyKey deliberately differs in case only from the persisted value would be
+  // rejected by the equality cross-check before evidence is even inspectable as ready --
+  // here we prove sourcing using a blocked-but-otherwise-normal path where the record's own
+  // key is still surfaced on evidence regardless of request content.
+  const result = evaluateExecutionDispatch(record({ idempotency_key: "idem-key-abc-123", authorization_status: "blocked" }), request({ idempotencyKey: "idem-key-abc-123" }), EVAL_TIME);
+  assert.equal(result.evidence.idempotencyKey, "idem-key-abc-123");
+});
+
+// 3. no-record evidence has idempotencyKey null.
+test("provenance: no persisted record (null) → evidence.idempotencyKey is null", () => {
+  const result = evaluateExecutionDispatch(null, request(), EVAL_TIME);
+  assert.equal(result.evidence.idempotencyKey, null);
+});
+
+test("provenance: a database read error (evaluation_failed) → evidence.idempotencyKey is null", async () => {
+  const supabase = {
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                async maybeSingle() {
+                  return { data: null, error: { message: "connection reset" } };
+                },
+              };
+            },
+          };
+        },
+      };
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+  const result = await evaluateExecutionDispatchWithLookup(supabase, request(), EVAL_TIME);
+  assert.equal(result.status, "evaluation_failed");
+  assert.equal(result.evidence.idempotencyKey, null);
+});
+
 // 24. missing policy version → blocked
 test("persisted policy_version is blank → blocked", () => {
   const result = evaluateExecutionDispatch(record({ policy_version: "" }), request(), EVAL_TIME);

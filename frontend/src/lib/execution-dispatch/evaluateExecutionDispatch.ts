@@ -53,6 +53,11 @@
 // IDEMPOTENCY: the persisted `idempotency_key` is the sole, authoritative
 // lookup key -- this module never creates, replaces, regenerates, or
 // bypasses it, and never implements a second idempotency store.
+// `ExecutionDispatchEvidence.idempotencyKey` exposes this same persisted,
+// canonical value (`record.idempotency_key`, never `request.idempotencyKey`)
+// so that a downstream consumer (Phase 9) can establish its own
+// provenance chain back to the Phase 7 record, rather than trusting
+// whatever idempotency key its own caller happened to supply.
 
 import type { createClient } from "../supabase/server";
 import type { ContactChannel } from "../compliance/evaluateContactPermission.ts";
@@ -92,6 +97,8 @@ export type ExecutionDispatchReason = { factor: string; detail: string };
 export type ExecutionDispatchEvidence = {
   authorizationRecordId: number | null;
   actionId: string | null;
+  /** The persisted Phase 7 canonical idempotency_key, taken from `record.idempotency_key` -- NEVER from the request. Null when there is no persisted record (or the read failed). An internal execution identifier, not destination PII. */
+  idempotencyKey: string | null;
   requestedChannel: ContactChannel;
   persistedChannel: string | null;
   authorizationStatus: string | null;
@@ -144,6 +151,7 @@ function buildEvidence(
   return {
     authorizationRecordId: record?.id ?? null,
     actionId: record?.action_id ?? null,
+    idempotencyKey: record?.idempotency_key ?? null,
     requestedChannel: request.requestedChannel,
     persistedChannel: record?.requested_channel ?? null,
     authorizationStatus: record?.authorization_status ?? null,
