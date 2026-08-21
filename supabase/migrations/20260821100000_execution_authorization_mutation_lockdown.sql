@@ -1,0 +1,166 @@
+-- Factory 041 Phase 16A: execution-authorization mutation lockdown.
+--
+-- WHY THIS EXISTS: Phase 16A.1's live database verification (read-only,
+-- documented separately, not part of this migration) confirmed that
+-- public.execution_authorizations currently permits any `authenticated`
+-- application identity satisfying public.user_can_write() to directly
+-- INSERT, UPDATE, or DELETE rows -- via both a permissive RLS policy AND
+-- the underlying PostgreSQL table-level GRANT (itself inherited from
+-- Supabase's own platform-wide default privileges, never explicitly
+-- granted by any migration in this repository). The same verification
+-- also confirmed that both `anon` and `authenticated` hold direct
+-- TRUNCATE privilege on this table via the identical default-privilege
+-- mechanism -- a privilege PostgreSQL RLS policies do not, and cannot,
+-- govern at all, regardless of any policy defined on the table. This
+-- means, today:
+--   - an ordinary write-role application identity could fabricate an
+--     apparently-legitimate authorization row from scratch (arbitrary
+--     authorization_status/human_approval_state/expires_at/action_id/
+--     idempotency_key), which Phase 8 onward has no way to distinguish
+--     from a row genuinely produced by the intended writer;
+--   - the same identity could directly flip execution_performed,
+--     execution_performed_at, or execution_reference, bypassing the
+--     entire Phase 8-14 evaluation chain;
+--   - the same identity could DELETE a row, freeing its idempotency_key
+--     for reuse by a new row -- defeating the single-use guarantee the
+--     idempotency unique index exists to provide;
+--   - the same identity could TRUNCATE the table outright, destroying
+--     every persisted authorization row at once -- a capability no RLS
+--     policy, however written, could ever have prevented.
+--
+-- FACTORY 041 IS STILL UNWIRED: no application route, server action, or
+-- job currently calls anything in frontend/src/lib/execution-dispatch/
+-- or frontend/src/lib/execution-authorization/ -- this migration hardens
+-- a boundary before it is ever exercised, not in response to any live
+-- incident.
+--
+-- NO LEGITIMATE WORKFLOW IS REMOVED: repository-wide inspection (Phase
+-- 16A audit) and live database inspection (Phase 16A.1) both confirmed
+-- zero existing UPDATE or DELETE callers against this table anywhere in
+-- the codebase, and the sole existing INSERT writer,
+-- persistExecutionAuthorization.ts (frontend/src/lib/execution-
+-- authorization/), currently has zero callers of its own -- Factory 041
+-- has never actually written a row to this table in production (the
+-- live table was independently confirmed to contain zero rows during
+-- the 16A.1 verification). Removing these three RLS policies and their
+-- underlying table privileges therefore changes no currently-observable
+-- application behaviour.
+--
+-- SCOPE, DELIBERATELY NARROW: this migration establishes ONLY the
+-- database-enforced mutation boundary. It does NOT create a controlled
+-- authorization-creation function, an atomic single-use claim function,
+-- any provider-execution capability, any replay/idempotency state
+-- transition, or any new role. Those are each separate, explicitly
+-- future, independently-authorised phases (Factory 041 Phase 16B for the
+-- atomic claim; a not-yet-numbered future phase for controlled
+-- creation). This migration exists specifically so that, by the time any
+-- such function is ever introduced, it can be the ONLY possible path to
+-- mutate this table -- not one of several.
+--
+-- DEFENCE IN DEPTH, TWO LAYERS: both the permissive RLS policies AND the
+-- underlying PostgreSQL table-level privileges are removed for INSERT/
+-- UPDATE/DELETE, for both `anon` and `authenticated`. Removing only the
+-- RLS policies would leave RLS's default-deny behaviour as the sole
+-- protection; removing the GRANT too means even a hypothetical future
+-- RLS policy added by mistake could not, on its own, reopen this
+-- boundary -- the role would still lack the underlying table privilege
+-- entirely. This mirrors the exact reasoning already applied to
+-- FUNCTION-level default privileges in
+-- 20260810110000_harden_function_execute_privileges.sql. TRUNCATE is
+-- revoked alongside INSERT/UPDATE/DELETE for the same two roles: it is a
+-- table-level privilege with no RLS-policy layer at all, so the table
+-- privilege revoke IS its only possible protection -- there is no first
+-- layer to remove for TRUNCATE, only the second.
+--
+-- WHY A PLAIN REVOKE IS SAFE HERE EVEN THOUGH NO EXPLICIT GRANT EXISTS IN
+-- THIS REPOSITORY'S MIGRATION HISTORY: `anon`/`authenticated` currently
+-- hold table-level INSERT/UPDATE/DELETE on this table via Supabase's own
+-- platform-wide default privilege rules, not via any GRANT statement
+-- this project has ever issued -- but PostgreSQL's REVOKE operates on
+-- the object's own access-control list regardless of how a privilege
+-- entry was originally populated. Revoking here removes exactly that
+-- entry from public.execution_authorizations specifically; it does not
+-- alter the schema-wide default-privilege rule itself (unlike
+-- 20260810110000, which did alter a default-privilege rule at the schema
+-- level, for functions) and therefore has no effect on any other table.
+--
+-- WHAT THIS MIGRATION DOES NOT TOUCH: `service_role`, the table owner
+-- (`postgres`), and PostgreSQL superuser privileges are untouched -- they
+-- are outside the ordinary-application trust boundary this migration
+-- addresses, and this codebase's established discipline never uses a
+-- service-role key from application code. SELECT authority for
+-- `authenticated` is completely unchanged. No column, index, constraint,
+-- trigger, or the existing public.user_can_write() function is altered.
+-- No table is created, dropped, or recreated. No existing row is touched
+-- (the live table independently verified to contain zero rows as of
+-- this migration's drafting). No new function, RPC, or role is created
+-- here.
+--
+-- TRUNCATE IS IN SCOPE: an earlier draft of this migration left TRUNCATE
+-- untouched as a documented residual item. Architect review determined
+-- that a residual direct TRUNCATE capability is inconsistent with the
+-- Phase 16A security invariant (no ordinary application identity may
+-- directly mutate or destroy persisted execution-authorization rows), so
+-- this migration also revokes TRUNCATE from `anon` and `authenticated`
+-- below, alongside INSERT/UPDATE/DELETE.
+--
+-- SAFE / IDEMPOTENT: every statement uses DROP POLICY IF EXISTS; REVOKE
+-- of a privilege a role does not hold is a no-op in PostgreSQL. Safe to
+-- rerun.
+--
+-- NOT APPLIED BY THIS FILE'S PRESENCE: per the Factory 041 Phase 16A
+-- authorisation, this migration is created for local review only. It
+-- must NOT be run against Supabase, staged, committed, or pushed until a
+-- separate, explicit authorisation is given, following the same
+-- multi-gate review process used throughout Factory 039/040/041.
+
+-- ---------------------------------------------------------------------
+-- A. Remove ordinary-role mutation RLS policies
+-- ---------------------------------------------------------------------
+
+drop policy if exists execution_authorizations_insert_write_roles on public.execution_authorizations;
+drop policy if exists execution_authorizations_update_write_roles on public.execution_authorizations;
+drop policy if exists execution_authorizations_delete_write_roles on public.execution_authorizations;
+
+-- execution_authorizations_select_authenticated is deliberately left
+-- untouched -- existing read authority for `authenticated` is preserved
+-- exactly as-is.
+
+-- ---------------------------------------------------------------------
+-- B. Remove the underlying PostgreSQL table-level privileges (defence
+--    in depth -- see header)
+-- ---------------------------------------------------------------------
+
+revoke insert, update, delete, truncate on public.execution_authorizations from anon;
+revoke insert, update, delete, truncate on public.execution_authorizations from authenticated;
+
+-- SELECT is deliberately NOT revoked from `authenticated` here. `anon`'s
+-- pre-existing SELECT grant is also left untouched -- it was never
+-- reachable in practice (no anon SELECT RLS policy exists, and none is
+-- added here), and revoking it is outside this migration's authorised
+-- scope (see header: unrelated table privileges are not modified).
+
+-- ---------------------------------------------------------------------
+-- ROLLBACK (documented, not executed)
+-- ---------------------------------------------------------------------
+-- Reversing this migration would require restoring exactly the three
+-- removed policies and the four revoked privileges (insert, update,
+-- delete, truncate) for each of the two roles. This is deliberately NOT
+-- executed automatically; it exists only as an accurate record of what
+-- full reversal would require, matching this repository's established
+-- migration convention.
+--
+-- grant insert, update, delete, truncate on public.execution_authorizations to anon;
+-- grant insert, update, delete, truncate on public.execution_authorizations to authenticated;
+--
+-- create policy execution_authorizations_insert_write_roles on public.execution_authorizations
+--   for insert to authenticated with check (public.user_can_write());
+-- create policy execution_authorizations_update_write_roles on public.execution_authorizations
+--   for update to authenticated using (public.user_can_write()) with check (public.user_can_write());
+-- create policy execution_authorizations_delete_write_roles on public.execution_authorizations
+--   for delete to authenticated using (public.user_can_write());
+--
+-- NOTE: reversing this migration would recreate the exact security gap
+-- this migration exists to close. It should only ever be reversed as
+-- part of a deliberate, separately-reviewed decision to reopen direct
+-- application-role mutation of this table -- not as a routine rollback.
