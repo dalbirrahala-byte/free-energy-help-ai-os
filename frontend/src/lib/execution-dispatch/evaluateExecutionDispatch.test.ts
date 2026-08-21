@@ -398,6 +398,87 @@ test("provenance: persisted record with null contact_id → evidence.contactId i
   assert.equal(result.evidence.contactId, null);
 });
 
+// --- Targeted hardening: evidence.expiresAt provenance (Phase 13) ---
+// Phase 9/12 must be able to derive the raw authoritative persisted
+// expiry from evidence alone, sourced from record.expires_at, never
+// derived from the request, current time, or a calculated TTL.
+
+// 1. persisted expires_at appears in Phase 8 evidence.
+test("provenance: evidence.expiresAt equals the persisted record's expires_at", () => {
+  const result = evaluateExecutionDispatch(record({ expires_at: "2026-09-01T00:00:00.000Z" }), request(), EVAL_TIME);
+  assert.equal(result.evidence.expiresAt, "2026-09-01T00:00:00.000Z");
+});
+
+// 2. evidence expiry sourced from record, not request (request has no expiry field at all).
+test("provenance: evidence.expiresAt comes from record.expires_at regardless of request content", () => {
+  const result = evaluateExecutionDispatch(record({ expires_at: "2026-09-01T00:00:00.000Z", authorization_status: "blocked" }), request(), EVAL_TIME);
+  assert.equal(result.evidence.expiresAt, "2026-09-01T00:00:00.000Z");
+});
+
+// 3. no-record → expiry evidence null.
+test("provenance: no persisted record (null) → evidence.expiresAt is null", () => {
+  const result = evaluateExecutionDispatch(null, request(), EVAL_TIME);
+  assert.equal(result.evidence.expiresAt, null);
+});
+
+// 4. read failure → expiry evidence null.
+test("provenance: a database read error (evaluation_failed) → evidence.expiresAt is null", async () => {
+  const supabase = {
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                async maybeSingle() {
+                  return { data: null, error: { message: "connection reset" } };
+                },
+              };
+            },
+          };
+        },
+      };
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+  const result = await evaluateExecutionDispatchWithLookup(supabase, request(), EVAL_TIME);
+  assert.equal(result.status, "evaluation_failed");
+  assert.equal(result.evidence.expiresAt, null);
+});
+
+test("provenance: persisted record with null expires_at → evidence.expiresAt is null", () => {
+  const result = evaluateExecutionDispatch(record({ expires_at: null }), request(), EVAL_TIME);
+  assert.equal(result.evidence.expiresAt, null);
+});
+
+// 5. persisted malformed expiry cannot become ready.
+test("provenance: persisted expires_at unparseable → blocked, cannot become ready_for_dispatch", () => {
+  const result = evaluateExecutionDispatch(record({ expires_at: "not-a-real-timestamp" }), request(), EVAL_TIME);
+  assert.equal(result.status, "blocked");
+  assert.equal(result.evidence.expiresAt, "not-a-real-timestamp"); // raw value still surfaced verbatim, even though invalid
+  assert.equal(result.evidence.expiryState, "invalid");
+});
+
+// 6. persisted missing expiry cannot become ready -- this is the "no restriction" case (null = no expiry set),
+// which per existing (unweakened) expiryState logic IS allowed to reach ready_for_dispatch; this test locks in
+// that this phase does not change that pre-existing behaviour.
+test("provenance: persisted expires_at null still allows ready_for_dispatch (expiryState 'none', unchanged pre-existing behaviour)", () => {
+  const result = evaluateExecutionDispatch(record({ expires_at: null }), request(), EVAL_TIME);
+  assert.equal(result.status, "ready_for_dispatch");
+  assert.equal(result.evidence.expiryState, "none");
+});
+
+// 7. existing expiryState behavior remains intact.
+test("existing expiryState classification behaviour is unchanged by the expiresAt provenance addition", () => {
+  const future = evaluateExecutionDispatch(record({ expires_at: "2026-09-01T00:00:00.000Z" }), request(), EVAL_TIME);
+  assert.equal(future.evidence.expiryState, "future");
+  assert.equal(future.status, "ready_for_dispatch");
+
+  const expired = evaluateExecutionDispatch(record({ expires_at: "2020-01-01T00:00:00.000Z" }), request(), EVAL_TIME);
+  assert.equal(expired.evidence.expiryState, "expired");
+  assert.equal(expired.status, "blocked");
+});
+
 // 24. missing policy version → blocked
 test("persisted policy_version is blank → blocked", () => {
   const result = evaluateExecutionDispatch(record({ policy_version: "" }), request(), EVAL_TIME);

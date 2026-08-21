@@ -21,7 +21,7 @@ function record(overrides: Partial<PersistedExecutionAuthorizationRecord> = {}):
     authorization_status: "authorised",
     human_approval_state: "approved",
     policy_version: "feh-execution-authorization-policy@0.1.0-factory041",
-    expires_at: null,
+    expires_at: "2026-09-01T00:00:00.000Z",
     outreach_eligibility_status: "eligible_for_handoff",
     execution_performed: false,
     execution_performed_at: null,
@@ -63,7 +63,8 @@ function rawDecision(overrides: Partial<ExecutionDispatchDecision> = {}): Execut
       humanApprovalState: "approved",
       outreachEligibilityStatus: "eligible_for_handoff",
       policyVersion: "feh-execution-authorization-policy@0.1.0-factory041",
-      expiryState: "none",
+      expiresAt: "2026-09-01T00:00:00.000Z",
+      expiryState: "future",
       executionState: "not_performed",
     },
     executionPerformed: false,
@@ -507,6 +508,73 @@ test("provenance: contract.contactId cannot be substituted -- there is no caller
   assert.equal(requestKeys.includes("contactId"), false);
   const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
   assert.equal(result.contract?.contactId, 42);
+});
+
+// --- Targeted hardening: expiry/freshness provenance (Phase 13) ---
+
+// 8. valid authoritative expiry → contract contains exact expiry.
+test("provenance: valid decision.evidence.expiresAt is copied into the sealed contract exactly", () => {
+  const decision = readyDecision({ expires_at: "2027-01-01T00:00:00.000Z" });
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.status, "contract_ready");
+  assert.equal(result.contract?.authorizationExpiresAt, "2027-01-01T00:00:00.000Z");
+});
+
+// 9. missing expiry → blocked.
+test("provenance: missing decision.evidence.expiresAt (null) → blocked, no contract", () => {
+  const decision = readyDecision({ expires_at: null });
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.status, "blocked");
+  assert.equal(result.contract, null);
+});
+
+// 10. blank expiry → blocked.
+test("provenance: blank decision.evidence.expiresAt (whitespace-only) → blocked, no contract", () => {
+  const decision = rawDecision({ evidence: { ...rawDecision().evidence, expiresAt: "   " } });
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.status, "blocked");
+  assert.equal(result.contract, null);
+});
+
+// 11. malformed expiry → blocked.
+test("provenance: malformed (unparseable) decision.evidence.expiresAt → blocked, no contract", () => {
+  const decision = rawDecision({ evidence: { ...rawDecision().evidence, expiresAt: "not-a-real-timestamp" } });
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.status, "blocked");
+  assert.equal(result.contract, null);
+});
+
+// 12. caller cannot supply a replacement expiry -- there is no expiry field on ExecutionDispatchRequest at all.
+test("provenance: contract.authorizationExpiresAt cannot be substituted -- there is no caller-suppliable expiry field on ExecutionDispatchRequest", () => {
+  const decision = readyDecision({ expires_at: "2027-01-01T00:00:00.000Z" });
+  const requestKeys = Object.keys(request());
+  assert.equal(requestKeys.includes("expiresAt"), false);
+  assert.equal(requestKeys.includes("authorizationExpiresAt"), false);
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.contract?.authorizationExpiresAt, "2027-01-01T00:00:00.000Z");
+});
+
+// 13. contract expiry originates from Phase 8 evidence.
+test("provenance: contract.authorizationExpiresAt is sourced from decision.evidence.expiresAt", () => {
+  const decision = rawDecision({ evidence: { ...rawDecision().evidence, expiresAt: "2028-06-15T12:00:00.000Z" } });
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.contract?.authorizationExpiresAt, decision.evidence.expiresAt);
+});
+
+// 14. no trimming/rewriting of a valid persisted timestamp.
+test("provenance: a valid persisted expiry timestamp is never trimmed, rewritten, or reformatted", () => {
+  const oddButValid = "2027-01-01T00:00:00.000+00:00"; // explicit offset form, deliberately not "Z"
+  const decision = rawDecision({ evidence: { ...rawDecision().evidence, expiresAt: oddButValid } });
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.contract?.authorizationExpiresAt, oddButValid);
+});
+
+// 10-11 blocked/evaluation_failed Phase 8 results remain incapable of producing a contract even with a valid expiry.
+test("provenance: a blocked Phase 8 decision produces no contract even with a perfectly valid expiry", () => {
+  const decision = readyDecision({ expires_at: "2027-01-01T00:00:00.000Z", authorization_status: "blocked" });
+  const result = createProviderNeutralDispatchContract(decision, request(), CREATED_AT);
+  assert.equal(result.status, "blocked");
+  assert.equal(result.contract, null);
 });
 
 test("policyVersion is preserved from decision.evidence exactly", () => {

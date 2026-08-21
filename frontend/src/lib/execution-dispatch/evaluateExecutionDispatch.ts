@@ -64,6 +64,17 @@
 // NEVER a caller-supplied value -- so that Phase 9/11 can establish an
 // unbroken provenance chain from the Phase 7 record to whichever contact
 // a destination may ever be resolved for.
+//
+// EXPIRY PROVENANCE (Phase 13 hardening): `ExecutionDispatchEvidence
+// .expiresAt` exposes the same raw persisted `record.expires_at` this
+// module already reads to compute `expiryState` -- NEVER derived from
+// the request, the current time, a calculated TTL, or any other source.
+// Previously only the derived `expiryState` classification ("none" /
+// "future" / "expired" / "invalid") was exposed; the raw timestamp is
+// now also carried forward so that Phase 9/12 can perform their own
+// final freshness comparison against the authoritative persisted
+// instant, immediately before preflight approval, rather than trusting
+// a classification computed at an earlier point in time.
 
 import type { createClient } from "../supabase/server";
 import type { ContactChannel } from "../compliance/evaluateContactPermission.ts";
@@ -114,6 +125,8 @@ export type ExecutionDispatchEvidence = {
   humanApprovalState: string | null;
   outreachEligibilityStatus: string | null;
   policyVersion: string | null;
+  /** The raw persisted Phase 7 `record.expires_at` (a `timestamptz`, so timezone-aware) -- NEVER derived from the request, the current time, a calculated TTL, or any other source. Null when there is no persisted record (or the read failed) or when the record's expiry is itself null. Added for Phase 13 expiry/freshness provenance hardening: this is the sole authoritative source a downstream consumer (Phase 9/12) may ever compare against. */
+  expiresAt: string | null;
   expiryState: "none" | "future" | "expired" | "invalid";
   executionState: "not_performed" | "already_performed" | "inconsistent";
 };
@@ -168,6 +181,7 @@ function buildEvidence(
     humanApprovalState: record?.human_approval_state ?? null,
     outreachEligibilityStatus: record?.outreach_eligibility_status ?? null,
     policyVersion: record?.policy_version ?? null,
+    expiresAt: record?.expires_at ?? null,
     expiryState: record ? classifyExpiry(record.expires_at, evaluatedAt) : "none",
     executionState: record ? classifyExecutionState(record) : "not_performed",
   };

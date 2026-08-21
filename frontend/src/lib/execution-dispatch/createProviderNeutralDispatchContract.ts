@@ -68,15 +68,36 @@
 // provider resolves a destination for an authorised action -- that is a
 // deliberate, documented gap, not an oversight.
 //
-// authorisedAt / expiresAt ARE DELIBERATELY OMITTED: Phase 8's
-// `PersistedExecutionAuthorizationRecord` and `ExecutionDispatchEvidence`
-// were themselves designed to exclude the raw `authorised_at` and
-// `expires_at` timestamp values (Phase 8 only exposes a classification,
-// `expiryState`, not the underlying value). Adding either field here
-// would require a new database read that Phase 8 does not already
-// perform, which this phase avoids per its "prefer zero database access"
-// mandate. A future adapter needing exact timestamps can look them up via
-// `authorizationRecordId`, itself part of this contract.
+// authorisedAt IS STILL DELIBERATELY OMITTED, expiresAt IS NOT (Phase 13
+// hardening): `authorised_at` remains excluded for the original reason --
+// no downstream consumer in this chain currently needs it, and adding it
+// would serve no proven purpose. `expires_at`, however, is no longer
+// omitted: Phase 8 was hardened (Phase 13) to additionally expose the raw
+// persisted `record.expires_at` via `ExecutionDispatchEvidence.expiresAt`
+// -- using the SAME database read Phase 8 already performs, no new query
+// -- specifically so Phase 9 (this module) and Phase 12 can establish an
+// authoritative expiry provenance chain. This module now REQUIRES
+// `evidence.expiresAt` to be present and parseable as a valid instant; a
+// contract can never be sealed for an authorization whose expiry
+// evidence is missing, blank, or malformed -- fail closed, no exception.
+//
+// EXPIRY PROVENANCE (Phase 13 hardening): `contract.authorizationExpiresAt`
+// is copied from `decision.evidence.expiresAt` -- Phase 8's own exposed
+// `record.expires_at` -- and NEVER accepted from any caller input (there
+// is no expiry field on `ExecutionDispatchRequest` at all, so there is
+// nothing to cross-check or be confused with, exactly like `contactId`'s
+// hardening above). The value is preserved EXACTLY as persisted: no
+// trimming, extending, regenerating, rounding, or re-deriving from
+// `contractCreatedAt` or any other timestamp. This module does NOT itself
+// compare the expiry against the current time or `createdAt` -- Phase 8
+// already established `expiryState` for its own release decision, and
+// the FINAL, immediately-pre-execution freshness comparison belongs to
+// Phase 12, which is closer in time to any future actual execution.
+// Sealing an already-expired authorization's expiry value into a
+// contract here is not itself a safety gap: Phase 12 independently
+// re-checks freshness against this exact value before ever producing a
+// `preflight_ready` result, so no window exists where an expired
+// authorization could be treated as current.
 //
 // COMMERCIAL SEPARATION, STRUCTURAL: `ExecutionDispatchDecision` has no
 // opportunity-score/estimated-value/commission/renewal-attractiveness/
@@ -137,6 +158,8 @@ export type ProviderNeutralDispatchContract = {
   readonly humanApprovalState: string;
   readonly outreachEligibilityStatus: string;
   readonly contractCreatedAt: string;
+  /** The Phase 7 canonical, authoritative expires_at, sourced from decision.evidence.expiresAt and preserved exactly -- never trimmed, extended, regenerated, or re-derived. Added for Phase 13 expiry/freshness provenance hardening: the sole authoritative value Phase 12's final freshness check may ever compare against. */
+  readonly authorizationExpiresAt: string;
   /** Always the literal `false`. A contract means "may be released to a future adapter" -- never that anything was sent. */
   readonly executionPerformed: false;
 };
@@ -159,6 +182,12 @@ function isUsableToken(value: string | null | undefined): boolean {
 /** Same structural-validity rule used for contact identifiers elsewhere in this chain: a positive integer, nothing else. */
 function isPositiveInteger(value: number | null | undefined): boolean {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+/** Structural validity only -- non-empty after trim, parses to a concrete instant. Never interprets what that instant means (that is Phase 12's job). */
+function isUsableTimestamp(value: string | null | undefined): boolean {
+  if (value == null || value.trim().length === 0) return false;
+  return !Number.isNaN(new Date(value).getTime());
 }
 
 /**
@@ -281,6 +310,18 @@ export function createProviderNeutralDispatchContract(
     return blocked("blocked", "Contact identity", "decision.evidence.contactId is missing or not a positive integer -- no persisted canonical contact reference to build a contract from.");
   }
 
+  // Expiry provenance (hardened, Phase 13) -- the contract's expiry
+  // comes ONLY from decision.evidence.expiresAt (Phase 8's own exposed
+  // record.expires_at). There is no caller-suppliable expiry on
+  // ExecutionDispatchRequest to cross-check against or be confused
+  // with. An authorization with no expiry configured at all (a null
+  // persisted value) can no longer produce a sealed contract -- every
+  // execution-eligible contract must carry a concrete, parseable expiry
+  // instant for Phase 12 to enforce.
+  if (!isUsableTimestamp(evidence.expiresAt)) {
+    return blocked("blocked", "Expiry", "decision.evidence.expiresAt is missing, blank, or not a parseable timestamp -- no authoritative expiry to build a contract from.");
+  }
+
   const contract: ProviderNeutralDispatchContract = Object.freeze({
     authorizationRecordId: evidence.authorizationRecordId,
     actionId: evidence.actionId as string,
@@ -296,6 +337,10 @@ export function createProviderNeutralDispatchContract(
     humanApprovalState: evidence.humanApprovalState as string,
     outreachEligibilityStatus: evidence.outreachEligibilityStatus as string,
     contractCreatedAt: createdAtIso,
+    // Sourced from decision.evidence.expiresAt (the persisted canonical
+    // expiry), never calculated, extended, or accepted from any caller
+    // input. Preserved exactly as persisted. See module header.
+    authorizationExpiresAt: evidence.expiresAt as string,
     executionPerformed: false,
   });
 

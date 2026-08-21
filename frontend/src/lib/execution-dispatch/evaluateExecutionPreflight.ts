@@ -50,21 +50,56 @@
 // against the Phase 10 no-op adapter. There is no code path in this file
 // that references `.execute` at all.
 //
-// EXPIRY/FRESHNESS, DOCUMENTED GAP (inspected, not invented): neither
-// `ProviderNeutralDispatchContract` (Phase 9) nor `ResolvedDestinationEnvelope`
-// (Phase 11) carries an expiry timestamp -- Phase 9's own header explains
-// `expiresAt` was deliberately omitted (Phase 8's persisted-record read
-// only exposes an `expiryState` classification, never the raw value), and
-// Phase 11's `resolvedAt` records only when a destination was resolved,
-// not any expiry. There is therefore NO trusted freshness evidence
-// reaching this boundary to re-check -- inventing a new database read
-// here just to manufacture one would violate this phase's "prefer zero
-// database access" mandate and would silently exceed what Phase 9 itself
-// was authorised to expose. This is a genuine, documented gap: a future
-// phase that needs a real freshness/expiry guarantee at the preflight
-// boundary must extend Phase 9's contract (or perform an explicitly
-// authorised re-read) to carry trustworthy expiry evidence forward --
-// Phase 12 does not fabricate one.
+// EXPIRY/FRESHNESS ENFORCEMENT (Phase 13 hardening, closes a previously
+// documented gap): Phase 9 was hardened to carry the raw, authoritative
+// Phase 7 persisted expiry forward as `contract.authorizationExpiresAt`
+// (sourced only from `decision.evidence.expiresAt`, itself sourced only
+// from Phase 8's own `record.expires_at` read -- see that module's
+// header for the full provenance chain). This module now performs the
+// FINAL freshness check, immediately before any `preflight_ready` result
+// can be produced: it parses `authorizationExpiresAt` and the
+// caller-supplied `evaluatedAt` to concrete instants (via `Date`/
+// `getTime()` -- never raw string comparison, so differently-formatted
+// but equivalent timezone offsets compare correctly) and requires
+// STRICTLY `evaluatedAt < authorizationExpiresAt`. Authority ends AT the
+// expiry instant -- an `evaluatedAt` exactly equal to the expiry is
+// treated as expired, not fresh (`<`, never `<=`). An authorization that
+// was valid when Phase 8/9 ran can therefore still correctly fail here
+// if enough real time has passed by the moment Phase 12 is evaluated --
+// an old, otherwise-flawless contract/destination/adapter chain does NOT
+// remain execution-eligible forever merely because those artifacts still
+// exist in memory. `authorizationExpiresAt` itself is re-validated as a
+// parseable timestamp here too (defence-in-depth -- Phase 9 already
+// guarantees this, but this module never blindly trusts an upstream
+// guarantee without its own check, per this chain's standing discipline);
+// unparseable -> fail closed, never treated as "no expiry."
+//
+// TRUSTED CURRENT-TIME SOURCE (Phase 13B hardening -- closes a
+// prospective trust-boundary gap identified by architect audit before
+// any production caller existed): the instant compared against
+// `authorizationExpiresAt` is now obtained INTERNALLY, via `new Date()`,
+// immediately before the freshness comparison -- it is NOT a function
+// parameter, and NO caller of the exported `evaluateExecutionPreflight`
+// can supply, substitute, replay, or backdate it. There is no
+// `evaluatedAt`/`currentTime`/`now` field anywhere on
+// `ExecutionDispatchRequest`, `ProviderNeutralDispatchContract`,
+// `DestinationReference`, `ProviderAdapter`, or any other type in this
+// chain, and this module reads the current time from nowhere else --
+// not the database, not a provider, not a request payload, not an
+// environment variable, not adapter metadata, not persisted contract
+// data. The only production entry point is the exported function itself;
+// there is no alternate "unsafe"/"withClock"/"-at" variant that accepts
+// an arbitrary instant. Deterministic testing is achieved by controlling
+// Node's own runtime clock (`node:test`'s built-in `context.mock.timers`
+// with `apis: ["Date"]`) around calls to the SAME production function --
+// never by reopening a caller-supplied-time code path.
+//
+// NO REAUTHORISATION: when an authorization has expired, this module
+// simply fails closed -- it never creates a new authorization, extends
+// the expiry, refreshes it, re-authorises automatically, regenerates a
+// contract, or reruns human approval/consent. A future, separately
+// authorised, explicit workflow is the only path back to a fresh
+// authorization.
 //
 // EXECUTION INTENT ENVELOPE, NOT PROOF OF EXECUTION: a `preflight_ready`
 // result means "FEH has assembled a mutually consistent, preflight-
@@ -121,6 +156,8 @@ export type ExecutionIntentEnvelope = {
   readonly destination: string;
   readonly adapterKind: string;
   readonly policyVersion: string;
+  /** The Phase 7 canonical, authoritative expiry, sourced from the verified contract.authorizationExpiresAt and preserved exactly -- never calculated, extended, or caller-supplied. Present only when freshness was proven at preflight time. */
+  readonly authorizationExpiresAt: string;
   readonly preflightEvaluatedAt: string;
   /** Always the literal `false`. A preflight-ready intent is not evidence anything was sent. */
   readonly executionPerformed: false;
@@ -144,22 +181,29 @@ function isPositiveInteger(value: number | null | undefined): boolean {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
+/** Structural validity only -- non-empty after trim, parses to a concrete instant via Date. Never interprets what that instant means (that happens in the freshness comparison itself). */
+function isUsableTimestamp(value: string | null | undefined): boolean {
+  if (value == null || value.trim().length === 0) return false;
+  return !Number.isNaN(new Date(value).getTime());
+}
+
 /**
- * Pure and synchronous. Never performs I/O, never mutates `contract`,
- * `destinationEnvelope`, or `adapter`, and NEVER calls
- * `adapter.execute()` -- this function runs strictly before execution and
- * only inspects `adapter.channel`/`adapter.kind`. Every check is
- * independent and fail-closed: the first failing condition determines
- * the result, and no later or otherwise-positive signal can undo an
- * earlier failure. Any unexpected internal exception (e.g. a caller
- * supplying an object whose property access itself throws) is caught and
- * mapped to `evaluation_failed` rather than propagating.
+ * Pure aside from one deliberate, narrow exception: internally reading
+ * the current instant via `new Date()` for the freshness comparison --
+ * see "TRUSTED CURRENT-TIME SOURCE" above. Never performs I/O, never
+ * mutates `contract`, `destinationEnvelope`, or `adapter`, and NEVER
+ * calls `adapter.execute()` -- this function runs strictly before
+ * execution and only inspects `adapter.channel`/`adapter.kind`. Every
+ * check is independent and fail-closed: the first failing condition
+ * determines the result, and no later or otherwise-positive signal can
+ * undo an earlier failure. Any unexpected internal exception (e.g. a
+ * caller supplying an object whose property access itself throws) is
+ * caught and mapped to `evaluation_failed` rather than propagating.
  */
 export function evaluateExecutionPreflight(
   contract: ProviderNeutralDispatchContract | null,
   destinationEnvelope: ResolvedDestinationEnvelope | null,
   adapter: ProviderAdapter | null,
-  evaluatedAt: Date,
 ): ExecutionPreflightResult {
   try {
     const reasons: string[] = [];
@@ -167,10 +211,6 @@ export function evaluateExecutionPreflight(
     function blocked(status: "blocked" | "evaluation_failed", reason: string): ExecutionPreflightResult {
       reasons.push(reason);
       return { status, intent: null, reasons, executionPerformed: false };
-    }
-
-    if (Number.isNaN(evaluatedAt.getTime())) {
-      return blocked("blocked", "evaluatedAt is not a valid timestamp.");
     }
 
     if (!contract) {
@@ -208,6 +248,9 @@ export function evaluateExecutionPreflight(
     }
     if (!isUsableToken(contract.policyVersion)) {
       return blocked("blocked", "contract.policyVersion is missing, blank, or exceeds the usable length bound.");
+    }
+    if (!isUsableTimestamp(contract.authorizationExpiresAt)) {
+      return blocked("blocked", "contract.authorizationExpiresAt is missing, blank, or not a parseable timestamp.");
     }
 
     // Structural validity: the destination envelope.
@@ -286,6 +329,24 @@ export function evaluateExecutionPreflight(
       return blocked("blocked", "Supplied adapter is not FEH's approved registered adapter for this channel -- refusing to trust an unverified adapter object.");
     }
 
+    // Final freshness/expiry check (Phase 13 hardening): the current
+    // instant is obtained HERE, internally, immediately before the
+    // comparison -- see "TRUSTED CURRENT-TIME SOURCE" in the module
+    // header. Compares actual parsed instants, never raw timestamp
+    // strings, so timezone-equivalent offsets compare correctly.
+    // Authority ends AT the expiry instant -- strictly less-than, never
+    // less-than-or-equal. No commercial signal, destination data, adapter
+    // identity, or idempotency/contact/action match can override this: it
+    // is evaluated entirely independently of every check above, and none
+    // of those checks passing can substitute for freshness. No PII (the
+    // raw destination) is ever included in this reason string.
+    const evaluatedAt = new Date();
+    const authorizationExpiresAtMs = new Date(contract.authorizationExpiresAt).getTime();
+    const evaluatedAtMs = evaluatedAt.getTime();
+    if (!(evaluatedAtMs < authorizationExpiresAtMs)) {
+      return blocked("blocked", "Authorization expired.");
+    }
+
     const preflightEvaluatedAtIso = evaluatedAt.toISOString();
 
     const intent: ExecutionIntentEnvelope = Object.freeze({
@@ -300,6 +361,10 @@ export function evaluateExecutionPreflight(
       // has already been proven, so the two values are identical.
       adapterKind: approvedAdapter.kind,
       policyVersion: contract.policyVersion,
+      // Sourced from the verified contract.authorizationExpiresAt, preserved
+      // exactly -- never recalculated, extended, or caller-supplied. See
+      // module header.
+      authorizationExpiresAt: contract.authorizationExpiresAt,
       preflightEvaluatedAt: preflightEvaluatedAtIso,
       executionPerformed: false,
     });

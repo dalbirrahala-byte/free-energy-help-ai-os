@@ -23,6 +23,7 @@ function contract(overrides: Partial<ProviderNeutralDispatchContract> = {}): Pro
     humanApprovalState: "approved",
     outreachEligibilityStatus: "eligible_for_handoff",
     contractCreatedAt: CONTRACT_CREATED_AT,
+    authorizationExpiresAt: "2026-08-30T10:00:00.000Z",
     executionPerformed: false,
     ...overrides,
   });
