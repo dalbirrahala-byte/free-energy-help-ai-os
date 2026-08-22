@@ -1,0 +1,188 @@
+-- Factory 041 Phase 16B.2b-5a: execution-authorization identity/provenance
+-- linkage.
+--
+-- WHY THIS EXISTS: the Phase 16B.2b-5 architecture preflight (and its
+-- correction gate) established that a future intent-based
+-- create_execution_authorization() Shape A rewrite needs public.
+-- execution_authorizations to reference the immutable execution intent
+-- it authorises and the exact execution_authoriser grant incarnation
+-- relied upon, rather than accepting caller-supplied action_id/
+-- contact_id/requested_channel/source_id/campaign_id directly. This
+-- migration adds ONLY those two reference columns and one supporting
+-- index -- the smallest additive step the correction gate approved. It
+-- does not implement, rewrite, or activate anything.
+--
+-- SCOPE, DELIBERATELY NARROW: two new nullable-per-below ALTER TABLE ADD
+-- COLUMN statements and one CREATE INDEX, all against public.
+-- execution_authorizations. Nothing else. This migration does NOT
+-- modify public.execution_intents, public.execution_authorisers,
+-- public.create_execution_intent(), public.create_execution_
+-- authorization(), public.derive_destination_commitment(), or any Phase
+-- 11 destination-resolution code. It does not add consumed_at, any
+-- expiry-mutation mechanism, any partial unique index, any approval or
+-- compliance schema, any destination or content commitment persistence,
+-- any emergency-stop mechanism, any trigger, any writer function, any
+-- RLS policy, or any GRANT. No existing migration is altered.
+--
+-- EXISTING MUTATION LOCKDOWN, UNCHANGED: this migration adds columns to
+-- an existing table without touching a single one of Phase 16A's
+-- protections (20260821100000_execution_authorization_mutation_
+-- lockdown.sql). The three RLS policies that migration dropped remain
+-- dropped; the four table privileges (INSERT, UPDATE, DELETE, TRUNCATE)
+-- it revoked from anon and authenticated remain revoked; SELECT for
+-- authenticated remains exactly as that migration left it. Adding a
+-- column to a table does not by itself grant any role any new
+-- privilege on that table -- ordinary application roles receive no new
+-- direct write path of any kind from this migration.
+--
+-- COLUMN-NAME COLLISION CHECK: the full existing column list of public.
+-- execution_authorizations (id, created_at, updated_at, action_id,
+-- idempotency_key, requested_channel, authorization_status, human_
+-- approval_state, policy_version, authorised_at, expires_at, actor_id,
+-- organisation_id, contact_id, source_id, campaign_id, outreach_
+-- eligibility_status, execution_performed, execution_performed_at,
+-- execution_reference, evidence, notes -- 20260820100000...sql:132-166)
+-- contains neither execution_intent_id nor execution_authoriser_
+-- grant_id. No collision.
+--
+-- EXECUTION_INTENT_ID -- NOT NULL, JUSTIFIED BY EVIDENCE, SELF-VERIFYING
+-- AT APPLY TIME: `execution_intent_id bigint not null references
+-- public.execution_intents (id) on delete restrict`. The repository
+-- evidence supporting NOT NULL here is a STRONG INFERENCE, not a
+-- live-verified fact established in this session -- classified
+-- precisely, not overclaimed:
+--   - REPOSITORY-PROVEN FACT: 20260821100000_execution_authorization_
+--     mutation_lockdown.sql's own header (lines 44, 95) records that
+--     the live table was independently confirmed to contain zero rows
+--     at that migration's own verification.
+--   - REPOSITORY-PROVEN FACT: every deployed version of public.
+--     create_execution_authorization() contains zero INSERT statements
+--     (re-confirmed by direct inspection in the Phase 16B.2b-5
+--     correction gate, not assumed from memory).
+--   - REPOSITORY-PROVEN FACT: that same 16A migration removed every
+--     direct application-role INSERT/UPDATE/DELETE/TRUNCATE path.
+--   - STRONG INFERENCE, NOT A LIVE FACT: that the table therefore
+--     remains empty today. This follows from the three facts above but
+--     cannot rule out a privileged direct-connection actor (a
+--     service-role/postgres session via the Supabase SQL editor)
+--     manually inserting a row outside any tracked migration --
+--     repository evidence alone cannot see or exclude that.
+-- Despite that inference being unverified live, choosing NOT NULL here
+-- is safe rather than merely hopeful, for a structural reason
+-- independent of the inference's certainty: `ALTER TABLE ... ADD COLUMN
+-- execution_intent_id bigint NOT NULL ...` with no DEFAULT is, by
+-- PostgreSQL's own DDL semantics, self-verifying at the moment it is
+-- actually applied -- if any existing row were present, the ALTER
+-- TABLE statement itself would fail outright (a NOT NULL violation on
+-- the newly added column for every existing row), not silently
+-- succeed with corrupted or incorrectly-linked data. This migration
+-- cannot both apply successfully AND be wrong about the table's
+-- emptiness at the same time. This file is local-only in this phase
+-- (see "NOT APPLIED BY THIS FILE'S PRESENCE" below) and carries zero
+-- live risk regardless; the recommendation for whatever future,
+-- separately-authorised gate actually applies this migration is to
+-- perform an explicit live row-count check immediately beforehand as a
+-- matter of process discipline, even though the ALTER statement itself
+-- would fail safely without one.
+--
+-- EXECUTION_INTENT_ID DELETE ACTION: `on delete restrict`, matching the
+-- provenance-protection pattern already applied consistently throughout
+-- this Factory 041 chain (public.execution_intents.contact_id/
+-- organisation_id, public.execution_authorisers.granted_by) -- an
+-- execution intent should not be deletable while any authorization
+-- record, even an old one, still references it. public.execution_
+-- intents has no delete path today either (no writer performs DELETE),
+-- so this is defensive correctness, not an active operational concern.
+--
+-- EXECUTION_AUTHORISER_GRANT_ID -- NULLABLE, DELIBERATELY, BECAUSE THE
+-- UNDERLYING INVARIANT IS NOT YET DECIDED: `execution_authoriser_
+-- grant_id bigint references public.execution_authorisers (id) on
+-- delete restrict`. Whether EVERY successful execution authorization
+-- must always trace back to an active execution_authoriser grant --
+-- including a future policy path where human approval is classified as
+-- NOT REQUIRED for a given intent -- has not been decided or proven
+-- anywhere in this repository's approved architecture. The Phase
+-- 16B.2b-5 preflight established that approval-REQUIREMENT is intent-
+-- specific and policy-determined, but never established whether
+-- AUTHORIZATION ITSELF (the act of creating an execution_authorizations
+-- row) always requires some underlying execution_authoriser capability
+-- independent of whether a human click was needed for that specific
+-- intent. Human-approval requirement and execution-authorisation
+-- authority are explicitly not assumed to be the same thing here.
+-- Making this column NOT NULL would silently assert an answer to that
+-- open policy question that no prior gate has actually decided --
+-- exactly the kind of invented policy this migration is authorised not
+-- to build. It is therefore left nullable in this additive phase; the
+-- question of whether it should later become NOT NULL (for all
+-- authorizations, or only for a specific policy-determined subset) is
+-- deferred to whichever future gate actually designs the approval-
+-- policy-scope mechanism referenced in the Phase 16B.2b-5 preflight.
+--
+-- EXECUTION_AUTHORISER_GRANT_ID DELETE ACTION: `on delete restrict`,
+-- for the same provenance-protection reasoning as execution_intent_id
+-- above, and consistent with public.execution_authorisers' own
+-- granted_by column using the identical action for the identical
+-- reason (20260821120000...sql:152-176). In practice this is close to
+-- moot: no writer of any kind exists anywhere in this schema that
+-- deletes an execution_authorisers row -- rows are only ever revoked
+-- (a column update), never removed.
+--
+-- INDEX -- PLAIN ONLY, NO UNIQUE OR PARTIAL UNIQUE INDEX: a single
+-- plain btree index on execution_intent_id is added, for the join-
+-- lookup direction (from an intent to its authorizations). No unique
+-- or partial unique index of any kind is added in this migration. The
+-- Phase 16B.2b-5 correction gate established that `authorization_
+-- status` already includes 'expired' as a permitted CHECK value
+-- (20260820100000...sql:195-196) but that NO mechanism anywhere in
+-- this schema currently performs the authorised -> expired transition
+-- -- confirmed by the same zero-INSERT inspection cited above (nothing
+-- exists that could write ANY status transition at all, since nothing
+-- writes to this table yet). A partial unique index of the shape
+-- `unique (execution_intent_id) where authorization_status =
+-- 'authorised'` would therefore make future authorization availability
+-- depend on a maintenance mechanism that does not yet exist: an
+-- authorization whose expires_at has passed but which is never
+-- explicitly transitioned to 'expired' would remain 'authorised' in
+-- stored data indefinitely, and such an index would then permanently
+-- block any future reauthorization attempt for that same execution_
+-- intent_id. Deferred, per the correction gate's own explicit
+-- direction, until the expiry/consumption-transition mechanism is
+-- actually built -- at which point it can be added additively, in the
+-- same or an immediately following migration. Until then, the "at most
+-- one currently-valid authorization per intent" invariant must be
+-- enforced by the future Shape A writer's own pre-check logic, not by
+-- a database constraint whose safety depends on an unbuilt mechanism.
+--
+-- CONSUMED_AT DELIBERATELY NOT ADDED: consumption belongs to the future
+-- authorization lifecycle/expiry/replay phase and must be designed
+-- together with its own mutation mechanism, per this phase's explicit
+-- scope refinement -- not appended here as an unused placeholder
+-- column.
+--
+-- SAFE / IDEMPOTENT: ALTER TABLE ... ADD COLUMN IF NOT EXISTS and
+-- CREATE INDEX IF NOT EXISTS are both safe to rerun.
+--
+-- NOT APPLIED BY THIS FILE'S PRESENCE: created for local review only,
+-- per the Phase 16B.2b-5a authorisation. Must NOT be run against
+-- Supabase, staged, committed, or pushed until a separate, explicit
+-- authorisation is given.
+
+alter table public.execution_authorizations
+  add column if not exists execution_intent_id bigint not null
+    references public.execution_intents (id) on delete restrict;
+
+alter table public.execution_authorizations
+  add column if not exists execution_authoriser_grant_id bigint
+    references public.execution_authorisers (id) on delete restrict;
+
+create index if not exists execution_authorizations_execution_intent_id_idx
+  on public.execution_authorizations (execution_intent_id);
+
+-- ROLLBACK (documented, not executed): the table is evidenced empty
+-- (see header) and this migration adds no NOT NULL column lacking a
+-- safe drop path -- dropping either added column, or the index, would
+-- not lose any data no other component depends on, since no writer,
+-- RLS policy, or application code references either column yet.
+-- drop index if exists public.execution_authorizations_execution_intent_id_idx;
+-- alter table public.execution_authorizations drop column if exists execution_authoriser_grant_id;
+-- alter table public.execution_authorizations drop column if exists execution_intent_id;
