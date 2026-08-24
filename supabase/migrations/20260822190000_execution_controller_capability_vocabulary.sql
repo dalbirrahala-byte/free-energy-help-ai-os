@@ -1,0 +1,152 @@
+-- Factory 041 Phase 16B.2b-5o: emergency-controller capability schema
+-- foundation.
+--
+-- WHY THIS EXISTS: the Phase 16B.2b-5n actor-authority preflight
+-- established and the Lead Architect approved an asymmetric authority
+-- model for the future emergency stop/release writers -- STOP requires
+-- only the existing `admin` role; RELEASE additionally requires an
+-- active, specifically-granted capability distinct from `admin` status
+-- alone and distinct from the existing `execution_authoriser` capability
+-- (per the Phase 16B.2b-5n "SEPARATION FROM EXECUTION-AUTHORISER / HUMAN
+-- APPROVAL" analysis: emergency-controller authority, execution-
+-- authoriser capability, and per-action human approval are three
+-- orthogonal concepts, none inferable from another). This migration
+-- builds exactly the smallest schema change that new capability needs to
+-- exist as a storable value -- nothing else.
+--
+-- PREFLIGHT -- EXISTING CONSTRAINT INSPECTED FRESH FROM THE REPOSITORY,
+-- NOT FROM MEMORY: public.execution_authorisers (20260821120000_
+-- execution_authoriser_provenance_foundation.sql:226-243) defines
+-- `capability text not null check (capability in ('execution_
+-- authoriser'))` (that file's own lines 230-231) as an INLINE,
+-- UNNAMED column-level CHECK constraint -- no `constraint <name>`
+-- clause appears anywhere in its definition. PostgreSQL's own
+-- deterministic naming convention for an unnamed single-column CHECK
+-- constraint is `<table>_<column>_check`, so this constraint's
+-- system-assigned name is `execution_authorisers_capability_check`.
+-- This migration targets exactly that name via a bare `DROP CONSTRAINT`
+-- (no `IF EXISTS`), followed by re-adding the constraint under that same
+-- name -- ensuring this remains recognisable as a widening of the one
+-- original constraint, not the addition of a second, differently-named
+-- one.
+--
+-- FAIL-CLOSED ON SCHEMA DRIFT, PER THE PHASE 16B.2b-5o-R1 ARCHITECT
+-- CORRECTION: an earlier draft of this migration used `DROP CONSTRAINT
+-- IF EXISTS`, reasoning that this made the statement safe to rerun
+-- regardless of whether the derived name was exactly right. The
+-- architect correction identified that this reasoning traded away
+-- something more important than rerun-convenience: `IF EXISTS` would
+-- also silently tolerate the constraint being unexpectedly ABSENT for
+-- any other reason -- a prior manual change, a partially-applied prior
+-- migration, or any other form of schema drift -- and simply proceed to
+-- ADD a brand-new constraint regardless, without ever confirming the
+-- expected restrictive prerequisite it is meant to be widening actually
+-- existed. For an authority-defining security boundary, that silent
+-- tolerance is precisely the wrong default: this migration must instead
+-- PROVE its assumed starting schema state is real by letting PostgreSQL
+-- abort loudly (a "constraint ... does not exist" error) if the named
+-- constraint cannot be found, rather than quietly continuing as though
+-- nothing were wrong. Ordinary rerun-after-successful-application
+-- remains unaffected by this change: once this migration has been
+-- applied once, the constraint exists again (under the same name, via
+-- the ADD statement below), so a subsequent rerun's DROP still succeeds
+-- normally -- only the genuinely abnormal case (the constraint being
+-- unexpectedly missing) now fails loudly instead of being silently
+-- absorbed.
+--
+-- EXISTING GRANTS UNAFFECTED, CONFIRMED STRUCTURALLY: the live-equivalent
+-- checkpoint most recently reconfirmed in the Phase 16B.2b-5j gate
+-- recorded public.execution_authorisers as holding zero rows. Regardless
+-- of row count, this migration's own DDL guarantees safety independent
+-- of that fact: PostgreSQL re-validates every existing row against a
+-- newly ADDed CHECK constraint, and the new constraint's vocabulary is a
+-- strict superset of the old one (`'execution_authoriser'` remains
+-- valid, `'execution_controller'` is newly added) -- no existing
+-- `'execution_authoriser'` row, if any existed, could ever fail this
+-- specific widened check. No UPDATE, INSERT, or DELETE statement of any
+-- kind appears anywhere in this migration -- no row's data is touched.
+--
+-- SCOPE, DELIBERATELY NARROW: this migration performs exactly one DROP
+-- CONSTRAINT and one ADD CONSTRAINT, both against the existing
+-- public.execution_authorisers table's existing `capability` column.
+-- Nothing else. It does NOT create a table, does NOT create a writer or
+-- any other function, does NOT create a coordination-lock table, does
+-- NOT add a controller_grant_id or any other new column (none is
+-- required merely to widen this CHECK constraint -- adding one now would
+-- be exactly the scope expansion the Phase 16B.2b-5o authorisation
+-- prohibits), does NOT insert, update, or delete any data, does NOT
+-- create any execution_controller grant row, does NOT change any RLS
+-- policy, does NOT change any GRANT or REVOKE, does NOT perform a
+-- bootstrap RELEASE or any emergency-state mutation, and does NOT touch
+-- public.execution_control_events, public.evaluate_execution_emergency_
+-- stop(), or any other existing migration.
+--
+-- INDEX UNAFFECTED, CONFIRMED: execution_authorisers_active_grant_idx
+-- (`unique (user_id, capability) where revoked_at is null`,
+-- 20260821120000...sql:255-257) is generic over the capability column's
+-- VALUE -- its own definition names no specific capability string, so it
+-- automatically extends to cover 'execution_controller' grants exactly
+-- as it already covers 'execution_authoriser' ones, with zero
+-- modification required. This migration does not touch that index.
+--
+-- SECURITY INVARIANT -- THE TWO CAPABILITIES REMAIN INDEPENDENT, NO
+-- INFERENCE OF ONE FROM THE OTHER: this migration widens ONLY which
+-- literal string values the `capability` column may store. It creates no
+-- trigger, function, default, or any other mechanism that would grant,
+-- derive, upgrade, or map between 'execution_authoriser' and
+-- 'execution_controller' -- holding one implies nothing whatsoever about
+-- holding the other. A user with an active 'execution_authoriser' grant
+-- and no 'execution_controller' grant remains exactly as unable to issue
+-- a RELEASE as a user with neither; a user with an active
+-- 'execution_controller' grant and no 'execution_authoriser' grant
+-- remains exactly as unable to authorise an individual execution as a
+-- user with neither. Each capability continues to require its own,
+-- entirely separate grant row.
+--
+-- NO WRITER, STILL: no function of any kind exists anywhere in this
+-- schema that can insert, update, or "revoke" a public.
+-- execution_authorisers row, for either capability value -- the Phase
+-- 16B.2a-established bootstrap gap (only a privileged direct-connection
+-- actor could write a row) remains completely unchanged by this
+-- migration. Granting or revoking 'execution_controller' is no more or
+-- less possible through any application-reachable path after this
+-- migration than granting or revoking 'execution_authoriser' already
+-- was before it.
+--
+-- SAFE TO RERUN AFTER SUCCESSFUL APPLICATION, DELIBERATELY NOT SAFE
+-- AGAINST AN UNEXPECTEDLY MISSING PREREQUISITE: per "FAIL-CLOSED ON
+-- SCHEMA DRIFT" above, the DROP CONSTRAINT statement below is no longer
+-- guarded by `IF EXISTS`. A normal rerun (this migration having already
+-- been applied once, successfully) still succeeds, since the constraint
+-- exists again under the same name after the ADD statement below. A
+-- rerun against a database where the named constraint is missing for any
+-- other reason will now correctly abort with an error, rather than
+-- silently proceeding -- this is the intended behaviour for this
+-- security boundary, not a defect. ADD CONSTRAINT alone is, as always in
+-- PostgreSQL, not guarded by an IF NOT EXISTS clause either; this
+-- migration is expected to run at most once per environment under
+-- normal operation, matching every other migration in this repository's
+-- own convention.
+--
+-- NOT APPLIED BY THIS FILE'S PRESENCE: created for local review only, per
+-- the Phase 16B.2b-5o authorisation. Must NOT be run against Supabase,
+-- staged, committed, or pushed until a separate, explicit authorisation
+-- is given.
+
+alter table public.execution_authorisers
+  drop constraint execution_authorisers_capability_check;
+
+alter table public.execution_authorisers
+  add constraint execution_authorisers_capability_check
+    check (capability in ('execution_authoriser', 'execution_controller'));
+
+-- ROLLBACK (documented, not executed): reverts to the original,
+-- narrower vocabulary. Safe only if no 'execution_controller' row has
+-- been inserted since this migration was applied -- since no writer
+-- exists anywhere to insert one (see "NO WRITER, STILL" above), this
+-- precondition holds for as long as that remains true.
+-- alter table public.execution_authorisers
+--   drop constraint if exists execution_authorisers_capability_check;
+-- alter table public.execution_authorisers
+--   add constraint execution_authorisers_capability_check
+--     check (capability in ('execution_authoriser'));
