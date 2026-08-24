@@ -1,0 +1,195 @@
+-- Factory 041 Phase 16B.2b-5q: RELEASE controller-grant provenance
+-- foundation.
+--
+-- WHY THIS EXISTS: the Phase 16B.2b-5n actor-authority preflight
+-- (architect-approved) established an asymmetric authority model for the
+-- future stop_execution()/release_execution() writers -- STOP requires
+-- only the existing `admin` role; RELEASE additionally requires an
+-- active, unrevoked `execution_controller` capability grant. That same
+-- preflight identified that a future RELEASE event must be able to name
+-- the EXACT grant row it relied upon, not merely "some active grant this
+-- user held at some point" -- matching the identical "name the exact
+-- grant incarnation" discipline already applied to public.execution_
+-- authorizations.execution_authoriser_grant_id (20260822120000...sql).
+-- This migration adds exactly that one reference column and its index --
+-- the smallest additive step. It does not implement, wire, or activate
+-- anything.
+--
+-- PRECHECK -- GRANT TABLE PK SHAPE CONFIRMED FRESH FROM THE REPOSITORY,
+-- NOT FROM MEMORY: public.execution_authorisers (20260821120000_
+-- execution_authoriser_provenance_foundation.sql:226-243) has `id bigint
+-- generated always as identity primary key` -- a single, stable,
+-- immutable surrogate identifier for one grant row, entirely independent
+-- of (user_id, capability) or any timestamp. This is not incidental: that
+-- migration's own header records that an `id` column was added
+-- specifically, in a Phase 16B.2a remediation round, because "a future
+-- execution-approval provenance record must be able to name the EXACT
+-- grant incarnation that established authority at the relevant time, not
+-- merely 'some grant of this capability to this user, at approximately
+-- this time'" (20260821120000...sql:78-97). This migration is precisely
+-- that anticipated future consumer. A simple, direct `references public.
+-- execution_authorisers (id)` foreign key is therefore fully sufficient
+-- and structurally safe -- no composite key, no timestamp-tuple
+-- encoding, and no grant-table redesign is required or attempted.
+--
+-- PRECHECK -- execution_control_events CONFIRMED TO CARRY NO EXISTING
+-- GRANT-REFERENCE COLUMN: public.execution_control_events (20260822180000_
+-- execution_emergency_stop_foundation.sql) currently has exactly six
+-- columns -- id, created_at, event_type, actor_id, reason, evidence_
+-- reference -- confirmed by direct re-inspection; none references public.
+-- execution_authorisers in any way. No collision, no prior partial
+-- attempt to add this column exists anywhere in this repository's
+-- migration history (confirmed by direct grep for "controller_grant_id"
+-- across every tracked migration -- the only prior mentions are
+-- explicit "does NOT add this yet" statements in the immediately
+-- preceding Phase 16B.2b-5o/5p migrations, not an actual column).
+--
+-- PROVENANCE-FK PATTERN, MATCHED TO NEARBY FACTORY 041 PRECEDENT:
+-- mirrors public.execution_authorizations.execution_authoriser_grant_id
+-- (20260822120000...sql:174-176) almost exactly -- a nullable `bigint`
+-- FK to public.execution_authorisers (id), `on delete restrict`. The one
+-- deliberate difference from that specific precedent is this column's
+-- own supporting index: execution_authoriser_grant_id was NOT given its
+-- own index in that migration, but the two Factory 041 provenance-FK
+-- additions since (execution_authorizations.execution_intent_id_idx,
+-- 20260822120000...sql, and execution_authorizations.compliance_
+-- decision_id_idx, 20260822160000...sql) both were -- the more recent,
+-- now-dominant convention. This migration follows the more recent,
+-- now-dominant convention and adds one.
+--
+-- REQUIRED SHAPE -- NULLABLE, BECAUSE STOP EVENTS ARE EXPECTED TO NEVER
+-- POPULATE IT: `controller_grant_id bigint references public.
+-- execution_authorisers (id) on delete restrict`, no NOT NULL, no
+-- DEFAULT. Per the Phase 16B.2b-5n approved authority model, a STOP
+-- event requires only the `admin` role -- no capability grant of any
+-- kind is checked or relied upon for STOP.
+--
+-- SCHEMA CAPABILITY VS. FUTURE WRITER ENFORCEMENT -- NOT CONFLATED, PER
+-- THE PHASE 16B.2b-5q-R1 ARCHITECT CORRECTION: an earlier draft of this
+-- documentation stated that "every future STOP row will correctly leave
+-- this column null" and that "only a RELEASE row... will ever populate
+-- it," phrased as though this migration's schema alone already
+-- guaranteed that behaviour. It does not, and this migration makes no
+-- such claim. This nullable column, on its own, permits ANY row --
+-- STOP or RELEASE alike -- to carry a null or a populated
+-- controller_grant_id; nothing in this schema constrains which. The
+-- actual invariant this chain intends -- STOP rows carry a null
+-- controller_grant_id; RELEASE rows carry the exact, internally-
+-- resolved, currently-active `execution_controller` grant id relied
+-- upon -- is, and remains, entirely the responsibility of the future
+-- trusted stop_execution()/release_execution() writers to enforce at
+-- INSERT time, not something this migration's schema shape proves or
+-- guarantees by itself. No CHECK constraint tying this column's
+-- nullability to event_type is added in this migration -- that
+-- cross-column invariant is deliberately left for those future writers
+-- to enforce procedurally, matching this chain's own established
+-- discipline of not building a constraint whose correctness would
+-- depend on the not-yet-built writer that is the only thing capable of
+-- satisfying it consistently (the identical reasoning already applied
+-- to deferring a partial-unique-index on execution_authorizations.
+-- authorization_status in the Phase 16B.2b-5 correction gate), and is
+-- not added here without separate Lead Architect authorisation.
+--
+-- ON DELETE RESTRICT, MATCHING EVERY OTHER GRANT-REFERENCE FK IN THIS
+-- CHAIN: identical reasoning to public.execution_authorizations.
+-- execution_authoriser_grant_id's own `on delete restrict`
+-- (20260822120000...sql:121-128) -- a grant row that a RELEASE event has
+-- relied upon, even a long-superseded or since-revoked one, must never
+-- become deletable, since doing so would silently destroy the exact
+-- provenance fact this column exists to preserve. public.
+-- execution_authorisers has no DELETE path anywhere in this schema
+-- today either (rows are only ever revoked, a column update on a future
+-- writer's part, never removed), so this is defensive correctness
+-- matching established convention, not an active operational concern.
+--
+-- INDEX -- PLAIN, PARTIAL ON NOT NULL, MATCHING THE NULLABLE-OPTIONAL-FK
+-- PRECEDENT: `execution_control_events_controller_grant_id_idx ... where
+-- controller_grant_id is not null`, mirroring public.compliance_
+-- decisions_execution_intent_id_idx's own identical partial-index shape
+-- for a comparably nullable, optional-traceability FK
+-- (20260822140000...sql) -- more apt precedent here than the two NOT
+-- NULL FK indexes cited above, since this column, unlike those two, is
+-- genuinely optional on a majority of rows (every STOP row will always
+-- leave it null). No unique or partial-unique index of any kind is
+-- added -- uniqueness is not a property this column needs to express (a
+-- single execution_authorisers grant row could, in principle, be relied
+-- upon by more than one RELEASE event over its active lifetime, though
+-- in practice a grant remains active across at most a small number of
+-- future RELEASE calls before either being revoked or the system
+-- remaining released).
+--
+-- SECURITY INVARIANT -- PROVENANCE ONLY, GRANTS NO AUTHORITY BY ITSELF,
+-- NO LIVE-VERIFICATION SHORTCUT: this column exists purely to record,
+-- after the fact, which grant row a completed RELEASE relied upon -- it
+-- is not, and must never become, a substitute for live re-verification.
+-- A future release_execution() writer must independently confirm, at the
+-- moment of the call, that the referenced (or about-to-be-referenced)
+-- grant is currently active (revoked_at is null) -- this column's mere
+-- presence or population proves nothing about CURRENT grant liveness on
+-- its own, only that a grant with this id existed and was relied upon
+-- AT THE TIME the referencing row was inserted. No trigger, function,
+-- default, or other mechanism in this migration infers, derives,
+-- upgrades, or automatically populates this column from anything --
+-- consistent with the Phase 16B.2b-5o security invariant that
+-- `execution_authoriser` and `execution_controller` remain independent
+-- capabilities, and consistent with this entire chain's "derive live,
+-- never trust a caller-supplied or previously-recorded authority fact"
+-- discipline.
+--
+-- SCOPE, DELIBERATELY NARROW: this migration performs exactly one ALTER
+-- TABLE ADD COLUMN and one CREATE INDEX, both against the existing
+-- public.execution_control_events table. Nothing else. It does NOT
+-- create stop_execution(), release_execution(), any other writer, any
+-- trigger, or any provider/network execution logic. It does NOT create
+-- an execution_controller grant row or any other data. It does NOT
+-- modify public.execution_control_lock, does NOT change any emergency
+-- state, does NOT alter any RLS policy, and does NOT alter any
+-- privilege/grant of any kind -- adding a nullable column to an existing
+-- table grants no new privilege to any role by itself, and Phase
+-- 16B.2b-5m's RLS-enabled/zero-policy/explicit-revoke posture on public.
+-- execution_control_events remains completely untouched. No existing
+-- migration is altered.
+--
+-- FAIL-CLOSED ON UNEXPECTED PRE-EXISTENCE, MATCHING THE PHASE
+-- 16B.2b-5o-R1/5p-R1 PRECEDENT, PER THE PHASE 16B.2b-5q-R1 ARCHITECT
+-- CORRECTION: an earlier draft used `ADD COLUMN IF NOT EXISTS` and
+-- `CREATE INDEX IF NOT EXISTS`, reasoning that this was an ordinary
+-- additive change on an already-secured table rather than a brand-new
+-- security-boundary object, and so did not need the fail-loud treatment
+-- already applied to the Phase 16B.2b-5o/5p corrections. The architect
+-- correction identified that this column and index ARE themselves a new
+-- security/provenance schema object -- the one place a future RELEASE's
+-- exact relied-upon grant will be recorded -- and the same reasoning
+-- applies: if `controller_grant_id` or its index unexpectedly already
+-- existed under these names, silently accepting whatever their prior,
+-- unverified definition happened to be would be exactly the wrong
+-- default for a provenance-critical column. Both statements below are
+-- therefore unguarded (`ADD COLUMN controller_grant_id`, `CREATE INDEX
+-- execution_control_events_controller_grant_id_idx`, neither with `IF
+-- NOT EXISTS`) -- PostgreSQL will abort loudly ("column ... already
+-- exists" / "relation ... already exists") if either name is already
+-- taken, rather than silently proceeding on an unverified assumption.
+-- This migration is expected to run at most once per environment, like
+-- every other migration in this repository -- the difference here is
+-- that a genuinely abnormal rerun now fails loudly instead of being
+-- silently absorbed.
+--
+-- NOT APPLIED BY THIS FILE'S PRESENCE: created for local review only, per
+-- the Phase 16B.2b-5q authorisation. Must NOT be run against Supabase,
+-- staged, committed, or pushed until a separate, explicit authorisation
+-- is given.
+
+alter table public.execution_control_events
+  add column controller_grant_id bigint
+    references public.execution_authorisers (id) on delete restrict;
+
+create index execution_control_events_controller_grant_id_idx
+  on public.execution_control_events (controller_grant_id)
+  where controller_grant_id is not null;
+
+-- ROLLBACK (documented, not executed): no writer, trigger, or
+-- application code references this column yet, so dropping it would
+-- lose no data (the table is evidenced empty per every prior checkpoint
+-- in this chain) and break nothing.
+-- drop index if exists public.execution_control_events_controller_grant_id_idx;
+-- alter table public.execution_control_events drop column if exists controller_grant_id;
