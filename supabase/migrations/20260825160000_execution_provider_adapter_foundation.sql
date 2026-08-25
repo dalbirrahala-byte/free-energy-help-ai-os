@@ -74,10 +74,10 @@
 -- NO ROW INSERTED, DEPLOYMENT LEAVES ZERO USABLE ADAPTERS: this
 -- migration contains no INSERT statement of any kind. RLS is enabled
 -- with zero policies, and table privileges are explicitly revoked from
--- anon/authenticated -- matching every other foundation table in this
--- chain -- so even a SELECT against this table is unreachable by any
--- application role. Population and approval of any adapter row is
--- entirely deferred to a future, separately-authorised phase.
+-- anon, authenticated, AND service_role -- see "PRIVILEGE POSTURE"
+-- below -- so even a SELECT against this table is unreachable by any
+-- role except the table owner. Population and approval of any adapter
+-- row is entirely deferred to a future, separately-authorised phase.
 --
 -- FAIL-CLOSED ON UNEXPECTED PRE-EXISTENCE: this table is part of the
 -- trusted execution-dispatch chain -- matching the established posture
@@ -86,16 +86,34 @@
 -- of these names is unexpectedly already taken, PostgreSQL aborts loudly
 -- rather than silently building on an unverified object.
 --
--- PRIVILEGE POSTURE: matching every foundation table in this chain.
--- PostgreSQL's platform-wide default-privilege rule grants full table
--- privileges to anon/authenticated/service_role automatically at CREATE
--- TABLE time -- this migration explicitly revokes from anon and
--- authenticated. service_role and the table owner are untouched,
--- matching unbroken convention for TABLES (as opposed to the mutating
--- FUNCTIONS later in this batch, which explicitly revoke from
--- service_role too -- see those migrations' own headers for why that
--- distinction is correct: a bare table grant is not itself an execution
--- boundary the way a SECURITY DEFINER function's EXECUTE privilege is).
+-- PRIVILEGE POSTURE -- TRUE DORMANCY, INCLUDING service_role, PER THE
+-- LEAD ARCHITECT'S HARDENING REVIEW: this table is part of the trusted
+-- execution boundary, not an ordinary application table -- direct
+-- application or service mutation of adapter-approval state is
+-- forbidden. The first draft of this migration revoked only anon/
+-- authenticated, reasoning that a bare table grant is not itself an
+-- execution boundary the way a SECURITY DEFINER function's EXECUTE
+-- privilege is. The architect correction identified the gap in that
+-- reasoning directly: Supabase's `service_role` BYPASSES ROW LEVEL
+-- SECURITY entirely -- "RLS enabled, zero policies" does NOT, by itself,
+-- make a table inaccessible to service_role the way it does for anon/
+-- authenticated. If service_role retained its default table privileges,
+-- any existing backend already holding service_role credentials for an
+-- unrelated purpose could directly INSERT/UPDATE/DELETE adapter-approval
+-- rows, bypassing every trusted writer this chain builds -- exactly the
+-- same deployment-vs-activation violation already corrected once for
+-- public.consume_execution_authorization() (Phase 16B.2b-6g). This
+-- migration therefore explicitly revokes ALL privileges from anon,
+-- authenticated, AND service_role below. Only the table owner
+-- (`postgres`) retains its ordinary implicit privilege, untouched,
+-- matching PostgreSQL's own ownership semantics. A future,
+-- separately-authorised activation phase grants ONLY the exact
+-- SECURITY DEFINER FUNCTION EXECUTE privileges a trusted backend
+-- worker needs (public.prepare_execution_dispatch(), etc.) -- it will
+-- NOT, and structurally cannot safely, require raw table-level access
+-- to this table at all, since every legitimate mutation path already
+-- runs through a trusted writer that itself independently re-verifies
+-- every safety gate.
 --
 -- NOT APPLIED BY THIS FILE'S PRESENCE: created for local review only, per
 -- the Phase 16B.2b-6h authorisation. Must NOT be run against Supabase,
@@ -135,6 +153,15 @@ alter table public.execution_provider_adapters enable row level security;
 -- Explicit second layer -- see "PRIVILEGE POSTURE" above.
 revoke all on public.execution_provider_adapters from anon;
 revoke all on public.execution_provider_adapters from authenticated;
+
+-- TRUE DORMANCY CORRECTION, PER THE LEAD ARCHITECT'S HARDENING REVIEW:
+-- service_role bypasses RLS entirely, so "RLS enabled, zero policies"
+-- alone does not make this table inaccessible to it -- see "PRIVILEGE
+-- POSTURE" above. Explicitly revoked here so no existing backend
+-- already holding service_role credentials for an unrelated purpose can
+-- directly mutate adapter-approval state, bypassing every trusted writer
+-- in this chain.
+revoke all on public.execution_provider_adapters from service_role;
 
 -- ROLLBACK (documented, not executed): no writer, RLS policy, or
 -- application code depends on this table, and it is inserted into

@@ -102,9 +102,26 @@
 -- expected to be a short symbolic token, not a narrative string.
 --
 -- NO ROW INSERTED, NO WRITER YET: this migration contains no INSERT
--- statement and creates no function. RLS is enabled with zero policies,
--- and table privileges are explicitly revoked from anon/authenticated --
--- matching every other foundation table in this chain.
+-- statement and creates no function.
+--
+-- PRIVILEGE POSTURE -- TRUE DORMANCY, INCLUDING service_role, PER THE
+-- LEAD ARCHITECT'S HARDENING REVIEW (applied identically to public.
+-- execution_provider_adapters, same batch): this table is part of the
+-- trusted execution boundary, not an ordinary application table --
+-- direct application or service mutation of dispatch-attempt lifecycle
+-- state is forbidden. RLS is enabled with zero policies, but
+-- Supabase's `service_role` BYPASSES ROW LEVEL SECURITY entirely, so
+-- that alone does not make this table inaccessible to it the way it
+-- does for anon/authenticated. Table privileges are therefore
+-- explicitly revoked from anon, authenticated, AND service_role below
+-- -- without the service_role revoke, any existing backend already
+-- holding service_role credentials for an unrelated purpose could
+-- directly INSERT/UPDATE a dispatch-attempt row (including its own
+-- `status`), bypassing every trusted writer this chain builds. Only the
+-- table owner (`postgres`) retains its ordinary implicit privilege,
+-- untouched. A future, separately-authorised activation phase grants
+-- ONLY the exact SECURITY DEFINER FUNCTION EXECUTE privileges a trusted
+-- backend worker needs -- never raw table-level access to this table.
 --
 -- FAIL-CLOSED ON UNEXPECTED PRE-EXISTENCE: no `IF NOT EXISTS`/`IF
 -- EXISTS` guard is used below, matching the established posture for
@@ -178,6 +195,14 @@ alter table public.execution_dispatch_attempts enable row level security;
 -- chain.
 revoke all on public.execution_dispatch_attempts from anon;
 revoke all on public.execution_dispatch_attempts from authenticated;
+
+-- TRUE DORMANCY CORRECTION, PER THE LEAD ARCHITECT'S HARDENING REVIEW:
+-- service_role bypasses RLS entirely -- see "PRIVILEGE POSTURE" above.
+-- Explicitly revoked here so no existing backend already holding
+-- service_role credentials for an unrelated purpose can directly mutate
+-- dispatch-attempt lifecycle state, bypassing every trusted writer in
+-- this chain.
+revoke all on public.execution_dispatch_attempts from service_role;
 
 -- ROLLBACK (documented, not executed): no writer, RLS policy, or
 -- application code depends on this table, and it is inserted into
