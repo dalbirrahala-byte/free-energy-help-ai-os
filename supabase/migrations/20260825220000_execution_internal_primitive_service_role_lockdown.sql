@@ -1,0 +1,140 @@
+-- Factory 041 Phase 17A.1: legacy service_role EXECUTE removal from
+-- internal Factory 041 primitives -- privilege reduction only.
+--
+-- WHY THIS EXISTS: the Phase 17A execution_dispatch_worker foundation's
+-- own investigation found that three internal, read-only Factory 041
+-- primitives -- public.evaluate_execution_emergency_stop(), public.
+-- evaluate_suppression_live(bigint), public.verify_destination_
+-- commitment(bigint, text, uuid, bytea) -- still carry a `service_
+-- role=X/postgres` grant, confirmed live via direct pg_proc.proacl
+-- query. This predates, and is inconsistent with, the "true dormancy
+-- including service_role" posture this chain adopted starting at public.
+-- consume_execution_authorization() (Phase 16B.2b-6g) and applied to
+-- every function built since. This migration closes that one specific
+-- gap -- nothing else. It creates NO new authority, grants nothing to
+-- any role, and does not touch execution_dispatch_worker (Phase 17A,
+-- a separate, still-uncommitted migration) at all.
+--
+-- REQUIRED INVESTIGATION, PERFORMED FRESH BEFORE WRITING THIS FILE:
+--   1. Origin of the service_role grant, confirmed via direct inspection
+--      of each function's own creation migration
+--      (20260822150000_destination_commitment_verification_primitive.sql,
+--      20260822170000_live_suppression_evaluation_primitive.sql,
+--      20260822180000_execution_emergency_stop_foundation.sql): each
+--      contains exactly three REVOKE statements (`revoke all ... from
+--      public`, `revoke execute ... from anon`, `revoke execute ...
+--      from authenticated`) and NO revoke targeting service_role. The
+--      service_role grant was never an explicit GRANT statement anywhere
+--      in this repository -- it is Supabase's own platform-wide default
+--      privilege behaviour at CREATE FUNCTION time, left unaddressed by
+--      these three migrations because the "revoke service_role too"
+--      discipline for mutating functions did not yet exist when they
+--      were written (it was first adopted at Phase 16B.2b-6g, weeks of
+--      phases later).
+--   2. Repository-wide search (frontend/src, every *.ts/*.tsx/*.js/
+--      *.json/*.md file) for all three function names found zero
+--      callers anywhere outside their own defining SQL migrations and
+--      the SQL migrations of the higher-level boundary functions that
+--      invoke them internally. No application or runtime code
+--      constructs a service_role client anywhere in this repository
+--      (previously confirmed during Phase 17A's own investigation and
+--      reconfirmed here) and none references these three RPC names.
+--   3. No current application/runtime dependency on service_role
+--      calling any of these three primitives directly -- confirmed by
+--      (2) above: nothing outside the database itself has ever called
+--      them.
+--   4. SAFE FOR THE HIGHER-LEVEL BOUNDARY FUNCTIONS, STRUCTURALLY, NOT
+--      MERELY BY POLICY: every function that calls these three
+--      primitives internally -- public.create_execution_authorization(),
+--      public.consume_execution_authorization(), public.prepare_
+--      execution_dispatch(), public.evaluate_execution_precall_
+--      readiness(), public.stop_execution(), public.release_
+--      execution() -- is itself `security definer`, owned by `postgres`
+--      (live-confirmed via pg_proc.proowner/prosecdef immediately before
+--      writing this migration, for every one of the above plus the three
+--      primitives themselves: all eight are owned by `postgres`, all
+--      eight are `prosecdef = true`). Per PostgreSQL's own documented
+--      SECURITY DEFINER semantics, the "current user" for privilege-
+--      checking purposes inside a SECURITY DEFINER function's body is
+--      that function's OWNER for the duration of its execution -- so
+--      when e.g. public.prepare_execution_dispatch() calls public.
+--      verify_destination_commitment() internally, that call is
+--      evaluated as `postgres` calling it, never as whatever role
+--      invoked prepare_execution_dispatch() from outside. `postgres`,
+--      as the OWNER of all three primitives, always implicitly holds
+--      EXECUTE on them regardless of any GRANT/REVOKE to any other role
+--      -- ownership itself confers full privilege on the owned object,
+--      independent of ACL entries. Revoking service_role's EXECUTE
+--      therefore cannot affect any of these six boundary functions'
+--      ability to call the three primitives internally; it only removes
+--      a caller from OUTSIDE the database (something authenticating
+--      directly as service_role) from ever invoking them directly,
+--      bypassing the boundary functions' own revalidation entirely.
+--   5. Function ownership independently reconfirmed live (see point 4)
+--      -- all three primitives and all six of their callers share the
+--      identical owner (`postgres`), so the SECURITY DEFINER safety
+--      argument above holds uniformly, not selectively.
+--   6. No genuine current production caller was found anywhere that
+--      depends on the service_role grant on any of these three
+--      functions -- see points 2-3. No STOP condition applies.
+--
+-- SCOPE, DELIBERATELY NARROW -- PRIVILEGE REDUCTION ONLY: this migration
+-- contains ONLY three REVOKE statements, targeting the exact existing
+-- signatures of the three named functions, and nothing else. It does
+-- NOT use `REVOKE EXECUTE ON ALL FUNCTIONS ...` or any other broad form.
+-- It does NOT alter ownership, does NOT alter SECURITY DEFINER status,
+-- does NOT grant EXECUTE to any role as compensation (execution_
+-- dispatch_worker, once it exists, will NOT receive EXECUTE on these
+-- three either -- see Phase 17A's own "FUNCTION ACCESS" section,
+-- unchanged), does NOT create or alter any role, does NOT set a
+-- password or credential, and does NOT touch any table, index, or RLS
+-- policy. It creates NO new authority of any kind -- this migration can
+-- only ever narrow what already exists.
+--
+-- EXPECTED POST-MIGRATION STATE, ALL THREE FUNCTIONS: PUBLIC = no
+-- EXECUTE (already true before this migration); anon = no EXECUTE
+-- (already true); authenticated = no EXECUTE (already true); service_
+-- role = no EXECUTE (NEW as of this migration); execution_dispatch_
+-- worker = no EXECUTE (true by construction -- Phase 17A's own migration
+-- never grants these three to it, and this migration does not either).
+-- Their only authorised use remains internal, through the six approved
+-- SECURITY DEFINER boundary functions -- unchanged and unaffected by
+-- this migration, per point 4 above.
+--
+-- SEQUENCING NOTE: `supabase migration new` generated a timestamp
+-- (20260825175121) that would have sorted before the last-applied
+-- remote migration (20260825200000) and before Phase 17A's own still-
+-- unpushed 20260825210000 migration. Per this phase's own explicit
+-- instruction, `--include-all` was not used and nothing was pushed;
+-- the file was renamed to 20260825220000 -- the next sequential slot
+-- after Phase 17A's own migration -- restoring this repository's
+-- established same-day monotonic-timestamp convention. This is a
+-- mechanical naming correction only, documented here exactly as for the
+-- identical situation encountered while constructing Phase 17A itself.
+--
+-- SAFE / IDEMPOTENT: REVOKE of a privilege a role does not hold is a
+-- no-op in PostgreSQL -- safe to rerun.
+--
+-- NOT APPLIED BY THIS FILE'S PRESENCE: created for local review only, per
+-- the Phase 17A.1 authorisation. Must NOT be run against Supabase,
+-- staged, committed, or pushed until a separate, explicit authorisation
+-- is given.
+
+revoke execute on function public.evaluate_execution_emergency_stop(
+) from service_role;
+
+revoke execute on function public.evaluate_suppression_live(
+  bigint
+) from service_role;
+
+revoke execute on function public.verify_destination_commitment(
+  bigint, text, uuid, bytea
+) from service_role;
+
+-- ROLLBACK (documented, not executed): re-granting service_role EXECUTE
+-- on any of these three would restore the exact pre-migration state --
+-- safe at any time, since no role or code path currently depends on
+-- either state (see investigation above).
+-- grant execute on function public.verify_destination_commitment(bigint, text, uuid, bytea) to service_role;
+-- grant execute on function public.evaluate_suppression_live(bigint) to service_role;
+-- grant execute on function public.evaluate_execution_emergency_stop() to service_role;
