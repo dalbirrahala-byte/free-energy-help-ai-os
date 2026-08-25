@@ -104,27 +104,45 @@
 -- referenced anywhere in this file, matching the unbroken convention
 -- already established" -- meaning `service_role` has ALWAYS implicitly
 -- retained EXECUTE on every function in this schema, by deliberate,
--- repeatedly-reaffirmed choice, never once revoked anywhere. That
--- pre-existing, consistently-upheld anon/authenticated-vs-service_role
--- split IS this repository's already-established backend/service
--- execution boundary -- not a new concept, simply the first writer in
--- this chain to lean on it as the PRIMARY authority gate instead of an
--- internal per-call capability check. This writer therefore performs NO
--- auth.uid() capture and NO internal capability lookup of any kind --
--- its entire authority boundary, in this dormant phase, is structural:
--- REVOKE from anon/authenticated below (see "DORMANCY") makes it
--- unreachable by any browser-originated session; a FUTURE, separately-
--- authorised activation phase decides whether to grant EXECUTE to
--- `service_role` only (the natural, zero-new-schema choice, since
--- service_role already implicitly holds it) or to design a dedicated
--- capability-based gate at that time, if a stronger requirement is proven
--- then. This mirrors the SAME no-internal-actor-check posture already
--- used by this chain's own read-only primitives (evaluate_suppression_
--- live, verify_destination_commitment, evaluate_execution_emergency_
--- stop) -- the difference being those never mutate, while this writer
--- does, which is exactly why "machine execution boundary" rather than
--- "human per-action approval" is the correct classification Part C asked
--- for, not an oversight of the human-authority pattern used elsewhere.
+-- repeatedly-reaffirmed choice, never once revoked anywhere. This
+-- writer performs NO auth.uid() capture and NO internal capability
+-- lookup of any kind -- no new human capability is introduced, and none
+-- is required, because the INTENDED FUTURE caller is machine
+-- service-boundary code (a trusted backend/dispatch worker), never a
+-- browser-originated human session -- exactly the same reasoning that
+-- already justifies the no-internal-actor-check posture on this chain's
+-- own read-only primitives (evaluate_suppression_live, verify_
+-- destination_commitment, evaluate_execution_emergency_stop), the
+-- difference being those never mutate, while this writer does, which is
+-- exactly why "machine execution boundary" rather than "human per-action
+-- approval" is the correct classification Part C asked for.
+--
+-- DEPLOYED AUTHORITY GATE -- CORRECTED PER THE LEAD ARCHITECT'S POST-
+-- CONSTRUCTION HARDENING REVIEW: the first draft of this migration
+-- reasoned that leaving `service_role` unrevoked (matching every prior
+-- function in this chain) was sufficient dormancy, since `service_role`
+-- is never reachable from a browser session. The architect correction
+-- identified a real gap in that reasoning: unlike every prior writer in
+-- this chain, this function MUTATES state on the security-critical path
+-- closest to actual execution, and this project's own infrastructure may
+-- already have backend code holding `service_role` credentials for
+-- entirely unrelated purposes -- leaving `service_role` EXECUTE unrevoked
+-- would mean ANY such existing backend could invoke a live claim
+-- immediately upon this migration's deployment, with no further action
+-- required. Deployment and activation must be genuinely separate acts.
+-- This migration therefore adds an explicit `revoke execute ... from
+-- service_role` below, alongside the pre-existing PUBLIC/anon/
+-- authenticated revokes -- see "DORMANCY" below. DEPLOYED STATE: fully
+-- dormant, including `service_role` -- no role of any kind can invoke
+-- this function once this migration is applied. ACTIVATION requires a
+-- future, separately-authorised phase that explicitly `GRANT EXECUTE ...
+-- TO service_role` on this exact signature, expected once (a) provider
+-- dispatch/checkpoint #3 is ready, (b) the specific backend worker
+-- identity/path is established, and (c) end-to-end execution tests are
+-- separately approved -- not before. Owner (`postgres`) privileges are
+-- untouched, matching PostgreSQL's own ownership semantics and every
+-- prior migration in this repository -- this migration does not attempt
+-- to revoke or redesign ownership.
 --
 -- PART F -- REVALIDATION CLASSIFICATION, GATE BY GATE, EACH JUSTIFIED
 -- RATHER THAN ASSUMED:
@@ -425,16 +443,30 @@
 -- FUNCTION OWNERSHIP: no ALTER FUNCTION OWNER statement, matching every
 -- precedent function in this repository.
 --
--- DORMANCY: PostgreSQL grants EXECUTE to PUBLIC by default on every new
--- function, and this project's own default privileges separately grant
--- `authenticated` EXECUTE on every new function owned by `postgres` --
--- both are explicitly revoked below, alongside an explicit `anon`
--- revoke. No role can call this function after this migration is
--- applied. `service_role` is not referenced anywhere in this file,
--- matching the unbroken convention already established across every
--- prior function migration in this repository -- see "AUTHORITY MODEL"
--- above for why that convention is, for this writer specifically, the
--- primary authority gate itself rather than merely a dormancy mechanism.
+-- DORMANCY -- TRUE DORMANCY, INCLUDING service_role, PER THE LEAD
+-- ARCHITECT'S HARDENING REVIEW: PostgreSQL grants EXECUTE to PUBLIC by
+-- default on every new function, and this project's own default
+-- privileges separately grant `authenticated` EXECUTE on every new
+-- function owned by `postgres` -- both are explicitly revoked below,
+-- alongside an explicit `anon` revoke, matching every prior function in
+-- this repository. UNLIKE every prior function in this repository,
+-- `service_role` is ALSO explicitly revoked below -- see "DEPLOYED
+-- AUTHORITY GATE" above for why this one, single writer departs from the
+-- chain's otherwise-unbroken "service_role is never referenced" pattern:
+-- this is the first mutating writer in this chain whose intended future
+-- caller class IS service_role-equivalent backend code rather than a
+-- human browser session, so leaving service_role unrevoked here would
+-- not be dormancy at all -- any existing backend already holding
+-- service_role credentials, for any unrelated purpose, could invoke a
+-- live claim immediately upon deployment. No role of any kind -- PUBLIC,
+-- anon, authenticated, or service_role -- can call this function after
+-- this migration is applied. Only the owning role (`postgres`) retains
+-- the ordinary implicit owner privilege PostgreSQL always grants,
+-- untouched by this migration, matching PostgreSQL's own ownership
+-- semantics -- no attempt is made here to revoke or redesign ownership.
+-- Activation -- a future, separately-authorised `GRANT EXECUTE ... TO
+-- service_role` on this exact signature -- remains entirely out of scope
+-- for this migration.
 --
 -- MUTATION SURFACE: exactly one UPDATE, targeting public.execution_
 -- authorizations only, setting consumed_at alone, reached only after
@@ -616,8 +648,20 @@ revoke execute on function public.consume_execution_authorization(
   bigint
 ) from authenticated;
 
+-- TRUE DORMANCY CORRECTION, PER THE LEAD ARCHITECT'S HARDENING REVIEW:
+-- unlike every prior writer in this repository, service_role is
+-- explicitly revoked here too -- see "DEPLOYED AUTHORITY GATE" and
+-- "DORMANCY" above. This is what structurally guarantees deployment and
+-- activation are genuinely separate acts: no backend already holding
+-- service_role credentials for any unrelated purpose can invoke this
+-- function until a future, separately-authorised migration explicitly
+-- re-grants it.
+revoke execute on function public.consume_execution_authorization(
+  bigint
+) from service_role;
+
 -- ROLLBACK (documented, not executed): this function is dormant --
--- unreachable by any application role, and neither has ever been called
--- (no application role can call it, and this migration itself performs
+-- unreachable by any role, including service_role, and neither has ever
+-- been called (no role can call it, and this migration itself performs
 -- no such call) -- nothing could depend on it.
 -- drop function if exists public.consume_execution_authorization(bigint);
