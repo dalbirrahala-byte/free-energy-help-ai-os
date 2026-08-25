@@ -59,17 +59,18 @@
 // and the provider call). This is a real, permanent boundary, not a bug
 // to be fixed later.
 //
-// LIVE SUPPRESSION AT THIS EXACT BOUNDARY -- EVALUATED AND DEFERRED: the
-// DB-side `prepare_execution_dispatch()` call that must immediately
-// precede this check already re-verifies live suppression moments
-// earlier in the same logical operation. Adding a second live-suppression
-// network round trip at this exact point would itself widen the total
-// window between "last verified clear" and "provider invoked" (an extra
-// request-response cycle takes real wall-clock time), working against
-// the goal rather than for it. This module therefore checks emergency
-// state only -- the one fact Part I/J's own analysis identifies as the
-// actual near-miss race -- and documents this as a deliberate scope
-// decision, not an oversight.
+// LIVE SUPPRESSION AT THIS EXACT BOUNDARY -- SETTLED (Phase 16B.2b-6i):
+// an earlier draft of this module deferred a live-suppression re-check at
+// this boundary, reasoning that a second network round trip would itself
+// widen the window between "last verified clear" and "provider invoked."
+// The Phase 16B.2b-6i activation-readiness authorisation revisits this
+// explicitly and resolves the tension differently: rather than choosing
+// between "omit suppression" and "pay for a second round trip," a single
+// new DB primitive (public.evaluate_execution_precall_readiness(bigint),
+// 20260825200000...sql) now re-checks BOTH live suppression and emergency
+// state, server-side, inside one function call -- so this boundary gets
+// both freshness guarantees for the price of the one round trip it always
+// needed anyway. See that migration's own header for the full reasoning.
 
 import type { ContactChannel } from "../compliance/evaluateContactPermission.ts";
 import type { ProviderAdapterOutcome } from "./providerAdapter.ts";
@@ -148,49 +149,61 @@ export type ImmediateExecutionPrecallCheckpointResult = {
 };
 
 /**
- * Pure. The core "3B -- immediate pre-call gate" decision (Part J):
- * requires the freshly-read emergency state to be EXACTLY `"clear"`,
- * NULL-safe -- `null`, `undefined`, `"evaluation_failed"`, or any other
- * unrecognised value all fail closed to `"evaluation_failed"`, never
- * `"precall_ready"`. Never performs I/O; the caller is responsible for
- * obtaining `emergencyState` from the trusted DB primitive immediately
+ * Pure. The core "3B -- immediate pre-call gate" decision (Part J),
+ * SETTLED per the Phase 16B.2b-6i activation-readiness authorisation:
+ * live suppression and emergency state are now BOTH re-checked at this
+ * boundary, through a single DB round trip (public.evaluate_execution_
+ * precall_readiness(bigint)) -- see that function's own header for why
+ * one combined call was chosen over either omitting suppression or
+ * adding a second, latency-widening round trip. Requires the freshly-read
+ * combined readiness state to be EXACTLY `"clear"`, NULL-safe -- `null`,
+ * `undefined`, `"evaluation_failed"`, or any other unrecognised value all
+ * fail closed to `"evaluation_failed"`, never `"precall_ready"`. Never
+ * performs I/O; the caller is responsible for obtaining
+ * `precallReadinessState` from the trusted DB primitive immediately
  * beforehand -- see `evaluateImmediateExecutionPrecallCheckpointWithLookup`.
  */
 export function evaluateImmediateExecutionPrecallCheckpoint(
-  emergencyState: string | null | undefined,
+  precallReadinessState: string | null | undefined,
 ): ImmediateExecutionPrecallCheckpointResult {
-  if (emergencyState === "clear") {
-    return { status: "precall_ready", reason: "Emergency state is clear as of the immediate pre-call read." };
+  if (precallReadinessState === "clear") {
+    return { status: "precall_ready", reason: "Suppression and emergency state are both clear as of the immediate pre-call read." };
   }
-  if (emergencyState === "stopped") {
-    return { status: "blocked", reason: "Emergency state is stopped -- provider invocation refused." };
+  if (precallReadinessState === "blocked") {
+    return { status: "blocked", reason: "Suppression is active or emergency state is stopped -- provider invocation refused." };
   }
   return {
     status: "evaluation_failed",
-    reason: "Emergency state could not be read or returned an unrecognised value -- refusing to treat an unreadable kill-switch as clear.",
+    reason: "Precall readiness could not be read or returned an unrecognised value -- refusing to treat an unreadable signal as clear.",
   };
 }
 
 /**
- * I/O wrapper. Calls the DB's `evaluate_execution_emergency_stop()`
- * primitive -- today revoked from `anon`/`authenticated`, so this call
- * fails with a permission error under current credentials, which this
- * wrapper treats identically to any other read failure: `evaluation_failed`,
- * never `precall_ready`. This is the intended behaviour, not a defect --
- * see "PART P" of the checkpoint #3 authorisation ("do not enable this
- * route in the application yet"). Once a future, separately-authorised
- * activation phase grants EXECUTE to the calling role, this same code
- * becomes reachable with no further change.
+ * I/O wrapper. Calls the DB's `evaluate_execution_precall_readiness(bigint)`
+ * primitive -- today revoked from `anon`/`authenticated`/`service_role`,
+ * so this call fails with a permission error under current credentials,
+ * which this wrapper treats identically to any other read failure:
+ * `evaluation_failed`, never `precall_ready`. This is the intended
+ * behaviour, not a defect -- see "PART P" of the checkpoint #3
+ * authorisation ("do not enable this route in the application yet").
+ * Once a future, separately-authorised activation phase grants EXECUTE
+ * to the calling role, this same code becomes reachable with no further
+ * change. `executionAuthorizationId` is the same id carried on the
+ * `PreparedExecutionDispatchEnvelope` already obtained from `prepare_
+ * execution_dispatch()` -- never re-derived or guessed here.
  */
 export async function evaluateImmediateExecutionPrecallCheckpointWithLookup(
   supabase: SupabaseServerClient,
+  executionAuthorizationId: number,
 ): Promise<ImmediateExecutionPrecallCheckpointResult> {
-  const { data, error } = await supabase.rpc("evaluate_execution_emergency_stop");
+  const { data, error } = await supabase.rpc("evaluate_execution_precall_readiness", {
+    p_execution_authorization_id: executionAuthorizationId,
+  });
 
   if (error) {
     return {
       status: "evaluation_failed",
-      reason: "Failed to read emergency state immediately before provider invocation.",
+      reason: "Failed to read combined precall readiness (suppression + emergency state) immediately before provider invocation.",
     };
   }
 

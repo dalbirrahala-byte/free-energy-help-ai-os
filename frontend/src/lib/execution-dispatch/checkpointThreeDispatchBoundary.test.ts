@@ -47,8 +47,8 @@ test("evaluateImmediateExecutionPrecallCheckpoint: 'clear' is precall_ready", ()
   assert.equal(result.status, "precall_ready");
 });
 
-test("evaluateImmediateExecutionPrecallCheckpoint: 'stopped' is blocked", () => {
-  const result = evaluateImmediateExecutionPrecallCheckpoint("stopped");
+test("evaluateImmediateExecutionPrecallCheckpoint: 'blocked' is blocked", () => {
+  const result = evaluateImmediateExecutionPrecallCheckpoint("blocked");
   assert.equal(result.status, "blocked");
 });
 
@@ -74,10 +74,10 @@ test("evaluateImmediateExecutionPrecallCheckpoint: any unrecognised value fails 
 
 test("evaluateImmediateExecutionPrecallCheckpointWithLookup: RPC error fails closed to evaluation_failed, never precall_ready", async () => {
   const supabase = {
-    rpc: async () => ({ data: null, error: { message: "permission denied for function evaluate_execution_emergency_stop" } }),
+    rpc: async () => ({ data: null, error: { message: "permission denied for function evaluate_execution_precall_readiness" } }),
   } as unknown as Parameters<typeof evaluateImmediateExecutionPrecallCheckpointWithLookup>[0];
 
-  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase);
+  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, 1);
   assert.equal(result.status, "evaluation_failed");
 });
 
@@ -86,16 +86,16 @@ test("evaluateImmediateExecutionPrecallCheckpointWithLookup: RPC success with 'c
     rpc: async () => ({ data: "clear", error: null }),
   } as unknown as Parameters<typeof evaluateImmediateExecutionPrecallCheckpointWithLookup>[0];
 
-  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase);
+  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, 1);
   assert.equal(result.status, "precall_ready");
 });
 
-test("evaluateImmediateExecutionPrecallCheckpointWithLookup: RPC success with 'stopped' is blocked", async () => {
+test("evaluateImmediateExecutionPrecallCheckpointWithLookup: RPC success with 'blocked' is blocked", async () => {
   const supabase = {
-    rpc: async () => ({ data: "stopped", error: null }),
+    rpc: async () => ({ data: "blocked", error: null }),
   } as unknown as Parameters<typeof evaluateImmediateExecutionPrecallCheckpointWithLookup>[0];
 
-  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase);
+  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, 1);
   assert.equal(result.status, "blocked");
 });
 
@@ -104,8 +104,21 @@ test("evaluateImmediateExecutionPrecallCheckpointWithLookup: non-string RPC data
     rpc: async () => ({ data: { unexpected: "shape" }, error: null }),
   } as unknown as Parameters<typeof evaluateImmediateExecutionPrecallCheckpointWithLookup>[0];
 
-  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase);
+  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, 1);
   assert.equal(result.status, "evaluation_failed");
+});
+
+test("evaluateImmediateExecutionPrecallCheckpointWithLookup: passes executionAuthorizationId through to the RPC call, never a caller-substituted value", async () => {
+  let capturedArgs: unknown = null;
+  const supabase = {
+    rpc: async (_fn: string, args: unknown) => {
+      capturedArgs = args;
+      return { data: "clear", error: null };
+    },
+  } as unknown as Parameters<typeof evaluateImmediateExecutionPrecallCheckpointWithLookup>[0];
+
+  await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, 42);
+  assert.deepEqual(capturedArgs, { p_execution_authorization_id: 42 });
 });
 
 test("isUsablePreparedExecutionDispatchEnvelope: accepts a well-formed envelope", () => {
