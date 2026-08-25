@@ -227,6 +227,54 @@
 -- documented vocabulary is structurally unreachable given those
 -- functions' own closed return contracts).
 --
+-- NULL-SAFETY HARDENING, PER THE LEAD ARCHITECT'S POST-6f HOLD: the
+-- initial construction of this function used ordinary `<>` comparisons
+-- for the destination/suppression/emergency-state gates. In PostgreSQL,
+-- `<>` against a NULL left-hand operand evaluates to NULL, not TRUE --
+-- and `IF NULL THEN` does not execute its branch, so a security evaluator
+-- unexpectedly returning NULL would have silently passed the gate instead
+-- of blocking. All four affected comparisons (destination verification,
+-- live suppression, and both emergency-stop checkpoints) are corrected to
+-- `IS DISTINCT FROM`, which treats NULL as a genuine mismatch. The
+-- pre-existing `v_latest_approval_decision IS DISTINCT FROM 'approved'`
+-- check was already correct and is unchanged.
+--
+-- Every other comparison in this function was separately audited and is
+-- NULL-safe without modification, either by an explicit `IS NULL` check
+-- preceding it, by deriving from a PostgreSQL-guaranteed-non-NULL boolean
+-- (`EXISTS (...)`), or by structural NOT NULL proof from the referenced
+-- table's own schema:
+--   - v_actor_id, v_locked_intent_id, v_locked_grant_id: each has its own
+--     explicit `IS NULL` guard immediately after assignment.
+--   - v_has_grant: assigned from `select exists (...)`, which is defined
+--     to always return true/false, never NULL.
+--   - p_execution_intent_id: `IS NULL OR ... <= 0` -- the IS NULL
+--     disjunct makes the overall OR evaluate to TRUE regardless of the
+--     second operand when the parameter is NULL (SQL three-valued-logic
+--     OR is TRUE whenever either operand is TRUE).
+--   - v_compliance_decision, v_compliance_policy_version,
+--     v_compliance_expires_at, v_compliance_org_id, v_compliance_
+--     contact_id, v_compliance_channel: all read from public.
+--     compliance_decisions columns declared `not null` in their owning
+--     migration (20260822140000...sql: decision, policy_version,
+--     expires_at, organisation_id, contact_id, requested_channel are all
+--     `not null`). The preceding `v_compliance_id is null` check (itself
+--     safe, since a missing row leaves every selected target NULL via
+--     `select ... into`) is the only way this branch can be reached with
+--     no row found; once a row IS found, every one of these columns is
+--     schema-guaranteed populated, so `<>` against them cannot yield
+--     NULL. Left as ordinary `<>` deliberately -- rewriting to
+--     `IS DISTINCT FROM` here would be cosmetic, not a fail-closed fix,
+--     per this phase's own instruction not to rewrite already-provably-
+--     safe conditions.
+--   - v_intent_organisation_id, v_intent_contact_id, v_intent_
+--     requested_channel: read from public.execution_intents columns
+--     declared `not null` in their owning migration (20260822100000
+--     ...sql: organisation_id, contact_id, requested_channel are all
+--     `not null`), reached only after `v_locked_intent_id is null` has
+--     already been checked -- identical reasoning to the compliance
+--     columns above.
+--
 -- SEARCH_PATH AND SCHEMA QUALIFICATION: `set search_path to ''`, every
 -- security-relevant built-in explicitly pg_catalog-qualified (pg_
 -- catalog.transaction_timestamp, pg_catalog.jsonb_build_object), every
@@ -422,28 +470,28 @@ begin
     v_compliance_nonce, v_compliance_commitment
   );
 
-  if v_destination_result <> 'verified' then
+  if v_destination_result is distinct from 'verified' then
     return 'blocked';
   end if;
 
   -- Live suppression -- see "LIVE SUPPRESSION" above.
   v_suppression_result := public.evaluate_suppression_live(p_execution_intent_id);
 
-  if v_suppression_result <> 'clear' then
+  if v_suppression_result is distinct from 'clear' then
     return 'blocked';
   end if;
 
   -- KILL-SWITCH CHECKPOINT #1 -- see "KILL-SWITCH CHECKPOINT #1" above.
   v_emergency_result := public.evaluate_execution_emergency_stop();
 
-  if v_emergency_result <> 'clear' then
+  if v_emergency_result is distinct from 'clear' then
     return 'blocked';
   end if;
 
   -- Re-evaluated a second time, immediately before the INSERT.
   v_emergency_result := public.evaluate_execution_emergency_stop();
 
-  if v_emergency_result <> 'clear' then
+  if v_emergency_result is distinct from 'clear' then
     return 'blocked';
   end if;
 
