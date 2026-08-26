@@ -17,6 +17,9 @@ supabase/.temp/
 *.log
 npm-debug.log*
 
+# Local agent configuration
+**/.claude/settings.local.json
+
 # VS Code
 .vscode/
 
