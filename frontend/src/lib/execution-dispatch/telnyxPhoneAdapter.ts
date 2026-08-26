@@ -191,6 +191,7 @@ import { createHash } from "node:crypto";
 import type { ExecutionIntentEnvelope } from "./evaluateExecutionPreflight.ts";
 import { isUsablePreparedExecutionDispatchEnvelope } from "./checkpointThreeDispatchBoundary.ts";
 import type { PreparedExecutionDispatchEnvelope, ProviderDispatchResult } from "./checkpointThreeDispatchBoundary.ts";
+import type { ProviderDispatchAdapter } from "./providerDispatchAdapter.ts";
 
 export const TELNYX_PHONE_ADAPTER_KEY = "TELNYX_PHONE_V1";
 const MAX_TOKEN_LENGTH = 200;
@@ -504,12 +505,11 @@ export async function dispatchTelnyxPhoneCall(
  * object. `dispatch()` delegates directly to `dispatchTelnyxPhoneCall`
  * -- this factory adds no behaviour of its own.
  */
-export type TelnyxPhoneAdapter = {
+export interface TelnyxPhoneAdapter extends ProviderDispatchAdapter<TelnyxPhoneDialContext> {
   readonly provider: "TELNYX";
   readonly channel: "PHONE";
   readonly adapterKey: typeof TELNYX_PHONE_ADAPTER_KEY;
-  dispatch(context: TelnyxPhoneDialContext): Promise<ProviderDispatchResult>;
-};
+}
 
 export function createTelnyxPhoneAdapter(config: TelnyxPhoneAdapterConfig, transport: TelnyxDialTransport): TelnyxPhoneAdapter {
   return Object.freeze({

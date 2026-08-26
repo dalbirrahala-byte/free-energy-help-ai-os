@@ -19,6 +19,7 @@ import type {
 } from "./telnyxPhoneAdapter.ts";
 import type { ExecutionIntentEnvelope } from "./evaluateExecutionPreflight.ts";
 import type { PreparedExecutionDispatchEnvelope } from "./checkpointThreeDispatchBoundary.ts";
+import { matchesProviderDispatchAdapterIdentity } from "./providerDispatchAdapter.ts";
 
 const UUID_V5_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -76,6 +77,22 @@ function recordingTransport(result: TelnyxDialTransportResult): TelnyxDialTransp
   };
   return transport;
 }
+
+test("factory conforms to the provider-neutral real-dispatch adapter identity", () => {
+  const telnyxAdapter = createTelnyxPhoneAdapter(
+    config(),
+    recordingTransport({ outcome: "response", response: { httpStatus: 500, body: {} } }),
+  );
+
+  assert.equal(
+    matchesProviderDispatchAdapterIdentity(telnyxAdapter, {
+      provider: "TELNYX",
+      channel: "PHONE",
+      adapterKey: TELNYX_PHONE_ADAPTER_KEY,
+    }),
+    true,
+  );
+});
 
 // --- 1-4: request mapping ---------------------------------------------
 
