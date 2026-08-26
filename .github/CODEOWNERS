@@ -1,0 +1,9 @@
+# Factory 041 security boundary: require an attributable owner review.
+/.github/workflows/factory-041.yml @dalbirrahala-byte
+/frontend/src/lib/execution-authorization/ @dalbirrahala-byte
+/frontend/src/lib/execution-dispatch/ @dalbirrahala-byte
+/supabase/migrations/ @dalbirrahala-byte
+/supabase/functions/ @dalbirrahala-byte
+/frontend/src/app/api/ @dalbirrahala-byte
+/frontend/src/middleware.ts @dalbirrahala-byte
+/frontend/middleware.ts @dalbirrahala-byte
