@@ -1,0 +1,74 @@
+name: Factory 041 deterministic gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - audit/factory-041-provenance-invariants
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factory-041-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  factory-041:
+    name: Factory 041 / deterministic gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Factory 041 focused tests
+        run: npm run test:factory-041
+
+      - name: Full execution-dispatch tests
+        run: npm run test:execution-dispatch
+
+      - name: TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Memory-safe isolated lint
+        run: npm run lint:ci
+
+      - name: Reject migration or application-security drift from accepted checkpoint
+        working-directory: .
+        shell: bash
+        run: |
+          baseline=95600b99f286fa2740c7636f23e0091ef3d84373
+          git cat-file -e "${baseline}^{commit}"
+          if ! git diff --quiet "$baseline" HEAD -- \
+            supabase/migrations \
+            supabase/functions \
+            frontend/src/app/api \
+            frontend/src/middleware.ts \
+            frontend/middleware.ts; then
+            echo "Unexpected migration or application-security drift from accepted Factory 041 checkpoint:"
+            git diff --name-status "$baseline" HEAD -- \
+              supabase/migrations \
+              supabase/functions \
+              frontend/src/app/api \
+              frontend/src/middleware.ts \
+              frontend/middleware.ts
+            exit 1
+          fi
