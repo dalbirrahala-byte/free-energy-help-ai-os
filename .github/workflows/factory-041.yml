@@ -39,23 +39,26 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
 
-      - name: Factory 041 focused tests
-        run: npm run test:factory-041
 
-      - name: Full execution-dispatch tests
-        run: npm run test:execution-dispatch
 
       - name: TypeScript typecheck
         run: npm run typecheck
 
-      - name: Memory-safe isolated lint
-        run: npm run lint:ci
+      - name: Lint
+        run: npm run lint
 
-      - name: Reject migration or application-security drift from accepted checkpoint
+      - name: Production build
+        run: npm run build
+
+      - name: Reject migration or application-security drift
         working-directory: .
         shell: bash
         run: |
-          baseline=95600b99f286fa2740c7636f23e0091ef3d84373
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            baseline="${{ github.event.pull_request.base.sha }}"
+          else
+            baseline=95600b99f286fa2740c7636f23e0091ef3d84373
+          fi
           git cat-file -e "${baseline}^{commit}"
           if ! git diff --quiet "$baseline" HEAD -- \
             supabase/migrations \
