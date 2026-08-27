@@ -55,7 +55,7 @@ jobs:
         working-directory: .
         shell: bash
         run: |
-          baseline=95600b99f286fa2740c7636f23e0091ef3d84373
+          baseline=694fff6b01e5778697626c944efde53f16f07319
           git cat-file -e "${baseline}^{commit}"
           if ! git diff --quiet "$baseline" HEAD -- \
             supabase/migrations \
