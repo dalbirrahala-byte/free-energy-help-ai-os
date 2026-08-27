@@ -6,6 +6,7 @@ import {
   evaluateImmediateExecutionPrecallCheckpoint,
   evaluateImmediateExecutionPrecallCheckpointWithLookup,
   isUsablePreparedExecutionDispatchEnvelope,
+  parseExecutionDispatchPreparationResult,
 } from "./checkpointThreeDispatchBoundary.ts";
 import type { PreparedExecutionDispatchEnvelope } from "./checkpointThreeDispatchBoundary.ts";
 import type { ProviderAdapterOutcome } from "./providerAdapter.ts";
@@ -16,6 +17,7 @@ function envelope(overrides: Partial<PreparedExecutionDispatchEnvelope> = {}): P
     executionDispatchAttemptId: 1,
     dispatchIdempotencyKey: "feh-dispatch-v1|1",
     providerAdapterId: 1,
+    providerAdapterKey: "TEST_EMAIL_V1",
     channel: "EMAIL",
     executionPerformed: false,
     ...overrides,
@@ -77,7 +79,7 @@ test("evaluateImmediateExecutionPrecallCheckpointWithLookup: RPC error fails clo
     rpc: async () => ({ data: null, error: { message: "permission denied for function evaluate_execution_precall_readiness" } }),
   } as unknown as Parameters<typeof evaluateImmediateExecutionPrecallCheckpointWithLookup>[0];
 
-  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, 1);
+  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, envelope());
   assert.equal(result.status, "evaluation_failed");
 });
 
@@ -86,7 +88,7 @@ test("evaluateImmediateExecutionPrecallCheckpointWithLookup: RPC success with 'c
     rpc: async () => ({ data: "clear", error: null }),
   } as unknown as Parameters<typeof evaluateImmediateExecutionPrecallCheckpointWithLookup>[0];
 
-  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, 1);
+  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, envelope());
   assert.equal(result.status, "precall_ready");
 });
 
@@ -95,7 +97,7 @@ test("evaluateImmediateExecutionPrecallCheckpointWithLookup: RPC success with 'b
     rpc: async () => ({ data: "blocked", error: null }),
   } as unknown as Parameters<typeof evaluateImmediateExecutionPrecallCheckpointWithLookup>[0];
 
-  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, 1);
+  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, envelope());
   assert.equal(result.status, "blocked");
 });
 
@@ -104,7 +106,7 @@ test("evaluateImmediateExecutionPrecallCheckpointWithLookup: non-string RPC data
     rpc: async () => ({ data: { unexpected: "shape" }, error: null }),
   } as unknown as Parameters<typeof evaluateImmediateExecutionPrecallCheckpointWithLookup>[0];
 
-  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, 1);
+  const result = await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, envelope());
   assert.equal(result.status, "evaluation_failed");
 });
 
@@ -117,8 +119,58 @@ test("evaluateImmediateExecutionPrecallCheckpointWithLookup: passes executionAut
     },
   } as unknown as Parameters<typeof evaluateImmediateExecutionPrecallCheckpointWithLookup>[0];
 
-  await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, 42);
-  assert.deepEqual(capturedArgs, { p_execution_authorization_id: 42 });
+  await evaluateImmediateExecutionPrecallCheckpointWithLookup(supabase, envelope({
+    executionAuthorizationId: 42,
+    executionDispatchAttemptId: 84,
+    providerAdapterId: 7,
+    providerAdapterKey: "TELNYX_PHONE_V1",
+  }));
+  assert.deepEqual(capturedArgs, {
+    p_execution_dispatch_attempt_id: 84,
+    p_execution_authorization_id: 42,
+    p_expected_provider_adapter_id: 7,
+    p_expected_adapter_key: "TELNYX_PHONE_V1",
+  });
+});
+
+test("parseExecutionDispatchPreparationResult: accepts only an authoritative prepared row shape", () => {
+  const result = parseExecutionDispatchPreparationResult([{
+    preparation_status: "prepared",
+    execution_authorization_id: 1,
+    execution_dispatch_attempt_id: 11,
+    dispatch_idempotency_key: "feh-dispatch-v1|1",
+    provider_adapter_id: 7,
+    provider_adapter_key: "TELNYX_PHONE_V1",
+    channel: "PHONE",
+    execution_performed: false,
+  }]);
+  assert.equal(result.status, "prepared");
+  assert.equal(result.preparedDispatch?.providerAdapterKey, "TELNYX_PHONE_V1");
+});
+
+test("parseExecutionDispatchPreparationResult: existing prepared/no_change cannot reacquire an envelope", () => {
+  assert.deepEqual(parseExecutionDispatchPreparationResult([{
+    preparation_status: "no_change",
+    execution_authorization_id: null,
+    execution_dispatch_attempt_id: null,
+    dispatch_idempotency_key: null,
+    provider_adapter_id: null,
+    provider_adapter_key: null,
+    channel: null,
+    execution_performed: null,
+  }]), { status: "no_change", preparedDispatch: null });
+});
+
+test("parseExecutionDispatchPreparationResult: rejects an envelope attached to no_change", () => {
+  assert.equal(parseExecutionDispatchPreparationResult([{
+    preparation_status: "no_change",
+    execution_authorization_id: 1,
+  }]).status, "evaluation_failed");
+});
+
+test("parseExecutionDispatchPreparationResult: rejects ambiguous row cardinality", () => {
+  assert.equal(parseExecutionDispatchPreparationResult([]).status, "evaluation_failed");
+  assert.equal(parseExecutionDispatchPreparationResult([{}, {}]).status, "evaluation_failed");
 });
 
 test("isUsablePreparedExecutionDispatchEnvelope: accepts a well-formed envelope", () => {
@@ -141,6 +193,10 @@ test("isUsablePreparedExecutionDispatchEnvelope: rejects a non-positive executio
 
 test("isUsablePreparedExecutionDispatchEnvelope: rejects a non-positive providerAdapterId", () => {
   assert.equal(isUsablePreparedExecutionDispatchEnvelope(envelope({ providerAdapterId: 0 })), false);
+});
+
+test("isUsablePreparedExecutionDispatchEnvelope: rejects a blank providerAdapterKey", () => {
+  assert.equal(isUsablePreparedExecutionDispatchEnvelope(envelope({ providerAdapterKey: " " })), false);
 });
 
 test("isUsablePreparedExecutionDispatchEnvelope: rejects a blank dispatchIdempotencyKey", () => {

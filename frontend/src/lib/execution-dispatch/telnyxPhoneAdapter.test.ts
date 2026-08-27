@@ -46,6 +46,7 @@ function preparedDispatch(overrides: Partial<PreparedExecutionDispatchEnvelope> 
     executionDispatchAttemptId: 11,
     dispatchIdempotencyKey: "feh-dispatch-v1|1",
     providerAdapterId: 7,
+    providerAdapterKey: "TELNYX_PHONE_V1",
     channel: "PHONE",
     executionPerformed: false,
     ...overrides,
@@ -456,6 +457,17 @@ test("dispatchTelnyxPhoneCall: rejects mismatched prepared authorization provena
   const transport = recordingTransport({ outcome: "response", response: { httpStatus: 200, body: {} } });
   const result = await dispatchTelnyxPhoneCall(context({ preparedDispatch: { executionAuthorizationId: 999 } }), transport, config());
   assert.deepEqual(result, { status: "definitive_failure", failureCode: "invalid_prepared_dispatch_context" });
+  assert.equal(transport.callCount, 0);
+});
+
+test("dispatchTelnyxPhoneCall: rejects a mismatched database adapter key without calling the transport", async () => {
+  const transport = recordingTransport({ outcome: "response", response: { httpStatus: 200, body: { data: { call_control_id: "call-1" } } } });
+  const result = await dispatchTelnyxPhoneCall(
+    context({ preparedDispatch: { providerAdapterKey: "OTHER_PHONE_V1" } }),
+    transport,
+    config(),
+  );
+  assert.equal(result.status, "definitive_failure");
   assert.equal(transport.callCount, 0);
 });
 

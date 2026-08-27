@@ -463,6 +463,7 @@ export async function dispatchTelnyxPhoneCall(
 
   if (
     !isUsablePreparedExecutionDispatchEnvelope(context.preparedDispatch) ||
+    context.preparedDispatch.providerAdapterKey !== TELNYX_PHONE_ADAPTER_KEY ||
     context.intent.authorizationRecordId !== context.preparedDispatch.executionAuthorizationId ||
     context.intent.executionPerformed !== false ||
     context.preparedDispatch.executionPerformed !== false

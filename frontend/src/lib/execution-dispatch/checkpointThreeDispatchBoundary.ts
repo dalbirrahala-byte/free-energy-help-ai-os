@@ -3,7 +3,8 @@
 // The DB-side checkpoint #3 chain (public.execution_provider_adapters,
 // public.execution_dispatch_attempts, public.prepare_execution_dispatch(),
 // public.complete_execution_dispatch_success/failure/indeterminate()) is
-// deployed and fully dormant -- no role can call any of those functions.
+// represented by dormant migration source. Only the non-login execution
+// worker role receives the six narrowly scoped function capabilities.
 // This module is the TypeScript-side counterpart: it defines the
 // provider-neutral vocabulary a future adapter invocation must use, and
 // the "3B -- immediate pre-call gate" design from the Phase 16B.2b-6h
@@ -66,8 +67,9 @@
 // The Phase 16B.2b-6i activation-readiness authorisation revisits this
 // explicitly and resolves the tension differently: rather than choosing
 // between "omit suppression" and "pay for a second round trip," a single
-// new DB primitive (public.evaluate_execution_precall_readiness(bigint),
-// 20260825200000...sql) now re-checks BOTH live suppression and emergency
+// strengthened DB primitive (public.evaluate_execution_precall_readiness(
+// bigint, bigint, bigint, text), 20260826100000...sql) now re-checks BOTH
+// persisted dispatch/adapter binding, live suppression, and emergency
 // state, server-side, inside one function call -- so this boundary gets
 // both freshness guarantees for the price of the one round trip it always
 // needed anyway. See that migration's own header for the full reasoning.
@@ -81,7 +83,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 const MAX_REFERENCE_LENGTH = 200;
 
 /**
- * The output of a (currently unreachable) call to the DB's
+ * The output of a worker-only call to the DB's
  * `prepare_execution_dispatch(bigint, bigint)`. Represents one durable
  * provider-attempt identity -- never proof that a provider call has
  * happened. `dispatchIdempotencyKey` is always the deterministic,
@@ -94,9 +96,17 @@ export type PreparedExecutionDispatchEnvelope = {
   readonly executionDispatchAttemptId: number;
   readonly dispatchIdempotencyKey: string;
   readonly providerAdapterId: number;
+  readonly providerAdapterKey: string;
   readonly channel: ContactChannel;
   /** Always the literal `false`. A prepared attempt means "may be dispatched" -- never that the provider was called. */
   readonly executionPerformed: false;
+};
+
+export type ExecutionDispatchPreparationStatus = "prepared" | "no_change" | "blocked" | "evaluation_failed";
+
+export type ExecutionDispatchPreparationResult = {
+  readonly status: ExecutionDispatchPreparationStatus;
+  readonly preparedDispatch: PreparedExecutionDispatchEnvelope | null;
 };
 
 export type ProviderDispatchResultStatus = "success" | "definitive_failure" | "indeterminate";
@@ -179,25 +189,28 @@ export function evaluateImmediateExecutionPrecallCheckpoint(
 }
 
 /**
- * I/O wrapper. Calls the DB's `evaluate_execution_precall_readiness(bigint)`
- * primitive -- today revoked from `anon`/`authenticated`/`service_role`,
+ * I/O wrapper. Calls the DB's four-argument strengthened
+ * `evaluate_execution_precall_readiness` primitive -- revoked from
+ * `anon`/`authenticated`/`service_role`,
  * so this call fails with a permission error under current credentials,
  * which this wrapper treats identically to any other read failure:
  * `evaluation_failed`, never `precall_ready`. This is the intended
- * behaviour, not a defect -- see "PART P" of the checkpoint #3
- * authorisation ("do not enable this route in the application yet").
- * Once a future, separately-authorised activation phase grants EXECUTE
- * to the calling role, this same code becomes reachable with no further
- * change. `executionAuthorizationId` is the same id carried on the
- * `PreparedExecutionDispatchEnvelope` already obtained from `prepare_
- * execution_dispatch()` -- never re-derived or guessed here.
+ * behaviour for any ordinary application identity. All four binding values
+ * come from the same database-returned prepared envelope; none is re-derived.
  */
 export async function evaluateImmediateExecutionPrecallCheckpointWithLookup(
   supabase: SupabaseServerClient,
-  executionAuthorizationId: number,
+  preparedDispatch: PreparedExecutionDispatchEnvelope,
 ): Promise<ImmediateExecutionPrecallCheckpointResult> {
+  if (!isUsablePreparedExecutionDispatchEnvelope(preparedDispatch)) {
+    return { status: "evaluation_failed", reason: "Prepared dispatch envelope is structurally invalid." };
+  }
+
   const { data, error } = await supabase.rpc("evaluate_execution_precall_readiness", {
-    p_execution_authorization_id: executionAuthorizationId,
+    p_execution_dispatch_attempt_id: preparedDispatch.executionDispatchAttemptId,
+    p_execution_authorization_id: preparedDispatch.executionAuthorizationId,
+    p_expected_provider_adapter_id: preparedDispatch.providerAdapterId,
+    p_expected_adapter_key: preparedDispatch.providerAdapterKey,
   });
 
   if (error) {
@@ -208,6 +221,80 @@ export async function evaluateImmediateExecutionPrecallCheckpointWithLookup(
   }
 
   return evaluateImmediateExecutionPrecallCheckpoint(typeof data === "string" ? data : null);
+}
+
+const PREPARATION_STATUSES: ReadonlySet<ExecutionDispatchPreparationStatus> = new Set([
+  "prepared",
+  "no_change",
+  "blocked",
+  "evaluation_failed",
+]);
+
+function isNullEnvelopeRow(row: Record<string, unknown>): boolean {
+  return [
+    "execution_authorization_id",
+    "execution_dispatch_attempt_id",
+    "dispatch_idempotency_key",
+    "provider_adapter_id",
+    "provider_adapter_key",
+    "channel",
+    "execution_performed",
+  ].every((key) => row[key] == null);
+}
+
+/**
+ * Parses the one-row SETOF response emitted by prepare_execution_dispatch().
+ * Provenance comes from receiving this value directly from that trusted RPC in
+ * the same server-only flow. Structural validity alone is never proof of it.
+ */
+export function parseExecutionDispatchPreparationResult(data: unknown): ExecutionDispatchPreparationResult {
+  if (!Array.isArray(data) || data.length !== 1 || typeof data[0] !== "object" || data[0] === null) {
+    return { status: "evaluation_failed", preparedDispatch: null };
+  }
+
+  const row = data[0] as Record<string, unknown>;
+  const status = row.preparation_status;
+  if (typeof status !== "string" || !PREPARATION_STATUSES.has(status as ExecutionDispatchPreparationStatus)) {
+    return { status: "evaluation_failed", preparedDispatch: null };
+  }
+
+  if (status !== "prepared") {
+    return isNullEnvelopeRow(row)
+      ? { status: status as ExecutionDispatchPreparationStatus, preparedDispatch: null }
+      : { status: "evaluation_failed", preparedDispatch: null };
+  }
+
+  const preparedDispatch = {
+    executionAuthorizationId: row.execution_authorization_id,
+    executionDispatchAttemptId: row.execution_dispatch_attempt_id,
+    dispatchIdempotencyKey: row.dispatch_idempotency_key,
+    providerAdapterId: row.provider_adapter_id,
+    providerAdapterKey: row.provider_adapter_key,
+    channel: row.channel,
+    executionPerformed: row.execution_performed,
+  } as PreparedExecutionDispatchEnvelope;
+
+  return isUsablePreparedExecutionDispatchEnvelope(preparedDispatch)
+    ? { status: "prepared", preparedDispatch }
+    : { status: "evaluation_failed", preparedDispatch: null };
+}
+
+/** Server-only dormant wrapper for the authoritative preparation writer. */
+export async function prepareExecutionDispatchWithLookup(
+  supabase: SupabaseServerClient,
+  executionAuthorizationId: number,
+  providerAdapterId: number,
+): Promise<ExecutionDispatchPreparationResult> {
+  if (!Number.isInteger(executionAuthorizationId) || executionAuthorizationId <= 0 ||
+      !Number.isInteger(providerAdapterId) || providerAdapterId <= 0) {
+    return { status: "evaluation_failed", preparedDispatch: null };
+  }
+
+  const { data, error } = await supabase.rpc("prepare_execution_dispatch", {
+    p_execution_authorization_id: executionAuthorizationId,
+    p_provider_adapter_id: providerAdapterId,
+  });
+  return error ? { status: "evaluation_failed", preparedDispatch: null } : parseExecutionDispatchPreparationResult(data);
 }
 
 /**
@@ -229,6 +316,8 @@ export function isUsablePreparedExecutionDispatchEnvelope(
     Number.isInteger(envelope.providerAdapterId) &&
     envelope.providerAdapterId > 0 &&
     isUsableReference(envelope.dispatchIdempotencyKey) &&
+    isUsableReference(envelope.providerAdapterKey) &&
+    ["PHONE", "EMAIL", "WHATSAPP", "SMS"].includes(envelope.channel) &&
     envelope.executionPerformed === false
   );
 }
