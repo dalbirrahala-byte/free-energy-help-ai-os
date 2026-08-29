@@ -1,0 +1,183 @@
+-- Factory 041 Phase 16B.2b-5j: execution-authorization -> compliance-
+-- decision linkage.
+--
+-- WHY THIS EXISTS: the Phase 16B.2b-5h read-path design audit established
+-- that a future Shape A create_execution_authorization() rewrite must
+-- name the EXACT immutable compliance-evidence row it relied upon --
+-- reconstructing "which compliance_decisions row must have been used"
+-- from timestamp proximity after the fact is not an acceptable substitute
+-- for a direct, permanent reference. That same audit recommended this
+-- column be introduced NULLABLE, deferring the underlying "must every
+-- authorization always carry compliance evidence" policy question, by
+-- direct analogy with execution_authoriser_grant_id's own nullable
+-- treatment. The Phase 16B.2b-5j authorisation makes that policy call now
+-- rather than deferring it again: an executable authorization must always
+-- identify the exact compliance decision relied upon, with no exception
+-- -- and, per that authorisation, the live-verified fact that public.
+-- execution_authorizations currently holds zero rows (reconfirmed
+-- immediately before this migration was written, see "PREFLIGHT" below)
+-- makes introducing that invariant as NOT NULL immediately both safe and
+-- unambiguous, with no backfill or transitional nullable state required.
+-- This migration adds ONLY that one column, its foreign key, and one
+-- supporting index -- the smallest additive step this authorisation
+-- approves. It does not implement, rewrite, or activate anything.
+--
+-- SCOPE, DELIBERATELY NARROW: one ALTER TABLE ADD COLUMN statement and
+-- one CREATE INDEX statement, both against public.execution_
+-- authorizations. Nothing else. This migration does NOT modify public.
+-- compliance_decisions, public.execution_intents, public.
+-- execution_authorisers, public.suppression_records, public.
+-- verify_destination_commitment(), public.derive_destination_
+-- commitment(), public.create_execution_authorization(), or any other
+-- existing function. It does not activate any INSERT writer, does not
+-- activate authorization creation or consumption, does not add a
+-- trigger, does not add any new function or RPC, does not change RLS,
+-- does not add a policy, does not alter any grant, does not grant
+-- EXECUTE on anything, does not add a DEFAULT, and does not write or
+-- backfill any data. No existing migration is altered.
+--
+-- PREFLIGHT, RE-CONFIRMED IMMEDIATELY BEFORE WRITING THIS FILE: public.
+-- execution_authorizations exists (20260820100000_execution_
+-- authorization_foundation.sql) and currently carries no compliance_
+-- decision_id column (confirmed by direct grep across every tracked
+-- migration -- no prior mention of that string exists anywhere in this
+-- repository). public.compliance_decisions exists, with RLS enabled and
+-- zero policies, and no writer of any kind (20260822140000...sql,
+-- 20260822150000...sql). Per the Phase 16B.2b-5j architect's own live
+-- checkpoint, execution_authorizations, execution_intents, and
+-- compliance_decisions all independently hold zero rows today -- the
+-- identical "table evidenced empty" precondition already relied upon by
+-- every prior additive-NOT-NULL column in this chain (execution_
+-- intent_id, 20260822120000...sql).
+--
+-- COLUMN NAME COLLISION CHECK: the full existing column list of public.
+-- execution_authorizations (id, created_at, updated_at, action_id,
+-- idempotency_key, requested_channel, authorization_status, human_
+-- approval_state, policy_version, authorised_at, expires_at, actor_id,
+-- organisation_id, contact_id, source_id, campaign_id, outreach_
+-- eligibility_status, execution_performed, execution_performed_at,
+-- execution_reference, evidence, notes, execution_intent_id, execution_
+-- authoriser_grant_id, consumed_at -- 20260820100000...sql:132-166,
+-- 20260822120000...sql:170-176, 20260822130000...sql:100-101) contains no
+-- compliance_decision_id. No collision.
+--
+-- COMPLIANCE_DECISION_ID -- NOT NULL, JUSTIFIED BY LIVE-VERIFIED EMPTINESS
+-- AND SELF-VERIFYING AT APPLY TIME: `compliance_decision_id bigint not
+-- null references public.compliance_decisions (id) on delete restrict`.
+-- Unlike execution_intent_id's own introduction (20260822120000...sql),
+-- where the table's emptiness was a STRONG INFERENCE from repository
+-- evidence rather than a live-verified fact, this migration is written
+-- immediately after the Phase 16B.2b-5j architect's own direct live
+-- checkpoint confirming execution_authorizations = 0 rows today. The
+-- structural safety net remains identical regardless: `ALTER TABLE ...
+-- ADD COLUMN compliance_decision_id bigint NOT NULL ...` with no DEFAULT
+-- is, by PostgreSQL's own DDL semantics, self-verifying at the moment it
+-- is actually applied -- if any existing row were present, the ALTER
+-- TABLE statement itself would fail outright (a NOT NULL violation on
+-- the newly added column for every existing row), not silently succeed
+-- with an incorrectly-linked row. This migration cannot both apply
+-- successfully AND be wrong about the table's emptiness at the same
+-- time. This file is local-only in this phase (see "NOT APPLIED BY THIS
+-- FILE'S PRESENCE" below) and carries zero live risk regardless.
+--
+-- POLICY SETTLED HERE, NOT DEFERRED: this NOT NULL choice is a deliberate
+-- reversal of the Phase 16B.2b-5h preflight's own tentative
+-- recommendation (nullable-initially, by analogy with execution_
+-- authoriser_grant_id) -- the Phase 16B.2b-5j authorisation makes the
+-- "must every authorization always carry compliance evidence" policy
+-- call explicitly now, rather than continuing to defer it. This is not a
+-- correction of that earlier preflight's reasoning (which was itself
+-- read-only design analysis, not a decision this migration is bound by),
+-- but a later, separate architect decision superseding it -- reported
+-- plainly, not silently reconciled as if no divergence occurred.
+--
+-- DELETE ACTION -- ON DELETE RESTRICT, MANDATORY: matching the
+-- provenance-protection pattern already applied without exception to
+-- every other FK added onto this table in this chain (execution_
+-- intent_id, execution_authoriser_grant_id, both 20260822120000...sql,
+-- `on delete restrict` for the identical reason). A compliance decision,
+-- once relied upon by any authorization record -- even a very old one --
+-- must never become deletable, silently nulled, or otherwise erasable.
+-- public.compliance_decisions has no DELETE path today either (no writer
+-- of any kind exists, per "PREFLIGHT" above), so this is defensive
+-- correctness matching established convention, not an active operational
+-- concern.
+--
+-- NO ON UPDATE ACTION: no repository precedent anywhere in this schema
+-- ever specifies an explicit ON UPDATE clause on any foreign key (every
+-- FK in this Factory 041 chain relies on PostgreSQL's implicit default of
+-- NO ACTION for UPDATE) -- this migration follows that same unbroken
+-- convention rather than introducing a new one. public.compliance_
+-- decisions.id is `generated always as identity`, which cannot itself be
+-- updated in the first place (GENERATED ALWAYS forbids overriding it on
+-- UPDATE without an explicit OVERRIDING SYSTEM VALUE clause, which no
+-- writer anywhere in this schema uses), so an explicit ON UPDATE clause
+-- would govern a case that cannot structurally occur.
+--
+-- NO DEFAULT: no DEFAULT value is specified, matching this migration's
+-- own "immutable provenance is derived, never invented" discipline
+-- already applied throughout this chain -- a default compliance_
+-- decision_id would either be meaningless (no sentinel row exists to
+-- default to) or would falsely assert that every authorization is somehow
+-- linked to compliance evidence it never actually cited, which is never
+-- true.
+--
+-- FK NAMING -- IMPLICIT, MATCHING REPOSITORY CONVENTION: no explicit
+-- `constraint ... foreign key` clause is used. Every prior FK added via
+-- ALTER TABLE ADD COLUMN in this exact chain (execution_intent_id,
+-- execution_authoriser_grant_id, 20260822120000...sql:170-176) relies on
+-- PostgreSQL's own auto-generated constraint name
+-- (`<table>_<column>_fkey`) rather than an explicit name -- this
+-- migration follows that same unbroken convention exactly, rather than
+-- introducing a new naming style inconsistent with its immediate
+-- siblings. The resulting auto-generated name will be
+-- `execution_authorizations_compliance_decision_id_fkey`.
+--
+-- INDEX -- PLAIN, EXPLICITLY NAMED, MATCHING PRECEDENT EXACTLY: a single
+-- plain btree index, `execution_authorizations_compliance_decision_id_
+-- idx`, matching the identical naming and shape of `execution_
+-- authorizations_execution_intent_id_idx` (20260822120000...sql:178-179)
+-- -- for the identical join-lookup direction (from a compliance decision
+-- to the authorizations that relied on it). No unique or partial unique
+-- index is added: uniqueness is not a property this column needs to
+-- express (a single compliance_decisions row may legitimately be relied
+-- upon by more than one authorization over time, e.g. if the same
+-- evidence remains fresh across more than one proposed action for the
+-- same contact/channel before it expires).
+--
+-- NO BACKFILL, NO DATA STATEMENT: this migration contains no INSERT,
+-- UPDATE, or DELETE of any kind. It cannot, since the table is evidenced
+-- empty (see "PREFLIGHT" above) and no backfill value could exist for a
+-- provenance reference this schema has never previously tracked.
+--
+-- NO RLS/GRANT/FUNCTION CHANGE: this migration contains no ALTER TABLE
+-- ... ENABLE/DISABLE ROW LEVEL SECURITY, no CREATE POLICY, no DROP
+-- POLICY, no GRANT, no REVOKE, and no CREATE/ALTER/DROP FUNCTION of any
+-- kind. Phase 16A's mutation lockdown on public.execution_authorizations
+-- (three dropped RLS policies, four revoked table privileges for anon/
+-- authenticated) is completely untouched -- adding a column and an index
+-- to a table does not, by itself, grant any role any new privilege on
+-- that table, and no privilege statement of any kind appears anywhere in
+-- this file.
+--
+-- SAFE / IDEMPOTENT: ALTER TABLE ... ADD COLUMN IF NOT EXISTS and CREATE
+-- INDEX IF NOT EXISTS are both safe to rerun.
+--
+-- NOT APPLIED BY THIS FILE'S PRESENCE: created for local review only, per
+-- the Phase 16B.2b-5j authorisation. Must NOT be run against Supabase,
+-- staged, committed, or pushed until a separate, explicit authorisation
+-- is given.
+
+alter table public.execution_authorizations
+  add column if not exists compliance_decision_id bigint not null
+    references public.compliance_decisions (id) on delete restrict;
+
+create index if not exists execution_authorizations_compliance_decision_id_idx
+  on public.execution_authorizations (compliance_decision_id);
+
+-- ROLLBACK (documented, not executed): the table is evidenced empty (see
+-- "PREFLIGHT" above) and no writer, RLS policy, or application code
+-- references this column yet, so dropping it would lose no data and
+-- break nothing.
+-- drop index if exists public.execution_authorizations_compliance_decision_id_idx;
+-- alter table public.execution_authorizations drop column if exists compliance_decision_id;

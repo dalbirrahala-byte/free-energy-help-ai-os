@@ -1,0 +1,107 @@
+-- Factory 041 Phase 16B.2b-5c: authorization consumption primitive.
+--
+-- WHY THIS EXISTS: the Phase 16B.2b-5b lifecycle preflight established
+-- that a future intent-based Shape A create_execution_authorization()
+-- rewrite needs a way to distinguish an authorization that has never
+-- been used from one that has already been claimed for one dispatch
+-- attempt -- "one authorization, at most one dispatch attempt," never a
+-- reusable bearer token. This migration adds exactly the one column
+-- needed to make that distinction persistable: consumed_at. It does
+-- NOT activate consumption, does NOT add anything capable of setting
+-- it, and does NOT decide any of the still-open policy questions this
+-- same lifecycle preflight identified.
+--
+-- SCOPE, DELIBERATELY NARROW: one ALTER TABLE ADD COLUMN statement
+-- against public.execution_authorizations. Nothing else. Per the Phase
+-- 16B.2b-5c architect correction, this migration deliberately does NOT
+-- add revoked_at or revoked_by -- the Phase 16B.2b-5b preflight
+-- explicitly identified "who may revoke, and under what authority
+-- model" as an open policy question, and encoding revocation semantics
+-- (even just the columns) before that question is answered would
+-- silently pre-empt a decision this migration is not authorised to
+-- make. It also does not add consumed_by, an execution_attempts table,
+-- any trigger, any writer function, any index, or any unique/partial
+-- unique constraint. It does not modify public.create_execution_
+-- authorization(), public.create_execution_intent(), public.
+-- execution_intents, public.execution_authorisers, public.derive_
+-- destination_commitment(), or any Phase 11 destination-resolution
+-- code. No existing migration is altered.
+--
+-- PREFLIGHT, RE-CONFIRMED IMMEDIATELY BEFORE WRITING THIS FILE: public.
+-- execution_authorizations exists (20260820100000_execution_
+-- authorization_foundation.sql); consumed_at does not already exist
+-- anywhere on it (confirmed by direct grep across every migration --
+-- the sole prior mention of the string "consumed_at" is inside a
+-- comment in 20260822120000_execution_authorization_identity_linkage.
+-- sql:21 explicitly stating it was NOT added in that phase, not an
+-- actual column); Phase 16A's mutation lockdown (20260821100000_
+-- execution_authorization_mutation_lockdown.sql) remains present and
+-- untouched by every migration since, including this one; no
+-- application-role writer exists anywhere that could UPDATE this table
+-- (Phase 16A revoked UPDATE from anon/authenticated at the table-
+-- privilege level, and public.create_execution_authorization() --
+-- 20260821110000...sql -- contains zero INSERT and zero UPDATE
+-- statements in its current, unmodified form); no consumption mechanism
+-- of any kind exists today.
+--
+-- SECURITY REQUIREMENT: THE PRESENCE OF THIS COLUMN CREATES NO NEW
+-- MUTATION PATH. Adding a column to a table does not, by itself, grant
+-- any role any privilege to write to it. Phase 16A's RLS-policy removal
+-- and its four revoked table privileges (INSERT, UPDATE, DELETE,
+-- TRUNCATE, for anon and authenticated) are completely unaffected by
+-- this migration -- no RLS policy is created, altered, or dropped here,
+-- and no GRANT or REVOKE statement of any kind appears in this file.
+-- This migration establishes schema CAPABILITY only: a place a future,
+-- separately-authorised writer could eventually write to. It does not
+-- itself create, or bring any role closer to having, a way to actually
+-- do so.
+--
+-- NULLABLE, NO DEFAULT: consumed_at is added with no NOT NULL
+-- constraint and no DEFAULT value. Every existing row (the table is
+-- evidenced empty -- see 20260821100000...sql's own header, lines 44
+-- and 95, restated and re-verified across every subsequent gate in
+-- this chain -- and no writer has existed to populate it since) and
+-- every future row created before a consumption writer exists will
+-- correctly read as NULL, meaning "never consumed." A NOT NULL
+-- constraint or a DEFAULT value here would either be meaningless
+-- (nothing yet writes a non-null value) or would falsely assert that
+-- every authorization is somehow already consumed at creation time,
+-- which is never true.
+--
+-- WHY NO WRITER IS ADDED: this migration is schema-only, per the Phase
+-- 16B.2b-5c authorisation. The future writer that atomically claims
+-- consumption (the "UPDATE ... WHERE consumed_at IS NULL ... RETURNING"
+-- pattern the Phase 16B.2b-5b preflight designed) belongs to the future
+-- Shape A rewrite of public.create_execution_authorization() and/or the
+-- future Phase 11 extension that would actually use it -- both remain
+-- separate, independently-gated future phases, not part of this schema
+-- addition.
+--
+-- WHY REVOCATION IS DEFERRED: per the Phase 16B.2b-5c architect
+-- correction, revoked_at/revoked_by are deliberately excluded from this
+-- migration. The Phase 16B.2b-5b lifecycle preflight identified "who
+-- may revoke an authorization, and whether revocation remains
+-- meaningful after consumption or after provider execution" as an
+-- explicitly open policy question -- adding even just the columns for
+-- revocation now, before that authority model is decided, would encode
+-- an unproven assumption into the schema. consumed_at carries no such
+-- ambiguity: its meaning ("has this authorization been claimed for one
+-- dispatch attempt") does not depend on any undecided policy question,
+-- which is precisely why it is safe to add now while revocation is not.
+--
+-- SAFE / IDEMPOTENT: ALTER TABLE ... ADD COLUMN IF NOT EXISTS is safe
+-- to rerun.
+--
+-- NOT APPLIED BY THIS FILE'S PRESENCE: created for local review only,
+-- per the Phase 16B.2b-5c authorisation. Must NOT be run against
+-- Supabase, staged, committed, or pushed until a separate, explicit
+-- authorisation is given.
+
+alter table public.execution_authorizations
+  add column if not exists consumed_at timestamptz;
+
+-- ROLLBACK (documented, not executed): the table is evidenced empty
+-- (see header) and no writer, RLS policy, or application code
+-- references this column yet, so dropping it would lose no data and
+-- break nothing.
+-- alter table public.execution_authorizations drop column if exists consumed_at;

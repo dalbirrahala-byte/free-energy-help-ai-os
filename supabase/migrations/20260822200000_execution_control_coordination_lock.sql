@@ -1,0 +1,264 @@
+-- Factory 041 Phase 16B.2b-5p: emergency control serialization primitive.
+--
+-- WHY THIS EXISTS: the Phase 16B.2b-5m foundation and its Phase
+-- 16B.2b-5m-R1 correction established that public.execution_control_
+-- events (append-only, "highest id wins") does not by itself serialize
+-- CONCURRENT STOP/RELEASE mutations against one another -- id allocation
+-- order is not guaranteed to reflect the order a trusted writer actually
+-- admitted each change, and that gap was explicitly left open, to be
+-- closed by a future writer phase. The Phase 16B.2b-5n preflight
+-- (architect-approved) settled the mechanism: a dedicated single-row
+-- coordination target that every future stop_execution()/
+-- release_execution() writer will acquire via `SELECT ... FOR UPDATE`
+-- before reading current state and before inserting its own event --
+-- forcing at most one control-mutation transaction to be "in flight" at
+-- a time, so the sequence of committed inserts genuinely reflects the
+-- order the trusted writer admitted them. This migration builds exactly
+-- that lock target -- a pure mutex, never itself a source of emergency
+-- state. No writer that actually uses it is built in this phase.
+--
+-- PREFLIGHT -- FRESH INSPECTION, NOT FROM MEMORY:
+--   - public.execution_control_events (20260822180000_execution_
+--     emergency_stop_foundation.sql) was re-inspected: it remains the
+--     sole authoritative append-only history (id, created_at, event_type,
+--     actor_id, reason, evidence_reference), and its own header already
+--     explicitly defers write-side serialization to "the future trusted
+--     STOP/RELEASE writer phase" -- this migration IS that deferred
+--     schema piece, not a duplicate of anything that migration built.
+--   - A repository-wide search for any existing row-lock, advisory-lock,
+--     singleton, mutex, or coordination pattern found none: every "for
+--     update" match anywhere in this repository's migrations is an RLS
+--     `create policy ... for update to authenticated ...` clause (an
+--     unrelated use of the same SQL keyword) -- no genuine `SELECT ...
+--     FOR UPDATE` row-lock idiom and no singleton-table pattern exists
+--     anywhere in this schema today. Nothing here duplicates an existing
+--     primitive.
+--   - Naming/schema convention across nearby Factory 041 migrations
+--     (public.execution_intents, public.execution_authorisers, public.
+--     compliance_decisions, public.execution_control_events) was
+--     confirmed uniform: every table uses `id bigint generated always as
+--     identity primary key`, RLS enabled with zero policies, and explicit
+--     `revoke all ... from anon/authenticated` as a second layer. This
+--     migration follows that same convention rather than introducing a
+--     new one.
+--
+-- SCOPE, DELIBERATELY NARROW: this migration creates ONLY one new table,
+-- its singleton-enforcing CHECK constraint, RLS enablement with zero
+-- policies, two REVOKE statements, and one inert bootstrap row insert
+-- (see "INERT SCHEMA BOOTSTRAP, NOT EMERGENCY-STATE BOOTSTRAP" below). It
+-- does NOT modify public.execution_control_events, public.evaluate_
+-- execution_emergency_stop(), public.execution_authorisers, or any other
+-- existing migration. It does NOT create stop_execution(), release_
+-- execution(), any other writer, any trigger, or any provider/network
+-- execution logic. It does NOT create an execution_controller grant, an
+-- execution_authoriser grant, or change any execution state. It does NOT
+-- add controller_grant_id anywhere -- that column, if it is ever needed,
+-- belongs to public.execution_control_events (to record which capability
+-- grant authorised a RELEASE, per the Phase 16B.2b-5n preflight), not to
+-- this table, and nothing about a bare lock target requires it: this
+-- table exists purely to be locked, never to be read for its content, so
+-- it has no grant-provenance question to answer at all.
+--
+-- SINGLE-ROW INVARIANT -- TWO CANDIDATE DESIGNS EVALUATED, ONE CHOSEN ON
+-- REPOSITORY-PRECEDENT GROUNDS:
+--   OPTION 1 (a well-known generic PostgreSQL idiom, NOT chosen): a
+--     boolean primary key -- `singleton boolean primary key default
+--     true, check (singleton)` -- structurally permits at most one row,
+--     since a boolean column has only two possible values and the CHECK
+--     forbids the `false` one, leaving exactly one valid key value ever
+--     insertable. This pattern has zero precedent anywhere in this
+--     repository's 100+ prior migrations.
+--   OPTION 2 (chosen): `id bigint generated always as identity primary
+--     key` -- the IDENTICAL column type and generation strategy already
+--     used by every other table in this entire Factory 041 chain --
+--     paired with `constraint execution_control_lock_singleton_check
+--     check (id = 1)`. This is fully structural, not comment-only.
+--   Option 2 is chosen because it reuses this repository's own dominant,
+--   unbroken table-shape convention exactly, rather than introducing a
+--   generically-known but locally unprecedented idiom for a problem this
+--   repository's existing column strategy already solves just as
+--   structurally.
+--
+-- SINGLETON PROOF -- CORRECTED PER THE PHASE 16B.2b-5p-R1 ARCHITECT
+-- CORRECTION: an earlier draft of this documentation justified the
+-- singleton guarantee partly by appeal to identity-sequence progression
+-- ("a second INSERT would receive id=2 or higher, since the sequence
+-- only ever increases"). The architect correction identified that this
+-- is the wrong basis for a security proof: sequence behaviour is an
+-- implementation detail of GENERATED ALWAYS AS IDENTITY, not a
+-- guarantee this migration should rely on or assert. The actual,
+-- complete structural proof is simpler and does not depend on sequence
+-- semantics at all: every row in this table must satisfy `CHECK (id =
+-- 1)`; `id` is the PRIMARY KEY, so no two rows may ever share the same
+-- value; therefore at most one row -- the one with id = 1 -- can ever
+-- exist, full stop. The identity-column strategy (see OPTION 2 above)
+-- is chosen purely for repository-shape consistency with every other
+-- table in this chain -- it plays no role in, and is not needed for,
+-- the singleton proof itself.
+--
+-- CREATE TABLE, NOT CREATE TABLE IF NOT EXISTS -- FAIL-CLOSED ON
+-- UNEXPECTED PRE-EXISTENCE, PER THE PHASE 16B.2b-5p-R1 ARCHITECT
+-- CORRECTION: an earlier draft used `CREATE TABLE IF NOT EXISTS`,
+-- matching this repository's own overwhelmingly dominant "safe to
+-- rerun" convention. The architect correction identified that for a
+-- brand-new security-boundary primitive specifically, that convention
+-- is the wrong default: if public.execution_control_lock unexpectedly
+-- already existed under this name (a naming collision, a partially
+-- applied prior attempt, or any other form of drift), `IF NOT EXISTS`
+-- would silently accept whatever that existing object's structure
+-- happened to be, without ever proving it actually matches the shape
+-- this migration expects. This migration must instead PROVE its
+-- assumed starting state is real by letting PostgreSQL abort loudly (a
+-- "relation ... already exists" error) if the name is already taken,
+-- rather than quietly building on top of an unverified object -- the
+-- identical fail-closed-on-schema-drift reasoning already applied to
+-- the capability CHECK constraint replacement in Phase 16B.2b-5o-R1.
+--
+-- NO BUSINESS STATE OF ANY KIND: the table below carries no event_type,
+-- no stopped/clear flag, no actor_id, no reason, no evidence_reference,
+-- and no timestamp of any kind -- literally the bare minimum needed for
+-- a row to exist and be lockable. Its own creation time conveys no
+-- control-relevant meaning (nothing will ever query "when was the lock
+-- row created" for any control-flow purpose), so even a purely
+-- descriptive created_at column -- present on essentially every other
+-- table in this schema -- is deliberately omitted here, per the
+-- "smallest explicit relational shape" instruction: this table has
+-- exactly one column, and that column exists solely to be the primary
+-- key a future `SELECT ... FOR UPDATE` statement locks.
+--
+-- HOW A FUTURE `SELECT ... FOR UPDATE` WILL SERIALIZE CONCURRENT
+-- MUTATIONS (design only -- not implemented by this migration): a future
+-- stop_execution()/release_execution() writer will, as its first
+-- statement inside its own transaction, execute `select id from public.
+-- execution_control_lock where id = 1 for update`. PostgreSQL's row-lock
+-- semantics guarantee that if a second concurrent transaction attempts
+-- the identical statement before the first has committed or rolled back,
+-- the second BLOCKS until the first transaction ends -- only one
+-- control-mutation transaction can ever be "in flight" past that
+-- statement at a time. Once the first transaction commits (or aborts),
+-- the second proceeds, now able to read a fully up-to-date snapshot of
+-- public.execution_control_events (including whatever row the first
+-- transaction just committed, if any) before deciding what to insert.
+-- This is what makes the eventual sequence of COMMITTED execution_
+-- control_events rows reflect the order the trusted writer actually
+-- admitted each mutation -- not merely the order two concurrent id
+-- allocations happened to receive, which the Phase 16B.2b-5m-R1
+-- correction already established is not the same guarantee.
+--
+-- NOT THE SOURCE OF EMERGENCY STATE, RESTATED EXPLICITLY: this table's
+-- single row is never read by public.evaluate_execution_emergency_stop()
+-- (unmodified by this migration) and will never be read by any future
+-- writer for its OWN content -- only locked, for its mere existence as a
+-- contended row. public.execution_control_events remains, unchanged and
+-- exclusively, the one place "is execution currently stopped" is
+-- answered from.
+--
+-- INERT SCHEMA BOOTSTRAP, NOT EMERGENCY-STATE BOOTSTRAP -- A DELIBERATE
+-- DISTINCTION: this migration DOES insert exactly one row into the new
+-- table below, since the lock target must exist for any future `SELECT
+-- ... FOR UPDATE` to have something to lock. This is categorically
+-- different from, and must never be confused with, the prohibited
+-- "emergency-state bootstrap RELEASE" the Phase 16B.2b-5n preflight
+-- described and deferred to its own future, separately-authorised gate:
+-- the row inserted here carries no event_type, no actor, no reason, no
+-- evidence, and no emergency-state meaning of any kind -- it cannot
+-- stop execution, cannot release execution, cannot be interpreted by
+-- public.evaluate_execution_emergency_stop() (which never queries this
+-- table), and grants no authority to anyone. Inserting it changes
+-- nothing about the fact that public.execution_control_events still
+-- holds zero rows and execution still evaluates to 'stopped' -- this
+-- migration's bootstrap row is pure, inert schema plumbing, not a step
+-- toward releasing execution.
+--
+-- BOOTSTRAP INSERT -- DETERMINISTIC id=1, UNCONDITIONAL, FAIL-CLOSED ON
+-- UNEXPECTED STATE, PER THE PHASE 16B.2b-5p-R1 ARCHITECT CORRECTION: an
+-- earlier draft guarded this INSERT with `where not exists (select 1
+-- from public.execution_control_lock)`, reasoning that this made the
+-- statement safe to rerun. The architect correction identified that this
+-- traded away the same thing the CREATE TABLE correction above trades
+-- away: immediately after this migration's own CREATE TABLE statement
+-- succeeds (which itself now aborts loudly if the table already existed,
+-- see "CREATE TABLE, NOT CREATE TABLE IF NOT EXISTS" above), the table
+-- is GUARANTEED empty -- there is no legitimate scenario in which this
+-- fresh table could already contain a row at this point in the same
+-- migration. A conditional guard here would silently tolerate that
+-- impossible-in-theory state being true anyway (e.g. from some
+-- out-of-band interference within the same migration run), rather than
+-- letting PostgreSQL's own CHECK/PRIMARY KEY machinery fail loudly if
+-- that assumption were ever somehow false. The insert is therefore
+-- unconditional: `insert into public.execution_control_lock (id)
+-- overriding system value values (1)`. `overriding system value` is
+-- used to explicitly supply id=1 despite the column being `generated
+-- always as identity` (which otherwise forbids a caller-supplied value
+-- on ordinary INSERT) -- deterministic and explicit. If this table
+-- somehow already held a row with id=1 at this point, the statement
+-- fails on the PRIMARY KEY uniqueness violation rather than silently
+-- doing nothing -- fail-closed, matching the identical posture already
+-- established for the CHECK-constraint-widening correction in Phase
+-- 16B.2b-5o-R1.
+--
+-- SECURITY -- RLS ENABLED, ZERO POLICIES, EXPLICIT REVOKE, MATCHING
+-- EVERY OTHER FOUNDATION TABLE IN THIS CHAIN EXACTLY: no existing RLS
+-- policy anywhere in this repository is modified by this migration --
+-- this establishes ONLY this new table's own posture, required because
+-- the table is new, not an alteration of anything pre-existing. RLS is
+-- enabled with zero policies -- default-deny for every row, every role,
+-- every direction, for anon and authenticated alike. Table privileges
+-- are additionally revoked explicitly from anon and authenticated, the
+-- same defence-in-depth reasoning already applied to every other
+-- foundation table in this chain. A future SECURITY DEFINER writer
+-- (stop_execution()/release_execution(), not built in this phase) will
+-- run as the table owner and can lock this row regardless of RLS,
+-- exactly as every other SECURITY DEFINER function in this chain already
+-- reads/writes its own fully-locked-down tables -- no policy is needed
+-- for that future functionality, and none is added speculatively now.
+-- No GRANT of any kind is issued to anon or authenticated -- no ordinary
+-- application role obtains any ability to read, lock, or mutate this
+-- table through any path this migration creates.
+--
+-- NOT SAFE TO BLINDLY RERUN, DELIBERATELY, FOR THE TABLE AND BOOTSTRAP
+-- INSERT SPECIFICALLY: unlike most migrations in this repository, the
+-- CREATE TABLE and bootstrap INSERT statements below are NOT guarded to
+-- tolerate a rerun -- see "CREATE TABLE, NOT CREATE TABLE IF NOT
+-- EXISTS" and "BOOTSTRAP INSERT" above for why this is the correct,
+-- deliberate posture for this specific security-boundary primitive, not
+-- an oversight. This migration is expected to run at most once per
+-- environment, exactly like every other migration in this repository --
+-- the difference here is that a genuinely abnormal rerun now fails
+-- loudly instead of being silently absorbed. Every REVOKE statement
+-- remains safe to rerun (revoking an unheld privilege is a no-op in
+-- PostgreSQL), and `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` is
+-- likewise idempotent in PostgreSQL.
+--
+-- NOT APPLIED BY THIS FILE'S PRESENCE: created for local review only, per
+-- the Phase 16B.2b-5p authorisation. Must NOT be run against Supabase,
+-- staged, committed, or pushed until a separate, explicit authorisation
+-- is given.
+
+create table public.execution_control_lock (
+  id bigint generated always as identity primary key,
+
+  constraint execution_control_lock_singleton_check
+    check (id = 1)
+);
+
+-- RLS enabled, zero policies -- see "SECURITY" above.
+alter table public.execution_control_lock enable row level security;
+
+-- Explicit second layer -- see "SECURITY" above.
+revoke all on public.execution_control_lock from anon;
+revoke all on public.execution_control_lock from authenticated;
+
+-- Inert schema bootstrap only -- see "INERT SCHEMA BOOTSTRAP, NOT
+-- EMERGENCY-STATE BOOTSTRAP" and "BOOTSTRAP INSERT" above. Carries no
+-- emergency-state meaning, no actor, no authority.
+insert into public.execution_control_lock (id)
+  overriding system value
+  values (1);
+
+-- ROLLBACK (documented, not executed): safe as long as no future writer
+-- has ever been built and pointed at this table (none is, by this
+-- migration) -- there is nothing else in the schema that could reference
+-- or depend on this table's existence yet.
+-- delete from public.execution_control_lock where id = 1;
+-- drop table if exists public.execution_control_lock;
