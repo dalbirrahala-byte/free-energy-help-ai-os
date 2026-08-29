@@ -2,11 +2,14 @@ import { createClient } from "@/lib/supabase/server";
 
 import {
   buildRenewalsDueLabel,
+  classifyRenewalActionUrgency,
   countOpenTasks,
+  countOverdueTasks,
   daysUntil,
   displayValue,
   formatUkDate,
   formatUkDateTime,
+  renewalActionSuggestedNextAction,
   renewalCountdownLabel,
 } from "./analytics";
 import { demoExecutiveOverlay, getDemoModulesForCustomer } from "./demo-data";
@@ -15,6 +18,8 @@ import type {
   Contact360Row,
   Customer360Alert,
   Customer360View,
+  DataGapWarning,
+  RenewalActionWorkspace,
   Site360Row,
   Task360Row,
   Timeline360Entry,
@@ -287,6 +292,101 @@ function buildAlerts(
   return alerts;
 }
 
+function buildRenewalActionWorkspace(
+  customer: CustomerRow,
+  mainSite: SiteRow | null,
+  sites: SiteRow[],
+  tasks: TaskRow[],
+  activities: ActivityRow[],
+  renewalDays: number | null,
+  latestActivity: ActivityRow | undefined,
+): RenewalActionWorkspace {
+  const urgency = classifyRenewalActionUrgency(renewalDays);
+  const overdueTaskCount = countOverdueTasks(tasks);
+
+  const dataGaps: DataGapWarning[] = [];
+
+  if (!mainSite?.contract_end) {
+    dataGaps.push({
+      id: "gap-contract-end",
+      message: "Contract end date is not recorded.",
+    });
+  }
+
+  if (!mainSite?.current_supplier?.trim()) {
+    dataGaps.push({
+      id: "gap-supplier",
+      message: "Current supplier is not recorded.",
+    });
+  }
+
+  if (!customer.contact_name?.trim()) {
+    dataGaps.push({
+      id: "gap-contact",
+      message: "Primary contact name is missing.",
+    });
+  }
+
+  if (!customer.telephone?.trim()) {
+    dataGaps.push({
+      id: "gap-telephone",
+      message: "Telephone number is missing.",
+    });
+  }
+
+  if (!customer.email?.trim()) {
+    dataGaps.push({
+      id: "gap-email",
+      message: "Email address is missing.",
+    });
+  }
+
+  if (sites.length === 0) {
+    dataGaps.push({
+      id: "gap-site",
+      message: "No site is recorded for this customer.",
+    });
+  }
+
+  if (activities.length === 0) {
+    dataGaps.push({
+      id: "gap-activity",
+      message: "No activity has been recorded for this customer.",
+    });
+  }
+
+  if (overdueTaskCount > 0) {
+    dataGaps.push({
+      id: "gap-overdue-tasks",
+      message: `${overdueTaskCount} task(s) are overdue.`,
+    });
+  }
+
+  return {
+    source: "live",
+    companyName: displayValue(customer.company_name),
+    primaryContact: displayValue(customer.contact_name),
+    telephone: displayValue(customer.telephone),
+    email: displayValue(customer.email),
+    primarySiteName: displayValue(mainSite?.name),
+    currentSupplier: displayValue(mainSite?.current_supplier),
+    contractEndLabel: formatUkDate(mainSite?.contract_end ?? null),
+    renewalCountdownLabel: renewalCountdownLabel(renewalDays),
+    daysUntilEnd: renewalDays,
+    urgency,
+    suggestedNextAction: renewalActionSuggestedNextAction(urgency),
+    dataGaps,
+    openTaskCount: countOpenTasks(tasks),
+    overdueTaskCount,
+    latestActivitySummary: latestActivity
+      ? `${displayValue(latestActivity.title ?? latestActivity.activity_type)} (${formatUkDateTime(
+          latestActivity.activity_date ?? latestActivity.created_at.slice(0, 10),
+          latestActivity.activity_time,
+        )})`
+      : "No live activities recorded",
+  };
+}
+
 export async function loadCustomer360(
   customerId: number,
 ): Promise<Customer360View | null> {
@@ -394,6 +494,15 @@ export async function loadCustomer360(
     contacts: contactRows,
     activities: activityRows,
     liveNotes: customer.notes,
+    renewalAction: buildRenewalActionWorkspace(
+      customer,
+      mainSite,
+      sites,
+      tasks,
+      activities,
+      renewalDays,
+      latestActivity,
+    ),
     overview: {
       profileSummary: `${displayValue(customer.company_name)} — ${displayValue(customer.status)} trading status.`,
       primarySiteName: displayValue(mainSite?.name),
