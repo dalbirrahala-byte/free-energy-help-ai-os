@@ -1,6 +1,6 @@
 import type { TrendSeries } from "@/lib/reports/types";
 
-import type { Consumption360, Contract360Row } from "./types";
+import type { Consumption360, Contract360Row, RenewalActionUrgency } from "./types";
 
 export function formatUkDate(date: string | null | undefined): string {
   if (!date) {
@@ -66,6 +66,66 @@ export function countOpenTasks(
   );
 
   return open.length;
+}
+
+export function countOverdueTasks(
+  tasks: { status: string | null; due_date: string | null }[],
+): number {
+  return tasks.filter((t) => {
+    if (!t.due_date) {
+      return false;
+    }
+
+    const days = daysUntil(t.due_date);
+    const status = (t.status ?? "").toLowerCase();
+
+    return days !== null && days < 0 && status !== "completed" && status !== "done";
+  }).length;
+}
+
+export function classifyRenewalActionUrgency(
+  daysUntilEnd: number | null,
+): RenewalActionUrgency {
+  if (daysUntilEnd === null) {
+    return "Data gap";
+  }
+
+  if (daysUntilEnd < 0) {
+    return "Overdue";
+  }
+
+  if (daysUntilEnd <= 30) {
+    return "Critical";
+  }
+
+  if (daysUntilEnd <= 60) {
+    return "Priority";
+  }
+
+  if (daysUntilEnd <= 90) {
+    return "Upcoming";
+  }
+
+  return "Future";
+}
+
+export function renewalActionSuggestedNextAction(
+  urgency: RenewalActionUrgency,
+): string {
+  switch (urgency) {
+    case "Overdue":
+      return "Confirm renewal status immediately and update the customer record.";
+    case "Critical":
+      return "Priority renewal call and confirm decision-maker, meter data and requirements.";
+    case "Priority":
+      return "Prepare renewal options and schedule the commercial review.";
+    case "Upcoming":
+      return "Validate supplier, contract details and consumption before pricing.";
+    case "Future":
+      return "Maintain relationship contact and keep the renewal date under review.";
+    case "Data gap":
+      return "Confirm contract end date and supplier before renewal planning.";
+  }
 }
 
 export function countRenewalsDueWithinDays(

@@ -13,6 +13,7 @@ import { Customer360Header } from "./Customer360Header";
 import { Customer360SummaryCards } from "./Customer360SummaryCards";
 import { Customer360TabPanels } from "./Customer360TabPanels";
 import { Customer360Tabs } from "./Customer360Tabs";
+import { RenewalActionWorkspace } from "./RenewalActionWorkspace";
 
 type Customer360WorkspaceProps = {
   view: Customer360View;
@@ -36,6 +37,8 @@ export function Customer360Workspace({ view }: Customer360WorkspaceProps) {
         header={view.header}
         onOpenAiAssistant={() => setTab("AI Assistant")}
       />
+
+      <RenewalActionWorkspace data={view.renewalAction} />
 
       <Customer360SummaryCards summary={view.summary} />
 

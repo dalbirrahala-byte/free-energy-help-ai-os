@@ -278,6 +278,38 @@ export type Opportunity360Row = {
   nextStep: string;
 };
 
+export type RenewalActionUrgency =
+  | "Overdue"
+  | "Critical"
+  | "Priority"
+  | "Upcoming"
+  | "Future"
+  | "Data gap";
+
+export type DataGapWarning = {
+  id: string;
+  message: string;
+};
+
+export type RenewalActionWorkspace = {
+  source: "live";
+  companyName: string;
+  primaryContact: string;
+  telephone: string;
+  email: string;
+  primarySiteName: string;
+  currentSupplier: string;
+  contractEndLabel: string;
+  renewalCountdownLabel: string;
+  daysUntilEnd: number | null;
+  urgency: RenewalActionUrgency;
+  suggestedNextAction: string;
+  dataGaps: DataGapWarning[];
+  openTaskCount: number;
+  overdueTaskCount: number;
+  latestActivitySummary: string;
+};
+
 export type Customer360Overview = {
   profileSummary: string;
   primarySiteName: string;
@@ -320,6 +352,7 @@ export type Customer360View = {
   contacts: Contact360Row[];
   activities: Activity360Row[];
   liveNotes: string | null;
+  renewalAction: RenewalActionWorkspace;
   overview: Customer360Overview;
   demo: Customer360DemoModules;
   timeline: Timeline360Entry[];
