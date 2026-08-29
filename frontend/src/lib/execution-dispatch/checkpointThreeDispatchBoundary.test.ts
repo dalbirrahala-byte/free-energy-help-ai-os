@@ -19,6 +19,7 @@ function envelope(overrides: Partial<PreparedExecutionDispatchEnvelope> = {}): P
     providerAdapterId: 1,
     providerAdapterKey: "TEST_EMAIL_V1",
     channel: "EMAIL",
+    destination: "test@example.com",
     executionPerformed: false,
     ...overrides,
   });
@@ -142,6 +143,7 @@ test("parseExecutionDispatchPreparationResult: accepts only an authoritative pre
     provider_adapter_id: 7,
     provider_adapter_key: "TELNYX_PHONE_V1",
     channel: "PHONE",
+    destination: "+442079460000",
     execution_performed: false,
   }]);
   assert.equal(result.status, "prepared");
@@ -210,4 +212,27 @@ test("isUsablePreparedExecutionDispatchEnvelope: rejects an oversized dispatchId
 test("isUsablePreparedExecutionDispatchEnvelope: rejects executionPerformed !== false", () => {
   const bad = { ...envelope(), executionPerformed: true } as unknown as PreparedExecutionDispatchEnvelope;
   assert.equal(isUsablePreparedExecutionDispatchEnvelope(bad), false);
+});
+
+test("parseExecutionDispatchPreparationResult: non-prepared rows cannot expose destination", () => {
+  for (const status of ["blocked", "no_change", "evaluation_failed"] as const) {
+    const row = {
+      preparation_status: status,
+      execution_authorization_id: null,
+      execution_dispatch_attempt_id: null,
+      dispatch_idempotency_key: null,
+      provider_adapter_id: null,
+      provider_adapter_key: null,
+      channel: null,
+      destination: "+442071234567",
+      execution_performed: null,
+    };
+    assert.deepEqual(parseExecutionDispatchPreparationResult([row]), { status: "evaluation_failed", preparedDispatch: null });
+  }
+});
+
+test("isUsablePreparedExecutionDispatchEnvelope: rejects missing, malformed, or padded destinations", () => {
+  for (const destination of [undefined, "", "test", " test@example.com "]) {
+    assert.equal(isUsablePreparedExecutionDispatchEnvelope(envelope({ destination } as Partial<PreparedExecutionDispatchEnvelope>)), false);
+  }
 });

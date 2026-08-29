@@ -471,11 +471,15 @@ export async function dispatchTelnyxPhoneCall(
     return { status: "definitive_failure", failureCode: "invalid_prepared_dispatch_context" };
   }
 
-  if (typeof context.intent.destination !== "string" || context.intent.destination.trim().length === 0) {
+  if (context.intent.destination !== context.preparedDispatch.destination) {
+    return { status: "definitive_failure", failureCode: "destination_mismatch" };
+  }
+
+  if (typeof context.preparedDispatch.destination !== "string" || context.preparedDispatch.destination.trim().length === 0) {
     return { status: "definitive_failure", failureCode: "missing_destination" };
   }
 
-  if (!isValidTelephoneShape(context.intent.destination)) {
+  if (!isValidTelephoneShape(context.preparedDispatch.destination)) {
     return { status: "definitive_failure", failureCode: "invalid_destination" };
   }
 
@@ -484,7 +488,7 @@ export async function dispatchTelnyxPhoneCall(
   }
 
   const request = mapToTelnyxDialRequest(
-    context.intent.destination,
+    context.preparedDispatch.destination,
     context.preparedDispatch.dispatchIdempotencyKey,
     config,
   );

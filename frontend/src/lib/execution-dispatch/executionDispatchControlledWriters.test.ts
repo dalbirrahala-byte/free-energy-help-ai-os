@@ -28,6 +28,7 @@ const prepared: PreparedExecutionDispatchEnvelope = Object.freeze({
   providerAdapterId: 7,
   providerAdapterKey: "TELNYX_PHONE_V1",
   channel: "PHONE",
+  destination: "+442079460000",
   executionPerformed: false,
 });
 
@@ -69,6 +70,7 @@ test("prepareDispatch reuses the authoritative preparation RPC shape and parser"
         provider_adapter_id: 7,
         provider_adapter_key: "TELNYX_PHONE_V1",
         channel: "PHONE",
+        destination: "+442079460000",
         execution_performed: false,
       }],
       error: null,

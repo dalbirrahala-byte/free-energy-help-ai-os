@@ -15,6 +15,7 @@ const preparedRow = Object.freeze({
   provider_adapter_id: 7,
   provider_adapter_key: "TELNYX_PHONE_V1",
   channel: "PHONE",
+  destination: "+442079460000",
   execution_performed: false,
 });
 

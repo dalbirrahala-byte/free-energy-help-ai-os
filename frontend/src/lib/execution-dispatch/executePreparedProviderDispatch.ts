@@ -80,7 +80,8 @@ export async function executePreparedProviderDispatch<TContext>(
   if (!isUsablePreparedExecutionDispatchEnvelope(prepared) ||
       prepared.executionAuthorizationId !== request.executionAuthorizationId ||
       prepared.providerAdapterId !== request.providerAdapterId ||
-      prepared.channel !== request.intent.channel) {
+      prepared.channel !== request.intent.channel ||
+      request.intent.destination !== prepared.destination) {
     return { status: preparation.status === "blocked" ? "blocked" : "evaluation_failed", attemptId: prepared?.executionDispatchAttemptId ?? null };
   }
 

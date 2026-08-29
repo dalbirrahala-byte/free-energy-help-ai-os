@@ -13,6 +13,7 @@ const prepared: PreparedExecutionDispatchEnvelope = Object.freeze({
   providerAdapterId: 7,
   providerAdapterKey: "TELNYX_PHONE_V1",
   channel: "PHONE",
+  destination: "+442079460000",
   executionPerformed: false,
 });
 
@@ -147,4 +148,24 @@ test("unexpected finalizer result fails closed without another provider call", a
   h.writers.finalizeSuccess = async () => "no_change";
   assert.equal((await executePreparedProviderDispatch(h.writers, h.request)).status, "evaluation_failed");
   assert.equal(h.getDispatchCount(), 1);
+});
+
+test("intent destination mismatch with authoritative prepared destination prevents provider dispatch", async () => {
+  const h = harness();
+  h.request.intent = { ...intent, destination: "+442079460001" };
+  assert.equal((await executePreparedProviderDispatch(h.writers, h.request)).status, "evaluation_failed");
+  assert.equal(h.getDispatchCount(), 0);
+  assert.deepEqual(h.calls, ["consume", "prepare"]);
+});
+
+test("missing or malformed prepared destination fails closed without provider dispatch", async () => {
+  for (const destination of [undefined, "", "  +442079460000  ", "123"] as const) {
+    const h = harness();
+    h.writers.prepareDispatch = async () => ({
+      status: "prepared",
+      preparedDispatch: { ...prepared, destination } as PreparedExecutionDispatchEnvelope,
+    });
+    assert.equal((await executePreparedProviderDispatch(h.writers, h.request)).status, "evaluation_failed");
+    assert.equal(h.getDispatchCount(), 0);
+  }
 });

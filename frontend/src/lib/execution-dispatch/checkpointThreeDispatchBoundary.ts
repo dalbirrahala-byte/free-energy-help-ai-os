@@ -98,6 +98,8 @@ export type PreparedExecutionDispatchEnvelope = {
   readonly providerAdapterId: number;
   readonly providerAdapterKey: string;
   readonly channel: ContactChannel;
+  /** Authoritative trimmed destination loaded and commitment-verified by the preparation RPC. */
+  readonly destination: string;
   /** Always the literal `false`. A prepared attempt means "may be dispatched" -- never that the provider was called. */
   readonly executionPerformed: false;
 };
@@ -238,6 +240,7 @@ function isNullEnvelopeRow(row: Record<string, unknown>): boolean {
     "provider_adapter_id",
     "provider_adapter_key",
     "channel",
+    "destination",
     "execution_performed",
   ].every((key) => row[key] == null);
 }
@@ -271,6 +274,7 @@ export function parseExecutionDispatchPreparationResult(data: unknown): Executio
     providerAdapterId: row.provider_adapter_id,
     providerAdapterKey: row.provider_adapter_key,
     channel: row.channel,
+    destination: row.destination,
     executionPerformed: row.execution_performed,
   } as PreparedExecutionDispatchEnvelope;
 
@@ -318,6 +322,11 @@ export function isUsablePreparedExecutionDispatchEnvelope(
     isUsableReference(envelope.dispatchIdempotencyKey) &&
     isUsableReference(envelope.providerAdapterKey) &&
     ["PHONE", "EMAIL", "WHATSAPP", "SMS"].includes(envelope.channel) &&
+    isUsableReference(envelope.destination) &&
+    envelope.destination === envelope.destination.trim() &&
+    (envelope.channel === "EMAIL"
+      ? envelope.destination.length <= 254 && /^[^\s@]+@[^\s@]+[.][^\s@]+$/.test(envelope.destination)
+      : envelope.destination.length <= 30 && envelope.destination.replace(/[^0-9]/g, "").length >= 10) &&
     envelope.executionPerformed === false
   );
 }

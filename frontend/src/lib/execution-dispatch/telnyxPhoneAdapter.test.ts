@@ -48,6 +48,7 @@ function preparedDispatch(overrides: Partial<PreparedExecutionDispatchEnvelope> 
     providerAdapterId: 7,
     providerAdapterKey: "TELNYX_PHONE_V1",
     channel: "PHONE",
+    destination: "+442071234567",
     executionPerformed: false,
     ...overrides,
   });
@@ -406,8 +407,8 @@ test("dispatchTelnyxPhoneCall: rejects wrong channel without calling the transpo
 
 test("dispatchTelnyxPhoneCall: rejects missing destination without calling the transport", async () => {
   const transport = recordingTransport({ outcome: "response", response: { httpStatus: 200, body: {} } });
-  const result = await dispatchTelnyxPhoneCall(context({ intent: { destination: "" } }), transport, config());
-  assert.deepEqual(result, { status: "definitive_failure", failureCode: "missing_destination" });
+  const result = await dispatchTelnyxPhoneCall(context({ intent: { destination: "" }, preparedDispatch: { destination: "" } }), transport, config());
+  assert.deepEqual(result, { status: "definitive_failure", failureCode: "invalid_prepared_dispatch_context" });
   assert.equal(transport.callCount, 0);
 });
 
@@ -427,8 +428,8 @@ test("dispatchTelnyxPhoneCall: rejects blank 'from' configuration without callin
 
 test("dispatchTelnyxPhoneCall: rejects a structurally invalid PHONE destination without calling the transport", async () => {
   const transport = recordingTransport({ outcome: "response", response: { httpStatus: 200, body: {} } });
-  const result = await dispatchTelnyxPhoneCall(context({ intent: { destination: "123" } }), transport, config());
-  assert.deepEqual(result, { status: "definitive_failure", failureCode: "invalid_destination" });
+  const result = await dispatchTelnyxPhoneCall(context({ intent: { destination: "123" }, preparedDispatch: { destination: "123" } }), transport, config());
+  assert.deepEqual(result, { status: "definitive_failure", failureCode: "invalid_prepared_dispatch_context" });
   assert.equal(transport.callCount, 0);
 });
 
@@ -537,4 +538,28 @@ test("createTelnyxPhoneAdapter: dispatch() delegates to the same classification 
 test("createTelnyxPhoneAdapter: is frozen / read-only", () => {
   const adapter = createTelnyxPhoneAdapter(config(), recordingTransport({ outcome: "response", response: { httpStatus: 200, body: {} } }));
   assert.equal(Object.isFrozen(adapter), true);
+});
+
+test("dispatchTelnyxPhoneCall: provider to is exclusively the authoritative prepared destination", async () => {
+  let capturedTo: string | null = null;
+  const transport: TelnyxDialTransport = {
+    async createDial(request) {
+      capturedTo = request.to;
+      return { outcome: "response", response: { httpStatus: 200, body: { data: { call_control_id: "call-1" } } } };
+    },
+  };
+  const result = await dispatchTelnyxPhoneCall(context(), transport, config());
+  assert.equal(result.status, "success");
+  assert.equal(capturedTo, preparedDispatch().destination);
+});
+
+test("dispatchTelnyxPhoneCall: intent/prepared destination mismatch makes zero transport calls", async () => {
+  const transport = recordingTransport({ outcome: "response", response: { httpStatus: 200, body: {} } });
+  const result = await dispatchTelnyxPhoneCall(
+    context({ intent: { destination: "+442071234568" } }),
+    transport,
+    config(),
+  );
+  assert.deepEqual(result, { status: "definitive_failure", failureCode: "destination_mismatch" });
+  assert.equal(transport.callCount, 0);
 });
