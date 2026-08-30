@@ -467,10 +467,10 @@ export default async function RenewalsPage({ searchParams }: RenewalsPageProps) 
 
                       <td className="px-5 py-4 align-top">
                         <Link
-                          href={`/customers/${opportunity.customerId}`}
+                          href={`/customers/${opportunity.customerId}#renewal-workspace`}
                           className="font-semibold text-emerald-600 hover:text-emerald-700"
                         >
-                          Open customer
+                          Open renewal workspace
                         </Link>
                       </td>
                     </tr>
