@@ -9,9 +9,13 @@ import {
   displayValue,
   formatUkDate,
   formatUkDateTime,
-  renewalActionSuggestedNextAction,
   renewalCountdownLabel,
 } from "./analytics";
+import {
+  classifyRenewalWorkflowLane,
+  renewalWorkflowNextStep,
+  renewalWorkflowReason,
+} from "./renewal-workflow";
 import { demoExecutiveOverlay, getDemoModulesForCustomer } from "./demo-data";
 import type {
   Activity360Row,
@@ -303,6 +307,7 @@ function buildRenewalActionWorkspace(
 ): RenewalActionWorkspace {
   const urgency = classifyRenewalActionUrgency(renewalDays);
   const overdueTaskCount = countOverdueTasks(tasks);
+  const openTaskCount = countOpenTasks(tasks);
 
   const dataGaps: DataGapWarning[] = [];
 
@@ -348,6 +353,10 @@ function buildRenewalActionWorkspace(
     });
   }
 
+  // Keep Phase 3 lane classification aligned with the renewal queue's six
+  // required customer/site fields. Activity absence remains visible context.
+  const workflowDataGapCount = dataGaps.length;
+
   if (activities.length === 0) {
     dataGaps.push({
       id: "gap-activity",
@@ -362,6 +371,16 @@ function buildRenewalActionWorkspace(
     });
   }
 
+  const workflowInput = {
+    urgency,
+    daysUntilEnd: renewalDays,
+    openTaskCount,
+    overdueTaskCount,
+    dataGapCount: workflowDataGapCount,
+  };
+  const workflowLane = classifyRenewalWorkflowLane(workflowInput);
+  const nextStep = renewalWorkflowNextStep(workflowInput, workflowLane);
+
   return {
     source: "live",
     companyName: displayValue(customer.company_name),
@@ -374,9 +393,12 @@ function buildRenewalActionWorkspace(
     renewalCountdownLabel: renewalCountdownLabel(renewalDays),
     daysUntilEnd: renewalDays,
     urgency,
-    suggestedNextAction: renewalActionSuggestedNextAction(urgency),
+    workflowLane,
+    workflowReason: renewalWorkflowReason(workflowInput, workflowLane),
+    suggestedNextAction: nextStep.action,
+    suggestedNextActionReason: nextStep.reason,
     dataGaps,
-    openTaskCount: countOpenTasks(tasks),
+    openTaskCount,
     overdueTaskCount,
     latestActivitySummary: latestActivity
       ? `${displayValue(latestActivity.title ?? latestActivity.activity_type)} (${formatUkDateTime(

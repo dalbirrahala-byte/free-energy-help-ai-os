@@ -1,4 +1,5 @@
 import { CUSTOMER_360_TABS } from "./constants";
+import type { RenewalWorkflowLane } from "./renewal-workflow";
 
 export type Customer360Tab = (typeof CUSTOMER_360_TABS)[number];
 
@@ -303,7 +304,10 @@ export type RenewalActionWorkspace = {
   renewalCountdownLabel: string;
   daysUntilEnd: number | null;
   urgency: RenewalActionUrgency;
+  workflowLane: RenewalWorkflowLane;
+  workflowReason: string;
   suggestedNextAction: string;
+  suggestedNextActionReason: string;
   dataGaps: DataGapWarning[];
   openTaskCount: number;
   overdueTaskCount: number;
