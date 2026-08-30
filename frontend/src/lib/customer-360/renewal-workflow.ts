@@ -6,6 +6,24 @@ export type RenewalWorkflowLane =
   | "Complete data"
   | "Monitor";
 
+export type RenewalWorkflowLaneFilter =
+  | "all"
+  | "action-now"
+  | "prepare"
+  | "complete-data"
+  | "monitor";
+
+export const RENEWAL_WORKFLOW_LANE_FILTERS: ReadonlyArray<{
+  value: RenewalWorkflowLaneFilter;
+  label: "All work" | RenewalWorkflowLane;
+}> = [
+  { value: "all", label: "All work" },
+  { value: "action-now", label: "Action now" },
+  { value: "prepare", label: "Prepare" },
+  { value: "complete-data", label: "Complete data" },
+  { value: "monitor", label: "Monitor" },
+];
+
 export type RenewalWorkflowInput = {
   urgency: RenewalActionUrgency;
   daysUntilEnd: number | null;
@@ -18,6 +36,29 @@ export type RenewalWorkflowComparable = RenewalWorkflowInput & {
   lane: RenewalWorkflowLane;
   customerId: number;
 };
+
+export function parseRenewalWorkflowLaneFilter(
+  value: string | string[] | undefined,
+): RenewalWorkflowLaneFilter {
+  const candidate = Array.isArray(value) ? value[0] : value;
+
+  return RENEWAL_WORKFLOW_LANE_FILTERS.some(
+    (filter) => filter.value === candidate,
+  )
+    ? (candidate as RenewalWorkflowLaneFilter)
+    : "all";
+}
+
+export function renewalWorkflowLaneMatchesFilter(
+  lane: RenewalWorkflowLane,
+  filter: RenewalWorkflowLaneFilter,
+): boolean {
+  if (filter === "all") {
+    return true;
+  }
+
+  return lane.toLowerCase().replaceAll(" ", "-") === filter;
+}
 
 export function classifyRenewalWorkflowLane(
   input: RenewalWorkflowInput,
