@@ -1,6 +1,18 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/layout/AppShell";
+import {
+  classifyRenewalActionUrgency,
+  daysUntil,
+  formatUkDate,
+} from "@/lib/customer-360/analytics";
+import {
+  classifyRenewalWorkflowLane,
+  compareRenewalWorkflowPriority,
+  renewalWorkflowReason,
+  type RenewalWorkflowLane,
+} from "@/lib/customer-360/renewal-workflow";
+import type { RenewalActionUrgency } from "@/lib/customer-360/types";
 import { createClient } from "@/lib/supabase/server";
 
 type SiteRow = {
@@ -19,13 +31,11 @@ type CustomerRow = {
   customer_sites: SiteRow[] | null;
 };
 
-type OpportunityUrgency =
-  | "Overdue"
-  | "Critical"
-  | "Priority"
-  | "Upcoming"
-  | "Future"
-  | "Data gap";
+type TaskRow = {
+  customer_id: number | null;
+  due_date: string | null;
+  status: string | null;
+};
 
 type RenewalOpportunity = {
   customerId: number;
@@ -37,11 +47,14 @@ type RenewalOpportunity = {
   supplier: string;
   contractEnd: string | null;
   daysUntilEnd: number | null;
-  urgency: OpportunityUrgency;
-  nextAction: string;
+  urgency: RenewalActionUrgency;
+  lane: RenewalWorkflowLane;
+  workflowReason: string;
+  openTaskCount: number;
+  overdueTaskCount: number;
+  dataGapCount: number;
+  dataGaps: string[];
 };
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function primarySite(sites: SiteRow[] | null | undefined): SiteRow | null {
   if (!sites?.length) {
@@ -51,83 +64,64 @@ function primarySite(sites: SiteRow[] | null | undefined): SiteRow | null {
   return sites.find((site) => site.is_primary) ?? sites[0];
 }
 
-function utcDateValue(date: string): number {
-  const [year, month, day] = date.split("-").map(Number);
-  return Date.UTC(year, month - 1, day);
+function taskIsOpen(task: TaskRow): boolean {
+  const status = (task.status ?? "Open").toLowerCase();
+  return status !== "completed" && status !== "done";
 }
 
-function todayUtcValue(): number {
-  const now = new Date();
+function taskIsOverdue(task: TaskRow): boolean {
+  if (!taskIsOpen(task) || !task.due_date) {
+    return false;
+  }
 
-  return Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-  );
+  const days = daysUntil(task.due_date);
+  return days !== null && days < 0;
 }
 
-function daysUntilContractEnd(date: string): number {
-  return Math.ceil((utcDateValue(date) - todayUtcValue()) / DAY_MS);
+function buildDataGaps(customer: CustomerRow, site: SiteRow | null): string[] {
+  const gaps: string[] = [];
+
+  if (!site?.contract_end) {
+    gaps.push("Contract end date");
+  }
+
+  if (!site?.current_supplier?.trim()) {
+    gaps.push("Current supplier");
+  }
+
+  if (!customer.contact_name?.trim()) {
+    gaps.push("Primary contact name");
+  }
+
+  if (!customer.telephone?.trim()) {
+    gaps.push("Telephone");
+  }
+
+  if (!customer.email?.trim()) {
+    gaps.push("Email");
+  }
+
+  if (!customer.customer_sites?.length) {
+    gaps.push("Customer site");
+  }
+
+  return gaps;
 }
 
-function opportunityUrgency(
-  daysUntilEnd: number | null,
-): OpportunityUrgency {
-  if (daysUntilEnd === null) {
-    return "Data gap";
-  }
-
-  if (daysUntilEnd < 0) {
-    return "Overdue";
-  }
-
-  if (daysUntilEnd <= 30) {
-    return "Critical";
-  }
-
-  if (daysUntilEnd <= 60) {
-    return "Priority";
-  }
-
-  if (daysUntilEnd <= 90) {
-    return "Upcoming";
-  }
-
-  return "Future";
-}
-
-function suggestedNextAction(
-  urgency: OpportunityUrgency,
-): string {
-  switch (urgency) {
-    case "Overdue":
-      return "Confirm renewal status immediately and update the customer record.";
-    case "Critical":
-      return "Priority renewal call and confirm decision-maker, meter data and requirements.";
-    case "Priority":
-      return "Prepare renewal options and schedule the commercial review.";
-    case "Upcoming":
-      return "Validate supplier, contract details and consumption before pricing.";
-    case "Future":
-      return "Maintain relationship contact and keep the renewal date under review.";
-    case "Data gap":
-      return "Confirm contract end date and supplier before renewal planning.";
+function laneClasses(lane: RenewalWorkflowLane): string {
+  switch (lane) {
+    case "Action now":
+      return "bg-red-100 text-red-800";
+    case "Prepare":
+      return "bg-amber-100 text-amber-800";
+    case "Complete data":
+      return "bg-blue-100 text-blue-800";
+    case "Monitor":
+      return "bg-emerald-100 text-emerald-800";
   }
 }
 
-function formatContractDate(date: string | null): string {
-  if (!date) {
-    return "Not recorded";
-  }
-
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(`${date}T00:00:00Z`));
-}
-
-function urgencyClasses(urgency: OpportunityUrgency): string {
+function urgencyClasses(urgency: RenewalActionUrgency): string {
   switch (urgency) {
     case "Overdue":
       return "bg-red-100 text-red-800";
@@ -144,46 +138,66 @@ function urgencyClasses(urgency: OpportunityUrgency): string {
   }
 }
 
-function sortValue(opportunity: RenewalOpportunity): number {
-  if (opportunity.daysUntilEnd === null) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  return opportunity.daysUntilEnd;
-}
-
 export default async function RenewalsPage() {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("customers")
-    .select(
-      `
-      id,
-      company_name,
-      contact_name,
-      telephone,
-      email,
-      status,
-      customer_sites (
-        current_supplier,
-        contract_end,
-        is_primary
+  const [customersResult, tasksResult] = await Promise.all([
+    supabase
+      .from("customers")
+      .select(
+        `
+        id,
+        company_name,
+        contact_name,
+        telephone,
+        email,
+        status,
+        customer_sites (
+          current_supplier,
+          contract_end,
+          is_primary
+        )
+      `,
       )
-    `,
-    )
-    .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false }),
+    supabase.from("tasks").select("customer_id, due_date, status"),
+  ]);
 
-  const customers = (data ?? []) as CustomerRow[];
+  const customers = (customersResult.data ?? []) as CustomerRow[];
+  const tasks = (tasksResult.data ?? []) as TaskRow[];
+
+  const tasksByCustomer = new Map<number, TaskRow[]>();
+
+  for (const task of tasks) {
+    if (task.customer_id === null) {
+      continue;
+    }
+
+    const existing = tasksByCustomer.get(task.customer_id) ?? [];
+    existing.push(task);
+    tasksByCustomer.set(task.customer_id, existing);
+  }
 
   const opportunities: RenewalOpportunity[] = customers
     .map((customer) => {
       const site = primarySite(customer.customer_sites);
       const contractEnd = site?.contract_end ?? null;
-      const daysUntilEnd = contractEnd
-        ? daysUntilContractEnd(contractEnd)
-        : null;
-      const urgency = opportunityUrgency(daysUntilEnd);
+      const daysUntilEnd = daysUntil(contractEnd);
+      const urgency = classifyRenewalActionUrgency(daysUntilEnd);
+      const customerTasks = tasksByCustomer.get(customer.id) ?? [];
+      const openTaskCount = customerTasks.filter(taskIsOpen).length;
+      const overdueTaskCount = customerTasks.filter(taskIsOverdue).length;
+      const dataGaps = buildDataGaps(customer, site);
+
+      const workflowInput = {
+        urgency,
+        daysUntilEnd,
+        openTaskCount,
+        overdueTaskCount,
+        dataGapCount: dataGaps.length,
+      };
+
+      const lane = classifyRenewalWorkflowLane(workflowInput);
 
       return {
         customerId: customer.id,
@@ -196,82 +210,91 @@ export default async function RenewalsPage() {
         contractEnd,
         daysUntilEnd,
         urgency,
-        nextAction: suggestedNextAction(urgency),
+        lane,
+        workflowReason: renewalWorkflowReason(workflowInput, lane),
+        openTaskCount,
+        overdueTaskCount,
+        dataGapCount: dataGaps.length,
+        dataGaps,
       };
     })
-    .sort((a, b) => sortValue(a) - sortValue(b));
+    .sort(compareRenewalWorkflowPriority);
 
-  const overdue = opportunities.filter(
-    (item) => item.daysUntilEnd !== null && item.daysUntilEnd < 0,
-  ).length;
+  const laneCounts = opportunities.reduce(
+    (counts, opportunity) => {
+      counts[opportunity.lane] += 1;
+      return counts;
+    },
+    {
+      "Action now": 0,
+      Prepare: 0,
+      "Complete data": 0,
+      Monitor: 0,
+    } satisfies Record<RenewalWorkflowLane, number>,
+  );
 
-  const within30 = opportunities.filter(
-    (item) =>
-      item.daysUntilEnd !== null &&
-      item.daysUntilEnd >= 0 &&
-      item.daysUntilEnd <= 30,
-  ).length;
-
-  const within90 = opportunities.filter(
-    (item) =>
-      item.daysUntilEnd !== null &&
-      item.daysUntilEnd > 30 &&
-      item.daysUntilEnd <= 90,
-  ).length;
-
-  const dataGaps = opportunities.filter(
-    (item) => item.daysUntilEnd === null,
-  ).length;
+  const loadError = customersResult.error ?? tasksResult.error;
 
   return (
     <AppShell
       activeHref="/renewals"
-      title="Opportunity Workspace"
-      subtitle="Customer renewal priorities and next actions from the existing FEH CRM"
+      title="Renewal Workflow"
+      subtitle="A deterministic human action queue from existing FEH CRM records"
       headerContext="Renewals"
     >
       <div className="space-y-8">
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                Live CRM workflow
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                Human-controlled renewal work queue
+              </h2>
+              <p className="mt-2 max-w-4xl text-sm text-slate-600">
+                Queue position is derived only from recorded contract timing,
+                open and overdue CRM tasks, and missing CRM fields.
+              </p>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
+              Read only
+            </span>
+          </div>
+
+          <p className="mt-4 text-xs leading-5 text-slate-600">
+            This workspace is deterministic CRM guidance for a human user only.
+            It does not authorize customer contact, does not initiate a call,
+            message, provider action, or execution, and does not represent an
+            AI-approved decision to make contact.
+          </p>
+        </section>
+
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">Overdue</p>
-            <p className="mt-2 text-3xl font-bold text-red-700">{overdue}</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Contract end date has passed
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">Next 30 days</p>
-            <p className="mt-2 text-3xl font-bold text-orange-700">
-              {within30}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Immediate renewal attention
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">31–90 days</p>
-            <p className="mt-2 text-3xl font-bold text-blue-700">{within90}</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Prepare and engage early
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm font-medium text-slate-500">Data gaps</p>
-            <p className="mt-2 text-3xl font-bold text-slate-700">
-              {dataGaps}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Missing contract end date
-            </p>
-          </div>
+          {(
+            [
+              ["Action now", "Human review required now"],
+              ["Prepare", "Build renewal readiness"],
+              ["Complete data", "Resolve CRM information gaps"],
+              ["Monitor", "No immediate preparation indicated"],
+            ] as const
+          ).map(([lane, description]) => (
+            <div
+              key={lane}
+              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+            >
+              <p className="text-sm font-medium text-slate-500">{lane}</p>
+              <p className="mt-2 text-3xl font-bold text-slate-900">
+                {laneCounts[lane]}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">{description}</p>
+            </div>
+          ))}
         </div>
 
-        {error && (
+        {loadError && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            Renewal opportunities could not be loaded from the existing CRM
+            The renewal workflow could not be fully loaded from the existing CRM
             records. No data has been changed.
           </div>
         )}
@@ -279,11 +302,11 @@ export default async function RenewalsPage() {
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-5">
             <h2 className="text-lg font-semibold text-slate-900">
-              Renewal opportunity queue
+              Prioritised renewal action queue
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Ordered by contract end date. Suggested actions are deterministic
-              CRM guidance only and do not authorize customer contact.
+              Ordered by deterministic work lane, overdue task context, and
+              contract timing. Humans remain responsible for every action.
             </p>
           </div>
 
@@ -292,11 +315,10 @@ export default async function RenewalsPage() {
               <thead className="border-b border-slate-200 bg-slate-50">
                 <tr>
                   <th className="px-5 py-4 font-semibold">Customer</th>
-                  <th className="px-5 py-4 font-semibold">Contact</th>
-                  <th className="px-5 py-4 font-semibold">Supplier</th>
-                  <th className="px-5 py-4 font-semibold">Contract end</th>
-                  <th className="px-5 py-4 font-semibold">Priority</th>
-                  <th className="px-5 py-4 font-semibold">Suggested next action</th>
+                  <th className="px-5 py-4 font-semibold">Renewal</th>
+                  <th className="px-5 py-4 font-semibold">CRM readiness</th>
+                  <th className="px-5 py-4 font-semibold">Work lane</th>
+                  <th className="px-5 py-4 font-semibold">Why this position</th>
                   <th className="px-5 py-4 font-semibold">Customer record</th>
                 </tr>
               </thead>
@@ -305,7 +327,7 @@ export default async function RenewalsPage() {
                 {opportunities.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={6}
                       className="px-5 py-12 text-center text-slate-500"
                     >
                       No customer renewal opportunities are available yet.
@@ -317,39 +339,33 @@ export default async function RenewalsPage() {
                       key={opportunity.customerId}
                       className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
                     >
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-top">
                         <p className="font-semibold text-slate-900">
                           {opportunity.companyName}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
                           {opportunity.status}
                         </p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          {opportunity.contactName}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {opportunity.telephone}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {opportunity.email}
+                        </p>
                       </td>
 
-                      <td className="px-5 py-4 text-slate-600">
-                        <p>{opportunity.contactName}</p>
-                        <p className="mt-1 text-xs">{opportunity.telephone}</p>
-                        <p className="text-xs">{opportunity.email}</p>
-                      </td>
-
-                      <td className="px-5 py-4 text-slate-600">
-                        {opportunity.supplier}
-                      </td>
-
-                      <td className="px-5 py-4 text-slate-600">
-                        <p>{formatContractDate(opportunity.contractEnd)}</p>
-                        {opportunity.daysUntilEnd !== null && (
-                          <p className="mt-1 text-xs text-slate-500">
-                            {opportunity.daysUntilEnd < 0
-                              ? `${Math.abs(opportunity.daysUntilEnd)} days overdue`
-                              : `${opportunity.daysUntilEnd} days remaining`}
-                          </p>
-                        )}
-                      </td>
-
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-top text-slate-600">
+                        <p className="font-medium text-slate-800">
+                          {opportunity.supplier}
+                        </p>
+                        <p className="mt-1">
+                          {formatUkDate(opportunity.contractEnd)}
+                        </p>
                         <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${urgencyClasses(
+                          className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${urgencyClasses(
                             opportunity.urgency,
                           )}`}
                         >
@@ -357,11 +373,32 @@ export default async function RenewalsPage() {
                         </span>
                       </td>
 
-                      <td className="max-w-sm px-5 py-4 text-slate-600">
-                        {opportunity.nextAction}
+                      <td className="px-5 py-4 align-top text-slate-600">
+                        <p>Open tasks: {opportunity.openTaskCount}</p>
+                        <p>Overdue tasks: {opportunity.overdueTaskCount}</p>
+                        <p>Data gaps: {opportunity.dataGapCount}</p>
+                        {opportunity.dataGaps.length > 0 && (
+                          <p className="mt-2 max-w-xs text-xs text-slate-500">
+                            {opportunity.dataGaps.join(" Â· ")}
+                          </p>
+                        )}
                       </td>
 
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-top">
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${laneClasses(
+                            opportunity.lane,
+                          )}`}
+                        >
+                          {opportunity.lane}
+                        </span>
+                      </td>
+
+                      <td className="max-w-md px-5 py-4 align-top text-slate-600">
+                        {opportunity.workflowReason}
+                      </td>
+
+                      <td className="px-5 py-4 align-top">
                         <Link
                           href={`/customers/${opportunity.customerId}`}
                           className="font-semibold text-emerald-600 hover:text-emerald-700"
