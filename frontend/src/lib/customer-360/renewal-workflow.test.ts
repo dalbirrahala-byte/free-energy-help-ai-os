@@ -4,8 +4,24 @@ import { test } from "node:test";
 import {
   classifyRenewalWorkflowLane,
   compareRenewalWorkflowPriority,
+  parseRenewalWorkflowLaneFilter,
+  renewalWorkflowLaneMatchesFilter,
   renewalWorkflowReason,
 } from "./renewal-workflow.ts";
+
+test("lane filters accept only known single values and fail safely to all", () => {
+  assert.equal(parseRenewalWorkflowLaneFilter("action-now"), "action-now");
+  assert.equal(parseRenewalWorkflowLaneFilter(["prepare", "monitor"]), "prepare");
+  assert.equal(parseRenewalWorkflowLaneFilter("unknown"), "all");
+  assert.equal(parseRenewalWorkflowLaneFilter(undefined), "all");
+});
+
+test("lane filters focus the display without changing workflow classification", () => {
+  assert.equal(renewalWorkflowLaneMatchesFilter("Action now", "action-now"), true);
+  assert.equal(renewalWorkflowLaneMatchesFilter("Complete data", "complete-data"), true);
+  assert.equal(renewalWorkflowLaneMatchesFilter("Prepare", "monitor"), false);
+  assert.equal(renewalWorkflowLaneMatchesFilter("Monitor", "all"), true);
+});
 
 test("critical and overdue renewals are Action now", () => {
   assert.equal(

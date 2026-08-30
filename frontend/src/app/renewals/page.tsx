@@ -7,8 +7,11 @@ import {
   formatUkDate,
 } from "@/lib/customer-360/analytics";
 import {
+  RENEWAL_WORKFLOW_LANE_FILTERS,
   classifyRenewalWorkflowLane,
   compareRenewalWorkflowPriority,
+  parseRenewalWorkflowLaneFilter,
+  renewalWorkflowLaneMatchesFilter,
   renewalWorkflowReason,
   type RenewalWorkflowLane,
 } from "@/lib/customer-360/renewal-workflow";
@@ -19,6 +22,10 @@ type SiteRow = {
   current_supplier: string | null;
   contract_end: string | null;
   is_primary: boolean | null;
+};
+
+type RenewalsPageProps = {
+  searchParams: Promise<{ lane?: string | string[] }>;
 };
 
 type CustomerRow = {
@@ -138,7 +145,8 @@ function urgencyClasses(urgency: RenewalActionUrgency): string {
   }
 }
 
-export default async function RenewalsPage() {
+export default async function RenewalsPage({ searchParams }: RenewalsPageProps) {
+  const laneFilter = parseRenewalWorkflowLaneFilter((await searchParams).lane);
   const supabase = await createClient();
 
   const [customersResult, tasksResult] = await Promise.all([
@@ -233,6 +241,15 @@ export default async function RenewalsPage() {
     } satisfies Record<RenewalWorkflowLane, number>,
   );
 
+  const visibleOpportunities = opportunities.filter((opportunity) =>
+    renewalWorkflowLaneMatchesFilter(opportunity.lane, laneFilter),
+  );
+
+  const activeFilterLabel =
+    RENEWAL_WORKFLOW_LANE_FILTERS.find(
+      (filter) => filter.value === laneFilter,
+    )?.label ?? "All work";
+
   const loadError = customersResult.error ?? tasksResult.error;
 
   return (
@@ -299,6 +316,54 @@ export default async function RenewalsPage() {
           </div>
         )}
 
+        <nav
+          aria-label="Filter renewal queue by work lane"
+          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">
+                Focus the human work queue
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Show one deterministic lane without changing CRM data or queue priority.
+              </p>
+            </div>
+            <p aria-live="polite" className="text-xs font-medium text-slate-500">
+              Showing {visibleOpportunities.length} of {opportunities.length}: {activeFilterLabel}
+            </p>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {RENEWAL_WORKFLOW_LANE_FILTERS.map((filter) => {
+              const count =
+                filter.value === "all"
+                  ? opportunities.length
+                  : laneCounts[filter.label as RenewalWorkflowLane];
+              const isActive = filter.value === laneFilter;
+
+              return (
+                <Link
+                  key={filter.value}
+                  href={
+                    filter.value === "all"
+                      ? "/renewals"
+                      : `/renewals?lane=${filter.value}`
+                  }
+                  aria-current={isActive ? "page" : undefined}
+                  className={`rounded-full border px-3 py-2 text-xs font-semibold transition-colors ${
+                    isActive
+                      ? "border-emerald-600 bg-emerald-600 text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300 hover:text-emerald-700"
+                  }`}
+                >
+                  {filter.label} ({count})
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-5">
             <h2 className="text-lg font-semibold text-slate-900">
@@ -324,17 +389,19 @@ export default async function RenewalsPage() {
               </thead>
 
               <tbody>
-                {opportunities.length === 0 ? (
+                {visibleOpportunities.length === 0 ? (
                   <tr>
                     <td
                       colSpan={6}
                       className="px-5 py-12 text-center text-slate-500"
                     >
-                      No customer renewal opportunities are available yet.
+                      {opportunities.length === 0
+                        ? "No customer renewal opportunities are available yet."
+                        : `No renewal opportunities are currently in the ${activeFilterLabel} lane.`}
                     </td>
                   </tr>
                 ) : (
-                  opportunities.map((opportunity) => (
+                  visibleOpportunities.map((opportunity) => (
                     <tr
                       key={opportunity.customerId}
                       className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
@@ -379,7 +446,7 @@ export default async function RenewalsPage() {
                         <p>Data gaps: {opportunity.dataGapCount}</p>
                         {opportunity.dataGaps.length > 0 && (
                           <p className="mt-2 max-w-xs text-xs text-slate-500">
-                            {opportunity.dataGaps.join(" Â· ")}
+                            {opportunity.dataGaps.join(" · ")}
                           </p>
                         )}
                       </td>
