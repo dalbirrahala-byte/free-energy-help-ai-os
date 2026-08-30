@@ -37,6 +37,16 @@ export type RenewalWorkflowComparable = RenewalWorkflowInput & {
   customerId: number;
 };
 
+export type RenewalNextStep = {
+  action:
+    | "Complete missing CRM data"
+    | "Review overdue tasks"
+    | "Review open tasks"
+    | "Prepare renewal review"
+    | "Monitor renewal timing";
+  reason: string;
+};
+
 export function parseRenewalWorkflowLaneFilter(
   value: string | string[] | undefined,
 ): RenewalWorkflowLaneFilter {
@@ -113,6 +123,51 @@ export function renewalWorkflowReason(
     case "Monitor":
       return "No immediate renewal preparation is indicated by the recorded CRM facts; keep the account under review.";
   }
+}
+
+export function renewalWorkflowNextStep(
+  input: RenewalWorkflowInput,
+  lane: RenewalWorkflowLane,
+): RenewalNextStep {
+  if (input.overdueTaskCount > 0) {
+    return {
+      action: "Review overdue tasks",
+      reason: `${input.overdueTaskCount} overdue CRM task(s) need human review before deciding how to progress this renewal.`,
+    };
+  }
+
+  if (input.dataGapCount > 0) {
+    return {
+      action: "Complete missing CRM data",
+      reason:
+        input.dataGapCount === 1
+          ? "One required CRM detail is missing, so the record should be completed before relying on it for renewal planning."
+          : `${input.dataGapCount} required CRM details are missing, so the record should be completed before relying on it for renewal planning.`,
+    };
+  }
+
+  if (input.openTaskCount > 0) {
+    return {
+      action: "Review open tasks",
+      reason: `${input.openTaskCount} open CRM task(s) should be reviewed before creating any further renewal work.`,
+    };
+  }
+
+  if (lane === "Action now" || lane === "Prepare") {
+    return {
+      action: "Prepare renewal review",
+      reason:
+        lane === "Action now"
+          ? "The recorded contract timing requires immediate human review, and no earlier task or data issue is recorded."
+          : "The recorded contract timing is inside the preparation window, and no earlier task or data issue is recorded.",
+    };
+  }
+
+  return {
+    action: "Monitor renewal timing",
+    reason:
+      "The recorded CRM facts show no missing required data, open tasks, or immediate renewal preparation need.",
+  };
 }
 
 export function renewalWorkflowLaneRank(lane: RenewalWorkflowLane): number {

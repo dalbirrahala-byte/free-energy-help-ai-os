@@ -6,8 +6,57 @@ import {
   compareRenewalWorkflowPriority,
   parseRenewalWorkflowLaneFilter,
   renewalWorkflowLaneMatchesFilter,
+  renewalWorkflowNextStep,
   renewalWorkflowReason,
 } from "./renewal-workflow.ts";
+
+test("next-step guidance uses a deterministic fail-safe precedence", () => {
+  const cases = [
+    {
+      input: { urgency: "Critical" as const, daysUntilEnd: 10, openTaskCount: 2, overdueTaskCount: 1, dataGapCount: 2 },
+      lane: "Action now" as const,
+      action: "Review overdue tasks",
+    },
+    {
+      input: { urgency: "Data gap" as const, daysUntilEnd: null, openTaskCount: 0, overdueTaskCount: 0, dataGapCount: 1 },
+      lane: "Complete data" as const,
+      action: "Complete missing CRM data",
+    },
+    {
+      input: { urgency: "Upcoming" as const, daysUntilEnd: 75, openTaskCount: 2, overdueTaskCount: 0, dataGapCount: 0 },
+      lane: "Prepare" as const,
+      action: "Review open tasks",
+    },
+    {
+      input: { urgency: "Priority" as const, daysUntilEnd: 45, openTaskCount: 0, overdueTaskCount: 0, dataGapCount: 0 },
+      lane: "Prepare" as const,
+      action: "Prepare renewal review",
+    },
+    {
+      input: { urgency: "Future" as const, daysUntilEnd: 180, openTaskCount: 0, overdueTaskCount: 0, dataGapCount: 0 },
+      lane: "Monitor" as const,
+      action: "Monitor renewal timing",
+    },
+  ];
+
+  for (const { input, lane, action } of cases) {
+    const guidance = renewalWorkflowNextStep(input, lane);
+    assert.equal(guidance.action, action);
+    assert.ok(guidance.reason.length > 0);
+  }
+});
+
+test("next-step guidance never presents workflow state as contact authority", () => {
+  const guidance = renewalWorkflowNextStep(
+    { urgency: "Critical", daysUntilEnd: 5, openTaskCount: 0, overdueTaskCount: 0, dataGapCount: 0 },
+    "Action now",
+  );
+  const text = `${guidance.action} ${guidance.reason}`.toLowerCase();
+
+  for (const term of ["contact customer", "send", "call", "authorize", "permission"]) {
+    assert.ok(!text.includes(term), `expected "${term}" to be absent`);
+  }
+});
 
 test("lane filters accept only known single values and fail safely to all", () => {
   assert.equal(parseRenewalWorkflowLaneFilter("action-now"), "action-now");
