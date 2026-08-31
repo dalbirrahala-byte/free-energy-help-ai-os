@@ -1,5 +1,5 @@
-import { RENEWAL_TIMING_OPTIONS } from "./constants";
-import type { RenewalTimingValue } from "./types";
+import { RENEWAL_TIMING_OPTIONS } from "./constants.ts";
+import type { RenewalTimingValue } from "./types.ts";
 
 export function renewalTimingLabel(value: RenewalTimingValue): string {
   return RENEWAL_TIMING_OPTIONS.find((option) => option.value === value)?.label ?? value;
@@ -15,7 +15,7 @@ export function formatLeadDateTime(iso: string): string {
   }).format(new Date(iso));
 }
 
-import { LEAD_REFERENCE_YEAR } from "./constants";
+import { LEAD_REFERENCE_YEAR } from "./constants.ts";
 
 export function formatLeadReference(sequence: number): string {
   return `LEAD-${LEAD_REFERENCE_YEAR}-${String(sequence).padStart(4, "0")}`;

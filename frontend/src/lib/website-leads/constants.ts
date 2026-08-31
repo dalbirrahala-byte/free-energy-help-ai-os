@@ -12,6 +12,12 @@ export const RENEWAL_TIMING_OPTIONS = [
   { value: "not_sure", label: "Not sure" },
 ] as const;
 
+export const ENERGY_SUPPLY_OPTIONS = [
+  { value: "electricity", label: "Electricity" },
+  { value: "gas", label: "Gas" },
+  { value: "both", label: "Electricity and gas" },
+] as const;
+
 export const WEBSITE_LEAD_STATUSES = [
   "New",
   "Attempted Contact",

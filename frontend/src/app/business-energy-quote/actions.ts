@@ -55,12 +55,12 @@
 
 import { isAcquisitionOrigin } from "@/lib/website-leads/classifyAcquisitionOrigin";
 import { createClient } from "@/lib/supabase/server";
-import { renewalTimingLabel } from "@/lib/website-leads/labels";
+import { buildRevenueCaptureAttribution, buildRevenueCaptureContext } from "@/lib/website-leads/revenueCapture";
 import type { WebsiteLeadFormErrors, WebsiteLeadFormInput } from "@/lib/website-leads/types";
-import { hasFormErrors, isValidRenewalTiming, validateWebsiteLeadForm } from "@/lib/website-leads/validation";
+import { hasFormErrors, validateWebsiteLeadForm } from "@/lib/website-leads/validation";
 
 const LEAD_SOURCE = "Website";
-const SOURCE_DETAIL = "Business energy quote form";
+const SOURCE_DETAIL = "Free Business Energy Health Check landing page";
 
 /** Ultimate fallback if even the acquisition-origin classification is missing or invalid. */
 const DEFAULT_UTM_SOURCE = "direct";
@@ -70,11 +70,6 @@ const GENERIC_ERROR = "We could not save your enquiry. Please try again.";
 export type SubmitQuoteEnquiryResult =
   | { success: true; leadId: number }
   | { success: false; errors: WebsiteLeadFormErrors };
-
-function cleanUtmValue(value: FormDataEntryValue | null): string | null {
-  const trimmed = typeof value === "string" ? value.trim() : "";
-  return trimmed ? trimmed.slice(0, 150) : null;
-}
 
 /** Maps the ingestion function's short exception identifiers to safe, field-level user messages — never the raw Postgres error text. */
 function mapIngestError(message: string | undefined): string {
@@ -104,6 +99,9 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
     email: String(formData.get("email") ?? ""),
     postcode: String(formData.get("postcode") ?? ""),
     renewalTiming: String(formData.get("renewalTiming") ?? "") as WebsiteLeadFormInput["renewalTiming"],
+    energySupply: String(formData.get("energySupply") ?? "") as WebsiteLeadFormInput["energySupply"],
+    painPoint: String(formData.get("painPoint") ?? ""),
+    contractEndDate: String(formData.get("contractEndDate") ?? ""),
     consent: formData.get("consent") === "true",
   };
 
@@ -113,31 +111,22 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
     return { success: false, errors: validation };
   }
 
-  const postcode = input.postcode.trim();
-  const timingLabel = isValidRenewalTiming(input.renewalTiming) ? renewalTimingLabel(input.renewalTiming) : null;
-
-  const contextParts: string[] = [];
-  if (postcode) {
-    contextParts.push(`Postcode: ${postcode}.`);
-  }
-  if (timingLabel) {
-    contextParts.push(`Renewal timing: ${timingLabel}.`);
-  }
-  const additionalContext = contextParts.length > 0 ? contextParts.join(" ") : null;
-
-  const explicitUtmSource = cleanUtmValue(formData.get("utm_source"));
-  const utmMedium = cleanUtmValue(formData.get("utm_medium"));
-  const utmCampaign = cleanUtmValue(formData.get("utm_campaign"));
-  const utmTerm = cleanUtmValue(formData.get("utm_term"));
-  const utmContent = cleanUtmValue(formData.get("utm_content"));
-
   const acquisitionOriginRaw = formData.get("acquisition_origin");
   const acquisitionOriginFallback =
     typeof acquisitionOriginRaw === "string" && isAcquisitionOrigin(acquisitionOriginRaw)
       ? acquisitionOriginRaw
       : DEFAULT_UTM_SOURCE;
 
-  const utmSource = explicitUtmSource ?? acquisitionOriginFallback;
+  const attribution = buildRevenueCaptureAttribution({
+    campaign: formData.get("campaign"),
+    utmSource: formData.get("utm_source"),
+    utmMedium: formData.get("utm_medium"),
+    utmCampaign: formData.get("utm_campaign"),
+    utmTerm: formData.get("utm_term"),
+    utmContent: formData.get("utm_content"),
+    acquisitionOrigin: acquisitionOriginFallback,
+  });
+  const additionalContext = buildRevenueCaptureContext(input, attribution);
 
   const supabase = await createClient();
 
@@ -149,11 +138,11 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
     p_lead_source: LEAD_SOURCE,
     p_consent_given: input.consent === true,
     p_source_detail: SOURCE_DETAIL,
-    p_utm_source: utmSource,
-    p_utm_medium: utmMedium,
-    p_utm_campaign: utmCampaign,
-    p_utm_term: utmTerm,
-    p_utm_content: utmContent,
+    p_utm_source: attribution.utmSource,
+    p_utm_medium: attribution.utmMedium,
+    p_utm_campaign: attribution.utmCampaign,
+    p_utm_term: attribution.utmTerm,
+    p_utm_content: attribution.utmContent,
     p_additional_context: additionalContext,
   });
 
@@ -161,7 +150,7 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
   // independent of whether the acquisition-origin fallback filled in
   // utmSource, so audit metadata isn't misleadingly marked "has UTM" for
   // organic/direct/referral traffic that just happened to get classified.
-  const hasUtm = Boolean(explicitUtmSource || utmMedium || utmCampaign || utmTerm || utmContent);
+  const hasUtm = Boolean(attribution.utmMedium || attribution.utmCampaign || attribution.utmTerm || attribution.utmContent || formData.get("utm_source"));
 
   if (error || typeof data !== "number") {
     const rawReason = error?.message ?? "unknown";
