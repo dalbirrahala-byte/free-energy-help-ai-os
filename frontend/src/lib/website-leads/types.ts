@@ -1,9 +1,11 @@
 import {
+  ENERGY_SUPPLY_OPTIONS,
   RENEWAL_TIMING_OPTIONS,
   WEBSITE_LEAD_STATUSES,
 } from "./constants";
 
 export type RenewalTimingValue = (typeof RENEWAL_TIMING_OPTIONS)[number]["value"];
+export type EnergySupplyValue = (typeof ENERGY_SUPPLY_OPTIONS)[number]["value"];
 
 export type WebsiteLeadPriority = "Hot" | "Warm" | "Nurture";
 
@@ -42,6 +44,9 @@ export type WebsiteLeadFormInput = {
   email: string;
   postcode: string;
   renewalTiming: RenewalTimingValue | "";
+  energySupply: EnergySupplyValue | "";
+  painPoint: string;
+  contractEndDate: string;
   consent: boolean;
 };
 
@@ -53,6 +58,9 @@ export type WebsiteLeadFormErrors = Partial<
     | "email"
     | "postcode"
     | "renewalTiming"
+    | "energySupply"
+    | "painPoint"
+    | "contractEndDate"
     | "consent"
     | "form",
     string

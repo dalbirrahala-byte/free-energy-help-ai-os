@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { submitQuoteEnquiry } from "@/app/business-energy-quote/actions";
 import type { AcquisitionOrigin } from "@/lib/website-leads/classifyAcquisitionOrigin";
-import { RENEWAL_TIMING_OPTIONS } from "@/lib/website-leads/constants";
+import { ENERGY_SUPPLY_OPTIONS, RENEWAL_TIMING_OPTIONS } from "@/lib/website-leads/constants";
 import type { WebsiteLeadFormInput } from "@/lib/website-leads/types";
 import {
   hasFormErrors,
@@ -19,6 +19,9 @@ const INITIAL_FORM: WebsiteLeadFormInput = {
   email: "",
   postcode: "",
   renewalTiming: "",
+  energySupply: "",
+  painPoint: "",
+  contractEndDate: "",
   consent: false,
 };
 
@@ -28,6 +31,7 @@ type BusinessEnergyQuoteFormProps = {
   utmCampaign?: string | null;
   utmTerm?: string | null;
   utmContent?: string | null;
+  campaign?: string | null;
   /** Factory 025B: analytics-only fallback used server-side only when utmSource is absent — see classifyAcquisitionOrigin.ts. */
   acquisitionOrigin?: AcquisitionOrigin | null;
 };
@@ -38,6 +42,7 @@ export function BusinessEnergyQuoteForm({
   utmCampaign = null,
   utmTerm = null,
   utmContent = null,
+  campaign = null,
   acquisitionOrigin = null,
 }: BusinessEnergyQuoteFormProps) {
   const [form, setForm] = useState<WebsiteLeadFormInput>(INITIAL_FORM);
@@ -84,12 +89,16 @@ export function BusinessEnergyQuoteForm({
     payload.set("email", form.email);
     payload.set("postcode", form.postcode);
     payload.set("renewalTiming", form.renewalTiming);
+    payload.set("energySupply", form.energySupply);
+    payload.set("painPoint", form.painPoint);
+    payload.set("contractEndDate", form.contractEndDate);
     payload.set("consent", form.consent ? "true" : "false");
     if (utmSource) payload.set("utm_source", utmSource);
     if (utmMedium) payload.set("utm_medium", utmMedium);
     if (utmCampaign) payload.set("utm_campaign", utmCampaign);
     if (utmTerm) payload.set("utm_term", utmTerm);
     if (utmContent) payload.set("utm_content", utmContent);
+    if (campaign) payload.set("campaign", campaign);
     if (acquisitionOrigin) payload.set("acquisition_origin", acquisitionOrigin);
 
     try {
@@ -117,8 +126,8 @@ export function BusinessEnergyQuoteForm({
         role="status"
       >
         <p className="text-lg font-semibold text-emerald-950">
-          Thank you. Your business energy enquiry has been received. A consultant will contact you
-          shortly.
+          Thank you. Your Health Check enquiry has been received. A consultant will review the
+          information before agreeing the appropriate follow-up.
         </p>
         <button
           type="button"
@@ -137,8 +146,11 @@ export function BusinessEnergyQuoteForm({
       className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8"
       noValidate
     >
+      <p className="mb-6 text-sm text-slate-600">
+        Fields marked <span className="text-red-600">*</span> are required. Contract dates are optional.
+      </p>
       {errors.form && (
-        <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <p role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {errors.form}
         </p>
       )}
@@ -214,6 +226,33 @@ export function BusinessEnergyQuoteForm({
             <p className="mt-1 text-sm text-red-600">{errors.renewalTiming}</p>
           )}
         </div>
+        <div className="sm:col-span-2">
+          <label htmlFor="energySupply" className="text-sm font-semibold text-slate-700">
+            Energy supply <span className="text-red-600">*</span>
+          </label>
+          <select id="energySupply" value={form.energySupply}
+            aria-invalid={Boolean(errors.energySupply)} aria-describedby={errors.energySupply ? "energySupply-error" : undefined}
+            onChange={(event) => updateField("energySupply", event.target.value as WebsiteLeadFormInput["energySupply"])}
+            className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-sm ${errors.energySupply ? "border-red-300" : "border-slate-300"}`}>
+            <option value="">Select energy supply</option>
+            {ENERGY_SUPPLY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          {errors.energySupply && <p id="energySupply-error" className="mt-1 text-sm text-red-600">{errors.energySupply}</p>}
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor="painPoint" className="text-sm font-semibold text-slate-700">
+            What would you like help with? <span className="text-red-600">*</span>
+          </label>
+          <textarea id="painPoint" value={form.painPoint} rows={4} maxLength={160}
+            aria-invalid={Boolean(errors.painPoint)} aria-describedby={errors.painPoint ? "painPoint-error" : "painPoint-help"}
+            onChange={(event) => updateField("painPoint", event.target.value)}
+            className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-sm ${errors.painPoint ? "border-red-300" : "border-slate-300"}`} />
+          <p id="painPoint-help" className="mt-1 text-xs text-slate-500">For example, understanding a bill, reviewing renewal options or discussing a contract.</p>
+          {errors.painPoint && <p id="painPoint-error" className="mt-1 text-sm text-red-600">{errors.painPoint}</p>}
+        </div>
+        <Field id="contractEndDate" label="Contract end date (optional)" type="date"
+          error={errors.contractEndDate} value={form.contractEndDate}
+          onChange={(value) => updateField("contractEndDate", value)} className="sm:col-span-2" />
       </div>
 
       <div className="mt-6">
@@ -274,12 +313,14 @@ function Field({
         type={type}
         autoComplete={autoComplete}
         value={value}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? `${id}-error` : undefined}
         onChange={(event) => onChange(event.target.value)}
         className={`mt-1.5 w-full rounded-xl border px-3 py-2.5 text-sm ${
           error ? "border-red-300" : "border-slate-300"
         }`}
       />
-      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+      {error && <p id={`${id}-error`} className="mt-1 text-sm text-red-600">{error}</p>}
     </div>
   );
 }

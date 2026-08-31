@@ -8,20 +8,17 @@ import {
 import { classifyAcquisitionOrigin } from "@/lib/website-leads/classifyAcquisitionOrigin";
 
 export const metadata: Metadata = {
-  title: "Compare Business Energy Prices | Free Energy Help",
+  title: "Free Business Energy Health Check | Free Energy Help",
   description:
-    "Request a no-obligation UK commercial energy review with an experienced consultant.",
+    "Request a Free Business Energy Health Check for your organisation.",
 };
 
 type BusinessEnergyQuotePageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-function firstValue(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
-  }
-  return value ?? null;
+function unambiguousValue(value: string | string[] | undefined): string | null {
+  return typeof value === "string" ? value : null;
 }
 
 export default async function BusinessEnergyQuotePage({
@@ -48,19 +45,20 @@ export default async function BusinessEnergyQuotePage({
 
         <div className="mt-10">
           <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-            Compare Business Energy Prices
+            Free Business Energy Health Check
           </h1>
           <p className="mt-4 text-lg text-slate-600">
-            Speak to an experienced UK commercial energy consultant and review your current contract,
-            renewal options, and potential savings.
+            Tell us about your organisation and what you need help with. A consultant can review the
+            information you provide and discuss appropriate next steps; submitting does not guarantee
+            savings, a quotation or supplier acceptance.
           </p>
         </div>
 
         <ul className="mt-8 grid gap-3 sm:grid-cols-3">
           {[
-            "UK commercial energy support",
-            "No obligation review",
-            "Dedicated consultant",
+            "A review of your enquiry",
+            "Clear next-step discussion",
+            "No automatic contact or quotation",
           ].map((item) => (
             <li
               key={item}
@@ -73,11 +71,12 @@ export default async function BusinessEnergyQuotePage({
 
         <div className="mt-10">
           <BusinessEnergyQuoteForm
-            utmSource={firstValue(params.utm_source)}
-            utmMedium={firstValue(params.utm_medium)}
-            utmCampaign={firstValue(params.utm_campaign)}
-            utmTerm={firstValue(params.utm_term)}
-            utmContent={firstValue(params.utm_content)}
+            utmSource={unambiguousValue(params.utm_source)}
+            utmMedium={unambiguousValue(params.utm_medium)}
+            utmCampaign={unambiguousValue(params.utm_campaign)}
+            utmTerm={unambiguousValue(params.utm_term)}
+            utmContent={unambiguousValue(params.utm_content)}
+            campaign={unambiguousValue(params.campaign)}
             acquisitionOrigin={acquisitionOrigin}
           />
         </div>
