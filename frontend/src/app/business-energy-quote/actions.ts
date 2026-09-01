@@ -68,8 +68,8 @@ const DEFAULT_UTM_SOURCE = "direct";
 const GENERIC_ERROR = "We could not save your enquiry. Please try again.";
 
 export type SubmitQuoteEnquiryResult =
-  | { success: true; leadId: number }
-  | { success: false; errors: WebsiteLeadFormErrors };
+  | { success: true; leadId: number; disposition: "created" | "duplicate_suppressed" }
+  | { success: false; disposition: "failed"; errors: WebsiteLeadFormErrors };
 
 /** Maps the ingestion function's short exception identifiers to safe, field-level user messages — never the raw Postgres error text. */
 function mapIngestError(message: string | undefined): string {
@@ -108,7 +108,7 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
   // Server-side re-validation — never trust the client-side pass alone.
   const validation = validateWebsiteLeadForm(input);
   if (hasFormErrors(validation)) {
-    return { success: false, errors: validation };
+    return { success: false, disposition: "failed", errors: validation };
   }
 
   const acquisitionOriginRaw = formData.get("acquisition_origin");
@@ -130,7 +130,7 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
 
   const supabase = await createClient();
 
-  const { data, error } = await supabase.rpc("ingest_public_lead", {
+  const { data, error } = await supabase.rpc("ingest_health_check_lead", {
     p_company_name: input.businessName.trim(),
     p_contact_name: input.contactName.trim(),
     p_telephone: input.telephone.trim(),
@@ -144,6 +144,14 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
     p_utm_term: attribution.utmTerm,
     p_utm_content: attribution.utmContent,
     p_additional_context: additionalContext,
+    p_energy_supply: input.energySupply,
+    p_enquiry_reason: input.painPoint.trim(),
+    p_campaign_id: attribution.campaign,
+    p_contract_end: input.contractEndDate || null,
+    p_lead_owner: null,
+    p_next_action: "Review enquiry and assign follow-up",
+    p_follow_up_required: true,
+    p_follow_up_date: null,
   });
 
   // Reflects genuine explicit campaign attribution only — deliberately
@@ -152,7 +160,14 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
   // organic/direct/referral traffic that just happened to get classified.
   const hasUtm = Boolean(attribution.utmMedium || attribution.utmCampaign || attribution.utmTerm || attribution.utmContent || formData.get("utm_source"));
 
-  if (error || typeof data !== "number") {
+  const persisted = data as { lead_id?: unknown; disposition?: unknown } | null;
+  const disposition = persisted?.disposition;
+  const leadId = persisted?.lead_id;
+  const validResult =
+    typeof leadId === "number" &&
+    (disposition === "created" || disposition === "duplicate_suppressed");
+
+  if (error || !validResult) {
     const rawReason = error?.message ?? "unknown";
     const safeReason = mapIngestError(error?.message);
 
@@ -168,8 +183,8 @@ export async function submitQuoteEnquiry(formData: FormData): Promise<SubmitQuot
       console.warn(`[Audit] Failed to persist public lead rejection: ${auditError.message}`);
     }
 
-    return { success: false, errors: { form: safeReason } };
+    return { success: false, disposition: "failed", errors: { form: safeReason } };
   }
 
-  return { success: true, leadId: data };
+  return { success: true, leadId, disposition };
 }

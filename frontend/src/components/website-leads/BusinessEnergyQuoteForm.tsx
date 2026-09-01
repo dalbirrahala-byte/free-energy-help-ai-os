@@ -6,6 +6,8 @@ import { useState } from "react";
 import { submitQuoteEnquiry } from "@/app/business-energy-quote/actions";
 import type { AcquisitionOrigin } from "@/lib/website-leads/classifyAcquisitionOrigin";
 import { ENERGY_SUPPLY_OPTIONS, RENEWAL_TIMING_OPTIONS } from "@/lib/website-leads/constants";
+import { conversionAfterIngestion, emitHealthCheckConversion } from "@/lib/website-leads/healthCheckConversion";
+import { buildRevenueCaptureAttribution } from "@/lib/website-leads/revenueCapture";
 import type { WebsiteLeadFormInput } from "@/lib/website-leads/types";
 import {
   hasFormErrors,
@@ -109,6 +111,18 @@ export function BusinessEnergyQuoteForm({
         return;
       }
 
+      // This local, provider-neutral signal occurs only after the server
+      // confirms persistence. It contains no contact or enquiry-text data.
+      const conversion = conversionAfterIngestion(result, buildRevenueCaptureAttribution({
+        campaign,
+        utmSource,
+        utmMedium,
+        utmCampaign,
+        utmTerm,
+        utmContent,
+        acquisitionOrigin,
+      }));
+      if (conversion) emitHealthCheckConversion(conversion);
       setSubmitted(true);
       setForm(INITIAL_FORM);
       setErrors({});
