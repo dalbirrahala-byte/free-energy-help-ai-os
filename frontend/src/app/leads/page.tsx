@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -60,11 +61,18 @@ export default async function LeadsPage() {
   }
 
   return (
-    <LeadsPageClient
-      crmLeads={crmLeads}
-      supabaseError={Boolean(error)}
-      revenueViews={revenueViews}
-      recomputeUnscoredLeadQualifications={recomputeUnscoredLeadQualifications}
-    />
+    <>
+      <div className="mx-auto flex max-w-7xl justify-end px-6 pt-4">
+        <Link href="/leads/generator" className="rounded-md border px-4 py-2 text-sm font-medium">
+          Lead Intelligence Generator
+        </Link>
+      </div>
+      <LeadsPageClient
+        crmLeads={crmLeads}
+        supabaseError={Boolean(error)}
+        revenueViews={revenueViews}
+        recomputeUnscoredLeadQualifications={recomputeUnscoredLeadQualifications}
+      />
+    </>
   );
 }
