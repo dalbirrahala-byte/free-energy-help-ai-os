@@ -1,4 +1,4 @@
-import { buildPublicWebEvidence, evaluateOpportunityEvidence, type OpportunityEvaluation, type PublicWebEvidence } from "./factory044Discovery";
+import { buildPublicWebEvidence, evaluateOpportunityEvidence, type OpportunityEvaluation, type PublicWebEvidence } from "./factory044Discovery.ts";
 
 export type IdentityResolutionState = "CONFIRMED" | "CANDIDATE" | "UNRESOLVED";
 export type ComplianceState = "CLEAR" | "REVIEW_REQUIRED" | "BLOCKED";

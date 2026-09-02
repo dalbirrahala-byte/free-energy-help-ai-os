@@ -176,7 +176,7 @@ test("approved registry adapter execute remains never called -- source-level pro
   const source = readFileSync(new URL("./evaluateExecutionPreflight.ts", import.meta.url), "utf8");
   const withoutBlockComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
   const withoutLineComments = withoutBlockComments
-    .split("\n")
+    .split(/\r?\n/)
     .map((line) => line.replace(/\/\/.*$/, ""))
     .join("\n");
   assert.equal(withoutLineComments.includes(".execute("), false);

@@ -42,6 +42,9 @@ jobs:
       - name: Factory 041 focused tests
         run: npm run test:factory-041
 
+      - name: Factory 044 focused tests
+        run: npm run test:factory-044
+
       - name: Full execution-dispatch tests
         run: npm run test:execution-dispatch
 
