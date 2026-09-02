@@ -96,7 +96,7 @@ export function LeadIntelligenceWorkbench() {
       setEvidence((current) => [...current, item]);
       setDraft(emptyDraft);
     } catch {
-      setEvidenceError("Evidence was not accepted. Check the company, source URL, title, signal and confidence (0–100).");
+      setEvidenceError("Evidence was not accepted. Check the company, source URL, title, signal and confidence (0â€“100).");
     }
   }
 
@@ -132,7 +132,7 @@ export function LeadIntelligenceWorkbench() {
           {plannedQueries.length === 0 ? <p className="text-sm text-slate-500">Choose a sector and at least one signal family.</p> : plannedQueries.slice(0, 18).map((item) => (
             <div key={`${item.signalFamily}:${item.query}`} className="rounded border bg-white p-3">
               <p className="font-mono text-sm">{item.query}</p>
-              <p className="mt-1 text-xs text-slate-500">{item.signalFamily} · {item.technique}</p>
+              <p className="mt-1 text-xs text-slate-500">{item.signalFamily} Â· {item.technique}</p>
             </div>
           ))}
         </div>
@@ -158,7 +158,7 @@ export function LeadIntelligenceWorkbench() {
             <div key={`${item.sourceUrl}:${index}`} className="rounded-md border p-3">
               <div className="flex items-start justify-between gap-3"><div><p className="font-medium">{item.candidateName}</p><p className="text-sm text-slate-600">{item.sourceTitle}</p></div><button type="button" onClick={() => setEvidence((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="text-xs text-slate-500">Remove</button></div>
               <p className="mt-2 break-all text-xs text-slate-500">{item.sourceUrl}</p>
-              <p className="mt-1 text-xs text-slate-500">{item.signalFamily} · {item.signalType} · confidence {item.confidence ?? "not stated"}</p>
+              <p className="mt-1 text-xs text-slate-500">{item.signalFamily} Â· {item.signalType} Â· confidence {item.confidence ?? "not stated"}</p>
             </div>
           ))}
         </div>
@@ -188,7 +188,7 @@ export function LeadIntelligenceWorkbench() {
           <div><p className="text-sm font-semibold">Why FEH reached this result</p><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">{decision.opportunity.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div>
           <div><p className="text-sm font-semibold">Safety and progression gates</p><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">{decision.promotionReasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div>
         </div>
-        <div className="mt-4 rounded-md border border-emerald-300 bg-white p-3 text-sm"><strong>Phase 3 boundary:</strong> outreach allowed = no · CRM write performed = no · execution performed = no.</div>
+        <div className="mt-4 rounded-md border border-emerald-300 bg-white p-3 text-sm"><strong>Phase 3 boundary:</strong> outreach allowed = no Â· CRM write performed = no Â· execution performed = no.</div>
       </section>
     </div>
   );
