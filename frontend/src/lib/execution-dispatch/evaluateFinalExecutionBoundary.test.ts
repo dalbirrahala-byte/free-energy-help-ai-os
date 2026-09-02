@@ -462,7 +462,7 @@ test("resolves near-instantly, consistent with zero DB/network I/O", (t) => {
 function stripComments(source: string): string {
   const withoutBlockComments = source.replace(/\/\*[\s\S]*?\*\//g, "");
   return withoutBlockComments
-    .split("\n")
+    .split(/\r?\n/)
     .map((line) => line.replace(/\/\/.*$/, ""))
     .join("\n");
 }

@@ -6,7 +6,7 @@ import {
   buildPriorityQueue,
   deduplicateEvidence,
   type IntelligenceEvidence,
-} from "./intelligenceOrchestration";
+} from "./intelligenceOrchestration.ts";
 
 const evidence = (
   source: IntelligenceEvidence["source"],
