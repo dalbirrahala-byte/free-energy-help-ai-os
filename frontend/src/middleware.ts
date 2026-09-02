@@ -4,13 +4,14 @@
 // session/cookie plumbing in lib/supabase/server.ts) instead of dozens.
 //
 // Public routes are the genuine external-facing surfaces confirmed during
-// the Phase 1 inspection: the website lead-capture form and its workspace.
+// the Phase 1 inspection: the website lead-capture form, its workspace,
+// and the minimum FEH-controlled authentication recovery surfaces.
 // Every other route is real internal CRM data and requires a session.
 
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/business-energy-quote"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/auth/callback", "/business-energy-quote"];
 const PUBLIC_PREFIXES = ["/leads/web/"];
 
 function isPublicPath(pathname: string): boolean {
