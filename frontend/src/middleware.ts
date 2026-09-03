@@ -10,7 +10,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/business-energy-quote"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/business-energy-quote"];
 const PUBLIC_PREFIXES = ["/leads/web/"];
 
 function isPublicPath(pathname: string): boolean {

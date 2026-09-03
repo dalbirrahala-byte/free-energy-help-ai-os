@@ -11,6 +11,7 @@
     "test:factory-041": "node --test src/lib/identity-resolution/*.test.ts src/lib/suppression/*.test.ts src/lib/compliance/*.test.ts src/lib/outreach/*.test.ts src/lib/execution-authorization/*.test.ts",
     "test:execution-dispatch": "node --test src/lib/execution-dispatch/*.test.ts",
     "test:factory-044": "node --test src/lib/lead-discovery/*.test.ts",
+    "test:auth": "node --test src/lib/auth/*.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint && npm run build"
   },
