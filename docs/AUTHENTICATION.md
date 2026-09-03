@@ -10,7 +10,7 @@ Version 1.0 authentication, implemented via Supabase Auth (email/password). This
 | Session mechanism | Cookie-based, via `@supabase/ssr` |
 | Enforcement point | `frontend/src/middleware.ts` — one file, every route |
 | Registration | None. Accounts are provisioned by an admin (see [Provisioning a user](#provisioning-a-user)) |
-| Public routes | `/login`, `/business-energy-quote`, `/leads/web/*` |
+| Public routes | `/login`, `/forgot-password`, `/reset-password`, `/auth/confirm`, `/business-energy-quote`, `/leads/web/*` |
 | Everything else | Requires a session, or redirects to `/login?redirectTo=<original path>` |
 
 ## Why middleware, not per-page checks
@@ -48,11 +48,35 @@ There is no signup page, by design (no open registration was approved). To creat
 1. Create the Supabase Auth user via the Supabase dashboard or Auth Admin API.
 2. Insert their role directly via the Supabase SQL editor (service-role context, bypasses RLS) — see the bootstrap note in `supabase/migrations/20260805100000_user_roles.sql` for the exact statement.
 
+3. Set the invite redirect to `https://free-energy-help-ai-os.vercel.app/reset-password?mode=invite`.
+
+## Required hosted Supabase email configuration
+
+Add `https://free-energy-help-ai-os.vercel.app/**` to Authentication → URL Configuration → Redirect URLs. Set the Site URL to `https://free-energy-help-ai-os.vercel.app`.
+
+Use this link in the hosted **Invite user** template so the app verifies the one-time token server-side and opens password creation:
+
+```html
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite&next=/reset-password">
+  Create my FEH CRM password
+</a>
+```
+
+Use this link in the hosted **Reset password** template:
+
+```html
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/reset-password">
+  Reset my FEH CRM password
+</a>
+```
+
+These token-hash links avoid depending on a session fragment or a PKCE verifier stored in the browser that requested the email. This is important when an administrator sends an invite or a user opens email on a different device. Links remain one-time and expired/reused links return to the request-reset screen.
+
 A self-service admin UI for user/role management is Post-Launch — see [PRODUCT_BACKLOG.md](./PRODUCT_BACKLOG.md).
 
 ## What this doesn't cover
 
 - OAuth/SSO providers — none configured; only email/password.
-- Password reset flow — not built. Post-Launch.
+- Admin user/role management UI — not built. User passwords must never be visible to administrators.
 - Multi-factor authentication — not built. Post-Launch.
 - Rate limiting on login attempts — not built; Supabase Auth has its own baseline protections, but no additional application-level throttling exists. Post-Launch if brute-force risk is assessed as material.

@@ -45,6 +45,9 @@ jobs:
       - name: Factory 044 focused tests
         run: npm run test:factory-044
 
+      - name: Authentication focused tests
+        run: npm run test:auth
+
       - name: Full execution-dispatch tests
         run: npm run test:execution-dispatch
 
@@ -58,7 +61,10 @@ jobs:
         working-directory: .
         shell: bash
         run: |
-          baseline=1eeb328ca18e8a72e62258944cae358bd3f04919
+          # PR #22 intentionally changes the authentication middleware. The
+          # reviewed auth commit is now the accepted application-security
+          # checkpoint; any later protected-path drift still fails closed.
+          baseline=a72962e8aa23caa83e151a3482df80cdacfdbfd7
           git cat-file -e "${baseline}^{commit}"
           if ! git diff --quiet "$baseline" HEAD -- \
             supabase/migrations \
