@@ -32,9 +32,10 @@ export type ControlledCrmWriteExecutionResult = Readonly<{
   crmRecordReference: string | null;
   reasons: readonly string[];
   crmWriteAllowed: boolean;
+  crmWriteAttempted: boolean;
   crmWritePerformed: boolean;
   outreachAllowed: false;
-  executionPerformed: boolean;
+  executionPerformed: false;
 }>;
 
 function baseResult(
@@ -42,6 +43,7 @@ function baseResult(
   status: ControlledCrmWriteExecutionResult["status"],
   reasons: readonly string[],
   crmRecordReference: string | null,
+  crmWriteAttempted: boolean,
   crmWritePerformed: boolean,
 ): ControlledCrmWriteExecutionResult {
   return {
@@ -53,17 +55,18 @@ function baseResult(
     crmRecordReference,
     reasons,
     crmWriteAllowed: preparation.crmWriteAllowed,
+    crmWriteAttempted,
     crmWritePerformed,
     outreachAllowed: false,
-    executionPerformed: crmWritePerformed,
+    executionPerformed: false,
   };
 }
 
 /**
  * Executes at most one controlled CRM write attempt for a validated Phase 9
  * preparation. This function never retries the writer and never activates
- * outreach. Unknown writer outcomes are treated as indeterminate rather than
- * guessed to be successful or safe to retry.
+ * outreach or provider execution. Unknown writer outcomes are treated as
+ * indeterminate rather than guessed to be successful or safe to retry.
  */
 export async function executeControlledCrmWrite(
   writer: ControlledCrmWriter,
@@ -90,6 +93,7 @@ export async function executeControlledCrmWrite(
       ["Controlled CRM write execution prerequisites are incomplete or inconsistent."],
       null,
       false,
+      false,
     );
   }
 
@@ -105,6 +109,7 @@ export async function executeControlledCrmWrite(
         "The outcome is indeterminate and must not be automatically retried.",
       ],
       null,
+      true,
       false,
     );
   }
@@ -117,6 +122,7 @@ export async function executeControlledCrmWrite(
         "EVALUATION_FAILED",
         ["CRM writer reported success without a CRM record reference."],
         null,
+        true,
         false,
       );
     }
@@ -126,9 +132,10 @@ export async function executeControlledCrmWrite(
       "WRITTEN",
       [
         "One controlled CRM write completed for the authorised prepared candidate.",
-        "Outreach remains disabled and requires a separate future authorisation boundary.",
+        "Outreach and provider execution remain disabled and require separate future authorisation boundaries.",
       ],
       crmRecordReference,
+      true,
       true,
     );
   }
@@ -141,6 +148,7 @@ export async function executeControlledCrmWrite(
         "EVALUATION_FAILED",
         ["Duplicate suppression result is missing the existing CRM record reference."],
         null,
+        true,
         false,
       );
     }
@@ -150,6 +158,7 @@ export async function executeControlledCrmWrite(
       "DUPLICATE_SUPPRESSED",
       ["Idempotency protection suppressed a duplicate CRM write."],
       crmRecordReference,
+      true,
       false,
     );
   }
@@ -160,6 +169,7 @@ export async function executeControlledCrmWrite(
       "BLOCKED",
       [outcome.reason?.trim() || "Controlled CRM writer blocked the write attempt."],
       null,
+      true,
       false,
     );
   }
@@ -172,6 +182,7 @@ export async function executeControlledCrmWrite(
       "Indeterminate write outcomes must not be automatically retried.",
     ],
     null,
+    true,
     false,
   );
 }
