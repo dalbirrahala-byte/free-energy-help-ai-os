@@ -47,8 +47,9 @@ test("performs exactly one controlled CRM write for a valid preparation", async 
   assert.equal(calls.count, 1);
   assert.equal(result.status, "WRITTEN");
   assert.equal(result.crmRecordReference, "lead:123");
+  assert.equal(result.crmWriteAttempted, true);
   assert.equal(result.crmWritePerformed, true);
-  assert.equal(result.executionPerformed, true);
+  assert.equal(result.executionPerformed, false);
   assert.equal(result.outreachAllowed, false);
 });
 
@@ -61,6 +62,7 @@ test("fails closed before invoking writer when preparation is not execution-read
 
   assert.equal(calls.count, 0);
   assert.equal(result.status, "BLOCKED");
+  assert.equal(result.crmWriteAttempted, false);
   assert.equal(result.crmWritePerformed, false);
   assert.equal(result.executionPerformed, false);
 });
@@ -74,6 +76,7 @@ test("fails closed before invoking writer when idempotency key is missing", asyn
 
   assert.equal(calls.count, 0);
   assert.equal(result.status, "BLOCKED");
+  assert.equal(result.crmWriteAttempted, false);
 });
 
 test("suppresses a duplicate without marking a new CRM write as performed", async () => {
@@ -86,6 +89,7 @@ test("suppresses a duplicate without marking a new CRM write as performed", asyn
   assert.equal(calls.count, 1);
   assert.equal(result.status, "DUPLICATE_SUPPRESSED");
   assert.equal(result.crmRecordReference, "lead:123");
+  assert.equal(result.crmWriteAttempted, true);
   assert.equal(result.crmWritePerformed, false);
   assert.equal(result.executionPerformed, false);
   assert.equal(result.outreachAllowed, false);
@@ -104,6 +108,7 @@ test("treats writer exceptions as indeterminate and does not retry", async () =>
 
   assert.equal(calls.count, 1);
   assert.equal(result.status, "INDETERMINATE");
+  assert.equal(result.crmWriteAttempted, true);
   assert.equal(result.crmWritePerformed, false);
   assert.equal(result.executionPerformed, false);
   assert.match(result.reasons.join(" "), /must not be automatically retried/i);
@@ -118,10 +123,12 @@ test("rejects success without a CRM record reference", async () => {
 
   assert.equal(calls.count, 1);
   assert.equal(result.status, "EVALUATION_FAILED");
+  assert.equal(result.crmWriteAttempted, true);
   assert.equal(result.crmWritePerformed, false);
+  assert.equal(result.executionPerformed, false);
 });
 
-test("never enables outreach regardless of controlled writer outcome", async () => {
+test("never enables outreach or provider execution regardless of controlled writer outcome", async () => {
   for (const outcome of [
     { status: "written" as const, crmRecordReference: "lead:123" },
     { status: "duplicate_suppressed" as const, crmRecordReference: "lead:123" },
@@ -131,5 +138,6 @@ test("never enables outreach regardless of controlled writer outcome", async () 
     const calls = { count: 0 };
     const result = await executeControlledCrmWrite(writerReturning(outcome, calls), prepared);
     assert.equal(result.outreachAllowed, false);
+    assert.equal(result.executionPerformed, false);
   }
 });
