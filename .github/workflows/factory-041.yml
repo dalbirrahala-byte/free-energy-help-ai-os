@@ -45,6 +45,9 @@ jobs:
       - name: Factory 044 focused tests
         run: npm run test:factory-044
 
+      - name: Factory 045 focused tests
+        run: npm run test:factory-045
+
       - name: Authentication focused tests
         run: npm run test:auth
 
