@@ -1,10 +1,18 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { canonicalAuthUrl, isCanonicalAuthOrigin } from "@/lib/auth/authOrigin";
 import { isSetPasswordOtpType, safeAuthNext } from "@/lib/auth/recovery";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
+
+  // Auth tokens are accepted only on the canonical FEH CRM origin. This
+  // prevents preview/alternate-host recovery flows from silently crossing
+  // environments and issuing a session on the wrong host.
+  if (!isCanonicalAuthOrigin(requestUrl.origin)) {
+    return NextResponse.redirect(canonicalAuthUrl("/forgot-password?error=wrong-origin"));
+  }
   const tokenHash = requestUrl.searchParams.get("token_hash");
   const type = requestUrl.searchParams.get("type");
   const next = safeAuthNext(requestUrl.searchParams.get("next"));
