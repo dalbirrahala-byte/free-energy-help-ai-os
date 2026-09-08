@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { isCanonicalAuthOrigin } from "@/lib/auth/authOrigin";
 import { passwordValidationError } from "@/lib/auth/recovery";
 import { createClient } from "@/lib/supabase/client";
 
@@ -39,6 +40,11 @@ export function ResetPasswordForm() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!isCanonicalAuthOrigin(window.location.origin)) {
+      setError("Password changes are blocked on preview or alternate hosts. Use the canonical FEH CRM recovery flow.");
+      return;
+    }
     const form = new FormData(event.currentTarget);
     const password = String(form.get("password") ?? "");
     const confirmation = String(form.get("confirmation") ?? "");
