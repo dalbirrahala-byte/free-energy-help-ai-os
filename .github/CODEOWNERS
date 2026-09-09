@@ -11,3 +11,11 @@
 /frontend/src/app/api/ @dalbirrahala-byte @dominicrahala24-oss
 /frontend/src/middleware.ts @dalbirrahala-byte @dominicrahala24-oss
 /frontend/middleware.ts @dalbirrahala-byte @dominicrahala24-oss
+
+# CRM navigation/authenticated workspace guard: changes require attributable review.
+/.github/workflows/crm-navigation.yml @dalbirrahala-byte @dominicrahala24-oss
+/frontend/src/components/layout/AppShell.tsx @dalbirrahala-byte @dominicrahala24-oss
+/frontend/src/app/customers/ @dalbirrahala-byte @dominicrahala24-oss
+/frontend/src/app/leads/ @dalbirrahala-byte @dominicrahala24-oss
+/frontend/src/components/leads/ @dalbirrahala-byte @dominicrahala24-oss
+/frontend/src/lib/navigation/ @dalbirrahala-byte @dominicrahala24-oss

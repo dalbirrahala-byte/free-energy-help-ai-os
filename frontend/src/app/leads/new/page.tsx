@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
@@ -101,7 +102,7 @@ export default function NewLeadPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <AppShell activeHref="/leads" title="Add Lead" subtitle="Create a new CRM lead." headerContext="Lead Management">
       <div className="mx-auto max-w-4xl">
         <div className="mb-8">
           <Link
@@ -243,7 +244,7 @@ export default function NewLeadPage() {
           </div>
         </form>
       </div>
-    </main>
+    </AppShell>
   );
 }
 

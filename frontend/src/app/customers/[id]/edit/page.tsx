@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -162,7 +163,7 @@ export default async function EditCustomerPage({
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <AppShell activeHref="/customers" title="Edit Customer" subtitle="Update customer and primary site details." headerContext="Customer Management">
       <div className="mx-auto max-w-4xl">
         <Link
           href={`/customers/${customer.id}`}
@@ -311,7 +312,7 @@ export default async function EditCustomerPage({
           </div>
         </form>
       </div>
-    </main>
+    </AppShell>
   );
 }
 
