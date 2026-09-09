@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { WebsiteLeadsPanel } from "@/components/website-leads/WebsiteLeadsPanel";
+import { AppShell } from "@/components/layout/AppShell";
 import { useNewWebsiteLeadCount, useWebsiteLeads } from "@/lib/website-leads/useWebsiteLeads";
 import { PriorityBadge, QualificationReadinessBadge, NextActionBadge, LeadQualityBadge } from "@/components/leads/RevenueBadges";
 import type { LeadRevenueView } from "@/lib/revenue-engine/leadRevenueView";
@@ -125,7 +126,12 @@ export function LeadsPageClient({
   }, [crmLeads, revenueViews, showRejected]);
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <AppShell
+      activeHref="/leads"
+      title="Leads"
+      subtitle="Website enquiries (local) and CRM leads from Supabase."
+      headerContext="Lead Management"
+    >
       <div className="mx-auto max-w-7xl space-y-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -315,6 +321,6 @@ export function LeadsPageClient({
           </div>
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }
