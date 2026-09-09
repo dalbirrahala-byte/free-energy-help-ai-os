@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
 import { createClient } from "@/lib/supabase/server";
 
 type SiteRow = {
@@ -62,7 +63,12 @@ export default async function CustomersPage() {
   const customers = (data ?? []) as CustomerRow[];
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <AppShell
+      activeHref="/customers"
+      title="Customers"
+      subtitle="Manage your commercial energy customer book."
+      headerContext="Customer Management"
+    >
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex items-center justify-between">
           <div>
@@ -170,6 +176,6 @@ export default async function CustomersPage() {
           </div>
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }
