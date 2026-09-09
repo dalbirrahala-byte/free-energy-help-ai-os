@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -65,7 +66,7 @@ export default function NewCustomerPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <AppShell activeHref="/customers" title="Add Customer" subtitle="Create a new commercial energy customer record." headerContext="Customer Management">
       <div className="mx-auto max-w-4xl">
         <div className="mb-8">
           <Link
@@ -183,7 +184,7 @@ export default function NewCustomerPage() {
           </div>
         </form>
       </div>
-    </main>
+    </AppShell>
   );
 }
 
