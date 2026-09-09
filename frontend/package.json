@@ -14,7 +14,8 @@
     "test:factory-045": "node --test src/lib/whatsapp-inbound/*.test.ts",
     "test:auth": "node --test src/lib/auth/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run lint && npm run build"
+    "check": "npm run typecheck && npm run lint && npm run build",
+    "test:crm-navigation": "node --test src/lib/navigation/*.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
