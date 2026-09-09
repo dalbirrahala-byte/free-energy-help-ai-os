@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
@@ -97,7 +98,7 @@ export default async function EditActivityPage({
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <AppShell activeHref="/leads" title="Edit Activity" subtitle="Update a recorded lead activity." headerContext="Lead Management">
       <div className="mx-auto max-w-2xl">
         <Link
           href={`/leads/${leadId}`}
@@ -211,6 +212,6 @@ export default async function EditActivityPage({
           </form>
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }
