@@ -33,8 +33,11 @@ export default function MfaEnrollPage() {
         {!setupError && !enrollment && <p className="mt-6 text-sm text-slate-500">Preparing secure setup…</p>}
         {enrollment && (
           <>
-            <div className="mt-6 flex justify-center rounded-xl border border-slate-200 bg-white p-4" dangerouslySetInnerHTML={{ __html: enrollment.qrCode }} />
+            <div className="mt-6 flex justify-center rounded-xl border border-slate-200 bg-white p-4">
+              <img src={enrollment.qrCode} alt="Free Energy Help Microsoft Authenticator setup QR code" className="h-56 w-56" />
+            </div>
             <details className="mt-4 text-sm text-slate-600"><summary className="cursor-pointer font-semibold">Can’t scan the QR code?</summary><p className="mt-2 break-all font-mono text-xs">{enrollment.secret}</p></details>
+            <p className="mt-3 text-xs text-slate-500">Keep this setup code private. Do not send the QR code or setup code to anyone.</p>
             <form action={formAction} className="mt-6 space-y-4">
               <input type="hidden" name="factorId" value={enrollment.factorId} />
               <input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required aria-label="Authenticator code" className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-center text-lg tracking-[0.35em] focus:border-emerald-500 focus:outline-none" />
