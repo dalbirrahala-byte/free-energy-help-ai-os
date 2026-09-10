@@ -2,6 +2,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { decideAdminMfaRoute, safeMfaRedirectTarget } from "@/lib/auth/mfa";
+
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/business-energy-quote"];
 const PUBLIC_PREFIXES = ["/leads/web/"];
 const MFA_PATHS = ["/mfa/challenge", "/mfa/enroll"];
@@ -43,12 +45,37 @@ export async function middleware(request: NextRequest) {
 
   if (user && pathname === "/login") return NextResponse.redirect(new URL("/", request.url));
 
-  if (user && !isPublicPath(pathname) && !isMfaPath(pathname)) {
-    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (assurance?.nextLevel === "aal2" && assurance.currentLevel !== "aal2") {
-      const challengeUrl = new URL("/mfa/challenge", request.url);
-      challengeUrl.searchParams.set("redirectTo", pathname);
-      return NextResponse.redirect(challengeUrl);
+  if (user && (!isPublicPath(pathname) || isMfaPath(pathname))) {
+    const { data: roleData } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const isAdmin = roleData?.role === "admin";
+
+    if (isAdmin) {
+      const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      const decision = decideAdminMfaRoute(true, {
+        currentLevel: assurance?.currentLevel ?? null,
+        nextLevel: assurance?.nextLevel ?? null,
+      });
+
+      if (decision === "enroll" && pathname !== "/mfa/enroll") {
+        const enrollUrl = new URL("/mfa/enroll", request.url);
+        enrollUrl.searchParams.set("redirectTo", safeMfaRedirectTarget(pathname));
+        return NextResponse.redirect(enrollUrl);
+      }
+
+      if (decision === "challenge" && pathname !== "/mfa/challenge") {
+        const challengeUrl = new URL("/mfa/challenge", request.url);
+        challengeUrl.searchParams.set("redirectTo", safeMfaRedirectTarget(pathname));
+        return NextResponse.redirect(challengeUrl);
+      }
+
+      if (decision === "allow" && isMfaPath(pathname)) {
+        return NextResponse.redirect(new URL("/", request.url));
+      }
     }
   }
 
