@@ -7,6 +7,7 @@
 
 import { redirect } from "next/navigation";
 
+import { decideAdminMfaRoute } from "./mfa";
 import { createClient } from "../supabase/server";
 import { DEFAULT_ROLE, isRole, type Role } from "./roles";
 
@@ -61,15 +62,27 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 /**
  * For Server Components/Actions that must have a signed-in user. This is
  * defense in depth, not the primary gate — middleware.ts already redirects
- * unauthenticated requests before they reach page code. If this ever
- * fires, middleware's own check was bypassed or misconfigured, which is
- * exactly the scenario a second, independent check exists to catch.
+ * unauthenticated requests before they reach page code. Admin sessions are
+ * also required to satisfy AAL2 here, so bypassing middleware cannot turn an
+ * AAL1 admin session into an authorised CRM session.
  */
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
+  }
+
+  if (user.role === "admin") {
+    const supabase = await createClient();
+    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const decision = decideAdminMfaRoute(true, {
+      currentLevel: assurance?.currentLevel ?? null,
+      nextLevel: assurance?.nextLevel ?? null,
+    });
+
+    if (decision === "enroll") redirect("/mfa/enroll");
+    if (decision === "challenge") redirect("/mfa/challenge");
   }
 
   return user;
