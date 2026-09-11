@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
 
 import { WebsiteLeadWorkspace } from "@/components/website-leads/WebsiteLeadWorkspace";
 
@@ -11,7 +12,7 @@ export default async function WebsiteLeadPage({ params }: WebsiteLeadPageProps) 
   const leadReference = decodeURIComponent(ref);
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <AppShell activeHref="/leads" title="Website Lead" subtitle="Review a captured website enquiry." headerContext="Lead Management">
       <div className="mx-auto max-w-4xl">
         <WebsiteLeadWorkspace leadReference={leadReference} />
         <p className="mt-8 text-center text-xs text-slate-500">
@@ -20,6 +21,6 @@ export default async function WebsiteLeadPage({ params }: WebsiteLeadPageProps) 
           </Link>
         </p>
       </div>
-    </main>
+    </AppShell>
   );
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
@@ -317,7 +318,7 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <AppShell activeHref="/leads" title="Lead Workspace" subtitle="Review lead intelligence, activity and next actions." headerContext="Lead Management">
       <div className="mx-auto max-w-5xl">
         <Link
           href="/leads"
@@ -604,7 +605,7 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
 </Link>
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }
 

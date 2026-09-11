@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
@@ -65,7 +66,7 @@ export default async function NewActivityPage({
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <AppShell activeHref="/leads" title="Add Activity" subtitle="Record a new lead activity." headerContext="Lead Management">
       <div className="mx-auto max-w-2xl rounded-xl bg-white p-8 shadow">
         <h1 className="mb-6 text-3xl font-bold">Add Activity</h1>
 
@@ -147,6 +148,6 @@ export default async function NewActivityPage({
           </div>
         </form>
       </div>
-    </main>
+    </AppShell>
   );
 }

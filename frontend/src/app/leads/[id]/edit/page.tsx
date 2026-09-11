@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AppShell } from "@/components/layout/AppShell";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
@@ -130,7 +131,7 @@ export default async function EditLeadPage({
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <AppShell activeHref="/leads" title="Edit Lead" subtitle="Update lead details and pipeline status." headerContext="Lead Management">
       <div className="mx-auto max-w-4xl">
         <Link
           href={`/leads/${lead.id}`}
@@ -249,7 +250,7 @@ export default async function EditLeadPage({
           </div>
         </form>
       </div>
-    </main>
+    </AppShell>
   );
 }
 
