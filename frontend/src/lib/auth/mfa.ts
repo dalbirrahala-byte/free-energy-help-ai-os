@@ -10,6 +10,16 @@ export type AssuranceLevels = {
 
 export type AdminMfaRouteDecision = "allow" | "enroll" | "challenge";
 
+/**
+ * Supabase's SDK intentionally leaves room for future assurance-level values.
+ * FEH only recognises the two levels we currently support. Anything unknown is
+ * normalised to null so the admin MFA decision fails closed rather than being
+ * treated as authenticated assurance.
+ */
+export function normalizeAssuranceLevel(value: unknown): AssuranceLevel {
+  return value === "aal1" || value === "aal2" ? value : null;
+}
+
 export function requiresMfaChallenge(levels: AssuranceLevels): boolean {
   return levels.currentLevel !== "aal2" && levels.nextLevel === "aal2";
 }
