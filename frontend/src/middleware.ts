@@ -2,7 +2,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
-import { decideAdminMfaRoute, safeMfaRedirectTarget } from "@/lib/auth/mfa";
+import { decideAdminMfaRoute, normalizeAssuranceLevel, safeMfaRedirectTarget } from "@/lib/auth/mfa";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/business-energy-quote"];
 const PUBLIC_PREFIXES = ["/leads/web/"];
@@ -57,8 +57,8 @@ export async function middleware(request: NextRequest) {
     if (isAdmin) {
       const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       const decision = decideAdminMfaRoute(true, {
-        currentLevel: assurance?.currentLevel ?? null,
-        nextLevel: assurance?.nextLevel ?? null,
+        currentLevel: normalizeAssuranceLevel(assurance?.currentLevel),
+        nextLevel: normalizeAssuranceLevel(assurance?.nextLevel),
       });
 
       if (decision === "enroll" && pathname !== "/mfa/enroll") {
