@@ -7,7 +7,7 @@ import {
   normalizeAssuranceLevel,
   requiresMfaChallenge,
   safeMfaRedirectTarget,
-} from "./mfa";
+} from "./mfa.ts";
 
 test("normalizes only supported assurance levels", () => {
   assert.equal(normalizeAssuranceLevel("aal1"), "aal1");
