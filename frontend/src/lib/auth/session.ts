@@ -7,7 +7,7 @@
 
 import { redirect } from "next/navigation";
 
-import { decideAdminMfaRoute } from "./mfa";
+import { decideAdminMfaRoute, normalizeAssuranceLevel } from "./mfa";
 import { createClient } from "../supabase/server";
 import { DEFAULT_ROLE, isRole, type Role } from "./roles";
 
@@ -77,8 +77,8 @@ export async function requireUser(): Promise<CurrentUser> {
     const supabase = await createClient();
     const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     const decision = decideAdminMfaRoute(true, {
-      currentLevel: assurance?.currentLevel ?? null,
-      nextLevel: assurance?.nextLevel ?? null,
+      currentLevel: normalizeAssuranceLevel(assurance?.currentLevel),
+      nextLevel: normalizeAssuranceLevel(assurance?.nextLevel),
     });
 
     if (decision === "enroll") redirect("/mfa/enroll");
