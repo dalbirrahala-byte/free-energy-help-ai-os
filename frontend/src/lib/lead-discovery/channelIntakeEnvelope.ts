@@ -3,6 +3,7 @@ export const FEH_INTAKE_CHANNELS = [
   "facebook",
   "whatsapp",
   "reddit",
+  "apollo",
 ] as const;
 
 export type FehIntakeChannel = (typeof FEH_INTAKE_CHANNELS)[number];
@@ -28,7 +29,7 @@ export type ChannelIntakeCandidate = Omit<
 
 /**
  * Factory 044 Phase 19 establishes a provider-neutral intake contract for
- * LinkedIn, Facebook, WhatsApp and Reddit.
+ * LinkedIn, Facebook, WhatsApp, Reddit and Apollo.
  *
  * Intake is evidence only. It cannot write to CRM or authorize outreach.
  */
