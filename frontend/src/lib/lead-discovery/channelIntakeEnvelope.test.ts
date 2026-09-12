@@ -6,7 +6,13 @@ import {
   type FehIntakeChannel,
 } from "./channelIntakeEnvelope.ts";
 
-for (const channel of ["linkedin", "facebook", "whatsapp", "reddit"] as FehIntakeChannel[]) {
+for (const channel of [
+  "linkedin",
+  "facebook",
+  "whatsapp",
+  "reddit",
+  "apollo",
+] as FehIntakeChannel[]) {
   test(`creates a fail-closed intake envelope for ${channel}`, () => {
     const result = createChannelIntakeEnvelope({
       channel,
