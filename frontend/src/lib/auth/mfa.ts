@@ -11,6 +11,15 @@ export type AssuranceLevels = {
 export type AdminMfaRouteDecision = "allow" | "enroll" | "challenge";
 
 /**
+ * Role resolution and MFA have opposite safe defaults: permissions may fall
+ * back to read_only, but an unresolved role must never be treated as confirmed
+ * non-admin for MFA. Unknown role state therefore requires the admin MFA gate.
+ */
+export function requiresMfaForRoleResolution(isAdmin: boolean, roleResolved: boolean): boolean {
+  return isAdmin || !roleResolved;
+}
+
+/**
  * Supabase's SDK intentionally leaves room for future assurance-level values.
  * FEH only recognises the two levels we currently support. Anything unknown is
  * normalised to null so the admin MFA decision fails closed rather than being
@@ -32,7 +41,8 @@ export function hasAal2(levels: AssuranceLevels): boolean {
  * Admin MFA is fail-closed by state: an admin who has not yet enrolled a
  * verified TOTP factor must enroll; an enrolled admin whose current session
  * is only AAL1 must complete a challenge; only an AAL2 admin session may
- * proceed to protected CRM routes.
+ * proceed to protected CRM routes. Callers may also pass true for unresolved
+ * role state so uncertainty receives the same safe step-up treatment.
  */
 export function decideAdminMfaRoute(
   isAdmin: boolean,
