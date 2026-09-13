@@ -7,6 +7,11 @@
 
 import { redirect } from "next/navigation";
 
+import {
+  decideAdminMfaRoute,
+  normalizeAssuranceLevel,
+} from "./mfa";
+import { requiresMfaForRoleLookup } from "./mfaRoleResolution";
 import { createClient } from "../supabase/server";
 import { DEFAULT_ROLE, isRole, type Role } from "./roles";
 
@@ -21,10 +26,9 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 /**
  * Looks up the caller's role from public.user_roles. Falls back to the
  * safest role (read_only) if the table doesn't exist yet, the lookup
- * fails, or no row exists for this user — this keeps authentication
- * deployable independently of the RBAC migration's apply timing, and
- * means a user with no explicit grant can never end up with more access
- * than read_only, never less-safe-by-default.
+ * fails, or no row exists for this user. This permission fallback is
+ * intentionally separate from MFA: an unresolved/unprovisioned user is
+ * still required to complete MFA before protected CRM access.
  */
 export async function lookupRole(supabase: SupabaseServerClient, userId: string): Promise<Role> {
   try {
@@ -61,15 +65,30 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 /**
  * For Server Components/Actions that must have a signed-in user. This is
  * defense in depth, not the primary gate — middleware.ts already redirects
- * unauthenticated requests before they reach page code. If this ever
- * fires, middleware's own check was bypassed or misconfigured, which is
- * exactly the scenario a second, independent check exists to catch.
+ * unauthenticated requests before they reach page code. The server guard makes
+ * its own fail-closed role decision so an inconclusive role lookup cannot turn
+ * an AAL1 admin session into an authorised CRM session.
  */
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser();
 
   if (!user) {
     redirect("/login");
+  }
+
+  const supabase = await createClient();
+  const lookupRoleForMfa = () => supabase.from("user_roles").select("role").eq("id", user.id).maybeSingle();
+  const mfaRequired = await requiresMfaForRoleLookup(lookupRoleForMfa);
+
+  if (mfaRequired) {
+    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    const decision = decideAdminMfaRoute(true, {
+      currentLevel: normalizeAssuranceLevel(assurance?.currentLevel),
+      nextLevel: normalizeAssuranceLevel(assurance?.nextLevel),
+    });
+
+    if (decision === "enroll") redirect("/mfa/enroll");
+    if (decision === "challenge") redirect("/mfa/challenge");
   }
 
   return user;

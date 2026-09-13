@@ -64,10 +64,10 @@ jobs:
         working-directory: .
         shell: bash
         run: |
-          # PR #22 intentionally changes the authentication middleware. The
-          # reviewed auth commit is now the accepted application-security
+          # PR #56 intentionally changes the authentication middleware. The
+          # independently reviewed MFA head is now the accepted application-security
           # checkpoint; any later protected-path drift still fails closed.
-          baseline=a72962e8aa23caa83e151a3482df80cdacfdbfd7
+          baseline=1d2151f1d7d624ce77d06a98dd24f32b6e74461c
           git cat-file -e "${baseline}^{commit}"
           if ! git diff --quiet "$baseline" HEAD -- \
             supabase/migrations \
