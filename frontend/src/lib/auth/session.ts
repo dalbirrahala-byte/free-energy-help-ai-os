@@ -10,8 +10,8 @@ import { redirect } from "next/navigation";
 import {
   decideAdminMfaRoute,
   normalizeAssuranceLevel,
-  requiresMfaForRoleResolution,
 } from "./mfa";
+import { requiresMfaForRoleLookup } from "./mfaRoleResolution";
 import { createClient } from "../supabase/server";
 import { DEFAULT_ROLE, isRole, type Role } from "./roles";
 
@@ -26,10 +26,9 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 /**
  * Looks up the caller's role from public.user_roles. Falls back to the
  * safest role (read_only) if the table doesn't exist yet, the lookup
- * fails, or no row exists for this user — this keeps authentication
- * deployable independently of the RBAC migration's apply timing, and
- * means a user with no explicit grant can never end up with more access
- * than read_only, never less-safe-by-default.
+ * fails, or no row exists for this user. This permission fallback is
+ * intentionally separate from MFA: an unresolved/unprovisioned user is
+ * still required to complete MFA before protected CRM access.
  */
 export async function lookupRole(supabase: SupabaseServerClient, userId: string): Promise<Role> {
   try {
@@ -42,24 +41,6 @@ export async function lookupRole(supabase: SupabaseServerClient, userId: string)
     return data.role;
   } catch {
     return DEFAULT_ROLE;
-  }
-}
-
-/**
- * Permission fallback and MFA fallback intentionally differ. read_only is safe
- * for permissions, but an unresolved role is not proof that the user is a
- * non-admin. Any error, missing row, malformed role, or thrown lookup therefore
- * requires MFA step-up without granting additional role permissions.
- */
-async function requiresMfaForRoleLookup(supabase: SupabaseServerClient, userId: string): Promise<boolean> {
-  try {
-    const { data, error } = await supabase.from("user_roles").select("role").eq("id", userId).maybeSingle();
-    const roleValue = data?.role;
-    const roleResolved = !error && typeof roleValue === "string" && isRole(roleValue);
-    const isAdmin = roleResolved && roleValue === "admin";
-    return requiresMfaForRoleResolution(isAdmin, roleResolved);
-  } catch {
-    return true;
   }
 }
 
