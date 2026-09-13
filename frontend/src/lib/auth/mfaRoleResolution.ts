@@ -1,18 +1,8 @@
-import { isRole } from "./roles";
+import { isRole } from "./roles.ts";
 
 export type RoleLookupResult = {
   data: { role?: unknown } | null;
   error: unknown;
-};
-
-export type RoleLookupClient = {
-  from(table: "user_roles"): {
-    select(column: "role"): {
-      eq(column: "id", value: string): {
-        maybeSingle(): PromiseLike<RoleLookupResult>;
-      };
-    };
-  };
 };
 
 /**
@@ -20,18 +10,16 @@ export type RoleLookupClient = {
  * be positively resolved. This includes a clean no-row result: unprovisioned
  * users receive extra authentication friction, never extra permissions. Role
  * authorization remains separate and continues to fall back to read_only.
+ *
+ * Accept the lookup operation itself rather than the full Supabase client.
+ * This keeps the security decision independently testable without forcing
+ * TypeScript to structurally compare Supabase's deeply generic client type.
  */
 export async function requiresMfaForRoleLookup(
-  supabase: RoleLookupClient,
-  userId: string,
+  lookupRole: () => PromiseLike<RoleLookupResult>,
 ): Promise<boolean> {
   try {
-    const { data, error } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("id", userId)
-      .maybeSingle();
-
+    const { data, error } = await lookupRole();
     const roleValue = data?.role;
     const roleResolved = !error && typeof roleValue === "string" && isRole(roleValue);
     const isAdmin = roleResolved && roleValue === "admin";
