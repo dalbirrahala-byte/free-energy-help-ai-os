@@ -5,10 +5,9 @@ import { type NextRequest, NextResponse } from "next/server";
 import {
   decideAdminMfaRoute,
   normalizeAssuranceLevel,
-  requiresMfaForRoleResolution,
   safeMfaRedirectTarget,
 } from "@/lib/auth/mfa";
-import { isRole } from "@/lib/auth/roles";
+import { requiresMfaForRoleLookup } from "@/lib/auth/mfaRoleResolution";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/business-energy-quote"];
 const PUBLIC_PREFIXES = ["/leads/web/"];
@@ -52,25 +51,9 @@ export async function middleware(request: NextRequest) {
   if (user && pathname === "/login") return NextResponse.redirect(new URL("/", request.url));
 
   if (user && (!isPublicPath(pathname) || isMfaPath(pathname))) {
-    let roleValue: unknown = null;
-    let roleLookupFailed = true;
-
-    try {
-      const { data: roleData, error: roleError } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      roleValue = roleData?.role;
-      roleLookupFailed = Boolean(roleError) || typeof roleValue !== "string" || !isRole(roleValue);
-    } catch {
-      roleLookupFailed = true;
-    }
-
-    const roleResolved = !roleLookupFailed;
-    const isAdmin = roleResolved && roleValue === "admin";
-    const mfaRequired = requiresMfaForRoleResolution(isAdmin, roleResolved);
+    // FEH policy: an authenticated but unprovisioned user must complete MFA.
+    // This is step-up authentication only; it never grants a role or permission.
+    const mfaRequired = await requiresMfaForRoleLookup(supabase, user.id);
 
     if (mfaRequired) {
       const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
