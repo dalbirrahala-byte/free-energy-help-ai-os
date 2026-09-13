@@ -1,20 +1,63 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const middlewareSource = readFileSync(new URL("../../middleware.ts", import.meta.url), "utf8");
-const sessionSource = readFileSync(new URL("./session.ts", import.meta.url), "utf8");
+import {
+  requiresMfaForRoleLookup,
+  type RoleLookupClient,
+  type RoleLookupResult,
+} from "./mfaRoleResolution.ts";
 
-test("middleware treats unresolved role lookups as MFA-required instead of non-admin", () => {
-  assert.match(middlewareSource, /requiresMfaForRoleResolution/);
-  assert.match(middlewareSource, /roleLookupFailed = Boolean\(roleError\)/);
-  assert.match(middlewareSource, /catch \{/);
-  assert.doesNotMatch(middlewareSource, /const isAdmin = roleData\?\.role === "admin"/);
+function fakeClient(result: RoleLookupResult | Error): RoleLookupClient {
+  return {
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                maybeSingle() {
+                  if (result instanceof Error) return Promise.reject(result);
+                  return Promise.resolve(result);
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+test("confirmed admin requires MFA", async () => {
+  const client = fakeClient({ data: { role: "admin" }, error: null });
+  assert.equal(await requiresMfaForRoleLookup(client, "user-1"), true);
 });
 
-test("server guard performs an independent fail-closed MFA role lookup", () => {
-  assert.match(sessionSource, /requiresMfaForRoleLookup/);
-  assert.match(sessionSource, /requiresMfaForRoleResolution/);
-  assert.match(sessionSource, /catch \{/);
-  assert.match(sessionSource, /return true;/);
+test("confirmed non-admin does not gain an admin MFA requirement", async () => {
+  for (const role of ["manager", "operations", "consultant", "read_only"]) {
+    const client = fakeClient({ data: { role }, error: null });
+    assert.equal(await requiresMfaForRoleLookup(client, "user-1"), false);
+  }
+});
+
+test("role query error fails closed", async () => {
+  const client = fakeClient({ data: null, error: { message: "lookup failed" } });
+  assert.equal(await requiresMfaForRoleLookup(client, "user-1"), true);
+});
+
+test("malformed role fails closed", async () => {
+  for (const role of ["Admin", "", 123, null]) {
+    const client = fakeClient({ data: { role }, error: null });
+    assert.equal(await requiresMfaForRoleLookup(client, "user-1"), true);
+  }
+});
+
+test("clean no-row result intentionally requires MFA for an unprovisioned user", async () => {
+  const client = fakeClient({ data: null, error: null });
+  assert.equal(await requiresMfaForRoleLookup(client, "user-1"), true);
+});
+
+test("thrown role lookup fails closed", async () => {
+  const client = fakeClient(new Error("network failure"));
+  assert.equal(await requiresMfaForRoleLookup(client, "user-1"), true);
 });
