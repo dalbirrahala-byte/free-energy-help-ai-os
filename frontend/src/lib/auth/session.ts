@@ -77,7 +77,8 @@ export async function requireUser(): Promise<CurrentUser> {
   }
 
   const supabase = await createClient();
-  const mfaRequired = await requiresMfaForRoleLookup(supabase, user.id);
+  const lookupRoleForMfa = () => supabase.from("user_roles").select("role").eq("id", user.id).maybeSingle();
+  const mfaRequired = await requiresMfaForRoleLookup(lookupRoleForMfa);
 
   if (mfaRequired) {
     const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
