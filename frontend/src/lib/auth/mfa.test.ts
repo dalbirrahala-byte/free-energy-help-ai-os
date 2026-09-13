@@ -6,6 +6,7 @@ import {
   hasAal2,
   normalizeAssuranceLevel,
   requiresMfaChallenge,
+  requiresMfaForRoleResolution,
   safeMfaRedirectTarget,
 } from "./mfa.ts";
 
@@ -15,6 +16,13 @@ test("normalizes only supported assurance levels", () => {
   assert.equal(normalizeAssuranceLevel("aal3"), null);
   assert.equal(normalizeAssuranceLevel(undefined), null);
   assert.equal(normalizeAssuranceLevel(null), null);
+});
+
+test("requires MFA for admin or unresolved role state, but not confirmed non-admin", () => {
+  assert.equal(requiresMfaForRoleResolution(true, true), true);
+  assert.equal(requiresMfaForRoleResolution(false, false), true);
+  assert.equal(requiresMfaForRoleResolution(true, false), true);
+  assert.equal(requiresMfaForRoleResolution(false, true), false);
 });
 
 test("requires challenge only when aal2 is available but not yet satisfied", () => {
