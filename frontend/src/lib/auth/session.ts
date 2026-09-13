@@ -7,7 +7,11 @@
 
 import { redirect } from "next/navigation";
 
-import { decideAdminMfaRoute, normalizeAssuranceLevel } from "./mfa";
+import {
+  decideAdminMfaRoute,
+  normalizeAssuranceLevel,
+  requiresMfaForRoleResolution,
+} from "./mfa";
 import { createClient } from "../supabase/server";
 import { DEFAULT_ROLE, isRole, type Role } from "./roles";
 
@@ -41,6 +45,24 @@ export async function lookupRole(supabase: SupabaseServerClient, userId: string)
   }
 }
 
+/**
+ * Permission fallback and MFA fallback intentionally differ. read_only is safe
+ * for permissions, but an unresolved role is not proof that the user is a
+ * non-admin. Any error, missing row, malformed role, or thrown lookup therefore
+ * requires MFA step-up without granting additional role permissions.
+ */
+async function requiresMfaForRoleLookup(supabase: SupabaseServerClient, userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase.from("user_roles").select("role").eq("id", userId).maybeSingle();
+    const roleValue = data?.role;
+    const roleResolved = !error && typeof roleValue === "string" && isRole(roleValue);
+    const isAdmin = roleResolved && roleValue === "admin";
+    return requiresMfaForRoleResolution(isAdmin, roleResolved);
+  } catch {
+    return true;
+  }
+}
+
 /** Returns null when nobody is signed in — never throws for the unauthenticated case. */
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const supabase = await createClient();
@@ -62,9 +84,9 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 /**
  * For Server Components/Actions that must have a signed-in user. This is
  * defense in depth, not the primary gate — middleware.ts already redirects
- * unauthenticated requests before they reach page code. Admin sessions are
- * also required to satisfy AAL2 here, so bypassing middleware cannot turn an
- * AAL1 admin session into an authorised CRM session.
+ * unauthenticated requests before they reach page code. The server guard makes
+ * its own fail-closed role decision so an inconclusive role lookup cannot turn
+ * an AAL1 admin session into an authorised CRM session.
  */
 export async function requireUser(): Promise<CurrentUser> {
   const user = await getCurrentUser();
@@ -73,8 +95,10 @@ export async function requireUser(): Promise<CurrentUser> {
     redirect("/login");
   }
 
-  if (user.role === "admin") {
-    const supabase = await createClient();
+  const supabase = await createClient();
+  const mfaRequired = await requiresMfaForRoleLookup(supabase, user.id);
+
+  if (mfaRequired) {
     const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     const decision = decideAdminMfaRoute(true, {
       currentLevel: normalizeAssuranceLevel(assurance?.currentLevel),
