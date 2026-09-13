@@ -46,5 +46,6 @@ export type MissionControlData = {
   dataAvailabilitySummary: string;
   engineReadiness: EngineReadiness[];
   priorityActions: PriorityAction[];
-  revenueActions: RevenueAction[];
+  // Phase 1 additive contract. Optional until the live-query adapter is wired after schema verification.
+  revenueActions?: RevenueAction[];
 };
