@@ -2,11 +2,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
-import {
-  decideAdminMfaRoute,
-  normalizeAssuranceLevel,
-  safeMfaRedirectTarget,
-} from "@/lib/auth/mfa";
+import { decideAdminMfaRoute, normalizeAssuranceLevel, safeMfaRedirectTarget } from "@/lib/auth/mfa";
 import { requiresMfaForRoleLookup } from "@/lib/auth/mfaRoleResolution";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/business-energy-quote"];
@@ -53,7 +49,8 @@ export async function middleware(request: NextRequest) {
   if (user && (!isPublicPath(pathname) || isMfaPath(pathname))) {
     // FEH policy: an authenticated but unprovisioned user must complete MFA.
     // This is step-up authentication only; it never grants a role or permission.
-    const mfaRequired = await requiresMfaForRoleLookup(supabase, user.id);
+    const lookupRole = () => supabase.from("user_roles").select("role").eq("id", user.id).maybeSingle();
+    const mfaRequired = await requiresMfaForRoleLookup(lookupRole);
 
     if (mfaRequired) {
       const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
