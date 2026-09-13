@@ -2,7 +2,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
-import { decideAdminMfaRoute, normalizeAssuranceLevel, safeMfaRedirectTarget } from "@/lib/auth/mfa";
+import {
+  decideAdminMfaRoute,
+  normalizeAssuranceLevel,
+  requiresMfaForRoleResolution,
+  safeMfaRedirectTarget,
+} from "@/lib/auth/mfa";
+import { isRole } from "@/lib/auth/roles";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/business-energy-quote"];
 const PUBLIC_PREFIXES = ["/leads/web/"];
@@ -46,15 +52,27 @@ export async function middleware(request: NextRequest) {
   if (user && pathname === "/login") return NextResponse.redirect(new URL("/", request.url));
 
   if (user && (!isPublicPath(pathname) || isMfaPath(pathname))) {
-    const { data: roleData } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
+    let roleValue: unknown = null;
+    let roleLookupFailed = true;
 
-    const isAdmin = roleData?.role === "admin";
+    try {
+      const { data: roleData, error: roleError } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
 
-    if (isAdmin) {
+      roleValue = roleData?.role;
+      roleLookupFailed = Boolean(roleError) || typeof roleValue !== "string" || !isRole(roleValue);
+    } catch {
+      roleLookupFailed = true;
+    }
+
+    const roleResolved = !roleLookupFailed;
+    const isAdmin = roleResolved && roleValue === "admin";
+    const mfaRequired = requiresMfaForRoleResolution(isAdmin, roleResolved);
+
+    if (mfaRequired) {
       const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
       const decision = decideAdminMfaRoute(true, {
         currentLevel: normalizeAssuranceLevel(assurance?.currentLevel),
