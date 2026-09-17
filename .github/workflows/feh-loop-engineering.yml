@@ -1,0 +1,75 @@
+name: FEH Loop Engineering
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: feh-loop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  independent-verifier:
+    name: FEH Loop Engineering / independent verifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Factory 041 focused tests
+        run: npm run test:factory-041
+
+      - name: Factory 044 focused tests
+        run: npm run test:factory-044
+
+      - name: Factory 045 focused tests
+        run: npm run test:factory-045
+
+      - name: Authentication focused tests
+        run: npm run test:auth
+
+      - name: CRM navigation focused tests
+        run: npm run test:crm-navigation
+
+      - name: Execution-dispatch regression tests
+        run: npm run test:execution-dispatch
+
+      - name: TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Memory-safe isolated lint
+        run: npm run lint:ci
+
+      - name: Record verifier evidence
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## FEH Loop Engineering verifier"
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Result: **${{ job.status }}**"
+            echo "- Maker code is not accepted as proof; this job is the independent verifier."
+            echo "- Production actions remain separate human approval gates."
+          } >> "$GITHUB_STEP_SUMMARY"
