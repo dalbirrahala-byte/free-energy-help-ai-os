@@ -1,3 +1,9 @@
+# FEH Loop Engineering verifier boundary: maker and checker stay reviewably separate.
+/.github/workflows/feh-loop-engineering.yml @dalbirrahala-byte @dominicrahala24-oss
+/.github/pull_request_template.md @dalbirrahala-byte @dominicrahala24-oss
+/docs/engineering/FEH_LOOP_ENGINEERING.md @dalbirrahala-byte @dominicrahala24-oss
+/frontend/src/**/*.test.ts @dalbirrahala-byte @dominicrahala24-oss
+
 # Factory 041 security boundary: require an attributable owner review.
 /.github/workflows/factory-041.yml @dalbirrahala-byte @dominicrahala24-oss
 /frontend/src/lib/identity-resolution/ @dalbirrahala-byte @dominicrahala24-oss
