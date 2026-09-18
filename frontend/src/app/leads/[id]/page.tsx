@@ -27,6 +27,8 @@ import { LeadActionRecommendationCard } from "@/components/leads/LeadActionRecom
 import { deriveLeadActionRecommendation } from "@/lib/revenue-engine/leadActionRecommendation";
 import { evaluateActionEligibility } from "@/lib/revenue-engine/actionEligibility";
 import { buildLeadCampaignAttribution } from "@/lib/campaign-attribution/leadCampaignAttribution";
+import { LeadMarketSignalsCard } from "@/components/leads/LeadMarketSignalsCard";
+import { classifyBusinessEnergyMarketSignals } from "@/lib/market-intelligence/businessEnergyMarketSignals";
 import type { LeadQualityClassification } from "@/lib/revenue-engine/leadQualityClassification";
 import type { CanonicalLead, CanonicalActivity, CanonicalTask } from "@/lib/shared/domain";
 
@@ -153,6 +155,11 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
     utm_content: lead.utm_content ?? null,
     utm_term: lead.utm_term ?? null,
   });
+
+  const marketSignals = classifyBusinessEnergyMarketSignals(
+    lead.notes,
+    lead.source_detail,
+  );
 
   async function recomputeQualification(formData: FormData) {
     "use server";
@@ -465,6 +472,10 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
 
         <div className="mt-6">
           <LeadActionRecommendationCard recommendation={actionRecommendation} eligibility={actionEligibility} />
+        </div>
+
+        <div className="mt-6">
+          <LeadMarketSignalsCard signals={marketSignals} />
         </div>
 
         {commercialIntelligence.visible && (
