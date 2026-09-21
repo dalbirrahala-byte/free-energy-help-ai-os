@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   isUserAgentFullyBlocked,
   resolveWebsiteSeoStatus,
-} from "./seoHealth";
+} from "./seoHealth.ts";
 
 function response(body: string, status = 200, contentType = "text/plain") {
   return new Response(body, {
