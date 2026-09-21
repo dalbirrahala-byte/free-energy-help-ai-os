@@ -1,4 +1,5 @@
-import type { ServiceStatusInfo } from "./types";\nimport { resolveWebsiteSeoStatus } from "./seoHealth";
+import type { ServiceStatusInfo } from "./types";
+import { resolveWebsiteSeoStatus } from "./seoHealth";
 
 const CHECK_TIMEOUT_MS = 3000;
 
