@@ -52,6 +52,9 @@ jobs:
       - name: CRM navigation focused tests
         run: npm run test:crm-navigation
 
+      - name: Website SEO and AI-search health tests
+        run: npm run test:seo-health
+
       - name: Execution-dispatch regression tests
         run: npm run test:execution-dispatch
 
