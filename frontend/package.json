@@ -15,7 +15,8 @@
     "test:auth": "node --test src/lib/auth/*.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run lint && npm run build",
-    "test:crm-navigation": "node --test src/lib/navigation/*.test.ts"
+    "test:crm-navigation": "node --test src/lib/navigation/*.test.ts",
+    "test:seo-health": "node --test src/lib/ai-control-centre/seoHealth.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
