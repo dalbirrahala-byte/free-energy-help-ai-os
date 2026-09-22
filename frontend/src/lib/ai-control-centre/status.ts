@@ -1,4 +1,5 @@
 import type { ServiceStatusInfo } from "./types";
+import { resolveWebsiteSeoStatus } from "./seoHealth";
 
 const CHECK_TIMEOUT_MS = 3000;
 
@@ -193,23 +194,15 @@ function resolveSupabaseStatus(connected: boolean): ServiceStatusInfo {
       };
 }
 
-function resolveSeoStatus(): ServiceStatusInfo {
-  return {
-    id: "seo",
-    name: "Website SEO",
-    status: "Checking",
-    detail: "Automated SEO health checks are not yet implemented.",
-  };
-}
-
 export async function loadAiControlCentreStatus(
   supabaseConnected: boolean,
 ): Promise<ServiceStatusInfo[]> {
-  const [claude, openai, gemini, n8n] = await Promise.all([
+  const [claude, openai, gemini, n8n, seo] = await Promise.all([
     resolveClaudeStatus(),
     resolveOpenAiStatus(),
     resolveGeminiStatus(),
     resolveN8nStatus(),
+    resolveWebsiteSeoStatus(),
   ]);
 
   return [
@@ -218,6 +211,6 @@ export async function loadAiControlCentreStatus(
     gemini,
     n8n,
     resolveSupabaseStatus(supabaseConnected),
-    resolveSeoStatus(),
+    seo,
   ];
 }
