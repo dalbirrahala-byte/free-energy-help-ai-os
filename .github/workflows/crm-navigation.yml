@@ -41,5 +41,6 @@ jobs:
       - run: npm ci
       - run: npm run test:crm-navigation
       - run: npm run test:auth
+      - run: npm run test:market-intelligence
       - run: npm run typecheck
       - run: npm run lint:ci

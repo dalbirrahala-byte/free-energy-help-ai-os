@@ -278,8 +278,9 @@ function PriorityActionsSection({ data }: { data: MissionControlData }) {
 
   return (
     <SectionCard
-      title="Priority Actions"
-      description="Evidence-based — each item here is a real count already shown elsewhere on this page, never a forecast or estimate"
+      title="Today's Revenue Actions"
+      description="Evidence-based priority actions from live CRM data. Use the controlled queue for lead-level next actions."
+      action={{ label: "Controlled action queue", href: "/action-queue" }}
     >
       {data.priorityActions.length === 0 ? (
         <p className="text-sm text-slate-500">
