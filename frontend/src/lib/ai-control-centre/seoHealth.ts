@@ -113,6 +113,56 @@ function parseRobotsGroups(robotsText: string): RobotsGroup[] {
   return groups;
 }
 
+function readHtmlAttribute(tag: string, attribute: string): string | null {
+  const quoted = tag.match(
+    new RegExp(`\\b${attribute}\\s*=\\s*["']([^"']*)["']`, "i"),
+  );
+
+  if (quoted) {
+    return quoted[1]?.trim() ?? "";
+  }
+
+  const unquoted = tag.match(
+    new RegExp(`\\b${attribute}\\s*=\\s*([^\\s>]+)`, "i"),
+  );
+
+  return unquoted?.[1]?.trim() ?? null;
+}
+
+function containsNoindexDirective(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  return value
+    .toLowerCase()
+    .split(/[,\s]+/)
+    .some((directive) => directive === "noindex");
+}
+
+export function isHomepageIndexingBlocked(
+  homepageResponse: Response,
+  homepageHtml: string,
+): boolean {
+  if (containsNoindexDirective(homepageResponse.headers.get("x-robots-tag"))) {
+    return true;
+  }
+
+  for (const match of homepageHtml.matchAll(/<meta\b[^>]*>/gi)) {
+    const tag = match[0];
+    const name = readHtmlAttribute(tag, "name");
+
+    if (
+      name?.toLowerCase() === "robots" &&
+      containsNoindexDirective(readHtmlAttribute(tag, "content"))
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function isUserAgentFullyBlocked(
   robotsText: string,
   userAgent: string,
@@ -202,10 +252,17 @@ export async function resolveWebsiteSeoStatus(
       );
     }
 
-    const [robotsText, sitemapText] = await Promise.all([
+    const [homepageHtml, robotsText, sitemapText] = await Promise.all([
+      homepageResponse.text(),
       robotsResponse.text(),
       sitemapResponse.text(),
     ]);
+
+    if (isHomepageIndexingBlocked(homepageResponse, homepageHtml)) {
+      return unavailable(
+        "Public homepage is explicitly marked noindex and cannot be treated as search-ready.",
+      );
+    }
 
     if (!/user-agent\s*:/i.test(robotsText)) {
       return notConfigured(
@@ -230,7 +287,7 @@ export async function resolveWebsiteSeoStatus(
       name: "Website SEO + AI Search",
       status: "Connected",
       detail:
-        "Verified live homepage, robots.txt and sitemap.xml; OAI-SearchBot is not fully blocked.",
+        "Verified indexable homepage, robots.txt and sitemap.xml; OAI-SearchBot is not fully blocked.",
     };
   } catch {
     return unavailable(
