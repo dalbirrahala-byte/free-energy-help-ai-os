@@ -1,8 +1,11 @@
 export type LeadBenchmarkSourceKind = "EXCLUSIVE_PROVIDER" | "FEH_GENERATED";
+export type LeadBenchmarkEvidenceBasis = "OBSERVED_VERIFIED" | "ESTIMATED";
 
 export type LeadBenchmarkCohortInput = Readonly<{
   sourceKind: LeadBenchmarkSourceKind;
   sourceName: string;
+  sourceReference: string;
+  evidenceBasis: LeadBenchmarkEvidenceBasis;
   windowStart: string;
   windowEnd: string;
   qualificationDefinitionVersion: string;
@@ -14,6 +17,7 @@ export type LeadBenchmarkCohortInput = Readonly<{
 
 export type LeadBenchmarkCohort = Readonly<LeadBenchmarkCohortInput & {
   sourceName: string;
+  sourceReference: string;
   windowStart: string;
   windowEnd: string;
   rawToQualifiedRate: number | null;
@@ -37,6 +41,12 @@ export type ControlledLeadBenchmark = Readonly<{
 function clean(value: string | null | undefined, max = 160): string | null {
   const cleaned = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, max) : null;
+}
+
+function normalizeReference(value: string | null | undefined): string {
+  const cleaned = clean(value, 300);
+  if (!cleaned) throw new Error("invalid_benchmark_source_reference");
+  return cleaned;
 }
 
 function normalizeInstant(value: string, code: string): string {
@@ -83,8 +93,12 @@ function unitCost(costMinor: number, count: number): number | null {
 
 export function buildLeadBenchmarkCohort(input: LeadBenchmarkCohortInput): LeadBenchmarkCohort {
   const sourceName = clean(input.sourceName);
+  const sourceReference = normalizeReference(input.sourceReference);
   const definition = clean(input.qualificationDefinitionVersion);
   if (!sourceName || !definition) throw new Error("invalid_benchmark_metadata");
+  if (input.evidenceBasis !== "OBSERVED_VERIFIED" && input.evidenceBasis !== "ESTIMATED") {
+    throw new Error("invalid_benchmark_evidence_basis");
+  }
   if (!Number.isInteger(input.acquisitionCostMinor) || input.acquisitionCostMinor < 0) throw new Error("invalid_acquisition_cost");
   assertCount(input.rawLeads, "invalid_raw_leads");
   assertCount(input.qualifiedOpportunities, "invalid_qualified_opportunities");
@@ -99,6 +113,7 @@ export function buildLeadBenchmarkCohort(input: LeadBenchmarkCohortInput): LeadB
   return {
     ...input,
     sourceName,
+    sourceReference,
     qualificationDefinitionVersion: definition,
     windowStart,
     windowEnd,
@@ -137,6 +152,9 @@ export function buildControlledLeadBenchmark(
   }
   if (exclusiveProvider.sourceName.toLowerCase() === fehGenerated.sourceName.toLowerCase()) {
     reasons.push("Exclusive-provider and FEH-generated cohorts must be separately attributable.");
+  }
+  if (exclusiveProvider.evidenceBasis !== "OBSERVED_VERIFIED" || fehGenerated.evidenceBasis !== "OBSERVED_VERIFIED") {
+    reasons.push("Benchmark winner requires observed verified cohort data; estimates may be retained as planning context only.");
   }
 
   const ready = reasons.length === 0;
