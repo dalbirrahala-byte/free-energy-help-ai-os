@@ -110,7 +110,7 @@ function cleanToken(value: string): string {
 
 function normalizeCompanyNumber(value: string): string {
   const cleaned = cleanToken(value).replace(/\s+/g, "").toUpperCase();
-  if (!/^[A-Z0-9]{6,10}$/.test(cleaned)) throw new Error("invalid_company_number");
+  if (!/^[A-Z0-9]{8}$/.test(cleaned)) throw new Error("invalid_company_number");
   return cleaned;
 }
 
