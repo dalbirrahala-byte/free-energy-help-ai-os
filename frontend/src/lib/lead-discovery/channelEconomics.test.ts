@@ -11,6 +11,16 @@ const window = {
   windowEnd: "2026-10-31T23:59:59Z",
 } as const;
 
+const baseRow = {
+  ...window,
+  channelId: "test-channel",
+  channelName: "Test Channel",
+  spendMinor: 10000,
+  rawLeads: 20,
+  qualifiedOpportunities: 4,
+  signedContracts: 1,
+} as const;
+
 test("dashboard ranks channels by signed-contract economics while retaining raw lead cost as diagnostic only", () => {
   const dashboard = buildChannelEconomicsDashboard([
     {
@@ -44,12 +54,9 @@ test("dashboard ranks channels by signed-contract economics while retaining raw 
 
 test("zero signed contracts stay measurable for qualified-opportunity cost but signed-contract cost is absent", () => {
   const row = buildChannelEconomicsRow({
-    ...window,
+    ...baseRow,
     channelId: "social-organic",
     channelName: "Organic Social",
-    spendMinor: 10000,
-    rawLeads: 20,
-    qualifiedOpportunities: 4,
     signedContracts: 0,
   });
 
@@ -61,23 +68,15 @@ test("zero signed contracts stay measurable for qualified-opportunity cost but s
 test("mismatched windows block cross-channel comparison", () => {
   const dashboard = buildChannelEconomicsDashboard([
     {
-      ...window,
+      ...baseRow,
       channelId: "google-ads",
       channelName: "Google Ads",
-      spendMinor: 50000,
-      rawLeads: 20,
-      qualifiedOpportunities: 5,
-      signedContracts: 1,
     },
     {
-      ...window,
+      ...baseRow,
       windowEnd: "2026-11-30T23:59:59Z",
       channelId: "apollo-signal-enriched",
       channelName: "Apollo after verified signal",
-      spendMinor: 30000,
-      rawLeads: 10,
-      qualifiedOpportunities: 4,
-      signedContracts: 1,
     },
   ]);
 
@@ -86,12 +85,33 @@ test("mismatched windows block cross-channel comparison", () => {
   assert.equal(dashboard.blendedCostPerSignedContractMinor, null);
 });
 
+test("observation windows require explicit timezone and real calendar instants", () => {
+  assert.throws(
+    () => buildChannelEconomicsRow({ ...baseRow, windowStart: "2026-10-01T00:00:00" }),
+    /invalid_window_start/,
+  );
+  assert.throws(
+    () => buildChannelEconomicsRow({ ...baseRow, windowEnd: "2026-02-31T23:59:59Z" }),
+    /invalid_window_end/,
+  );
+});
+
+test("unsafe integer spend and counts fail closed before economics are calculated", () => {
+  assert.throws(
+    () => buildChannelEconomicsRow({ ...baseRow, spendMinor: Number.MAX_SAFE_INTEGER + 1 }),
+    /invalid_channel_spend/,
+  );
+  assert.throws(
+    () => buildChannelEconomicsRow({ ...baseRow, rawLeads: Number.MAX_SAFE_INTEGER + 1 }),
+    /invalid_raw_leads/,
+  );
+});
+
 test("invalid funnel counts fail closed", () => {
   assert.throws(() => buildChannelEconomicsRow({
-    ...window,
+    ...baseRow,
     channelId: "invalid",
     channelName: "Invalid",
-    spendMinor: 1000,
     rawLeads: 1,
     qualifiedOpportunities: 2,
     signedContracts: 0,
