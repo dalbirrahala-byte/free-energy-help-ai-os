@@ -77,6 +77,50 @@ test("BICS observations require official ONS provenance and bounded percentages"
   );
 });
 
+test("BICS release dates and runtime provenance markers fail closed", () => {
+  assert.throws(
+    () => buildBicsManufacturingObservation({
+      wave: 163,
+      releaseDate: "2026-02-31",
+      surveyPeriodLabel: "Wave 163",
+      industry: "MANUFACTURING",
+      metric: "ENERGY_PRICE_CONCERN",
+      percentage: 60,
+      sourceUrl,
+      officialStatisticsInDevelopment: true,
+    }),
+    /invalid_bics_release_date/,
+  );
+
+  assert.throws(
+    () => buildBicsManufacturingObservation({
+      wave: 163,
+      releaseDate: "2026-09-03",
+      surveyPeriodLabel: "Wave 163",
+      industry: "RETAIL" as never,
+      metric: "ENERGY_PRICE_CONCERN",
+      percentage: 60,
+      sourceUrl,
+      officialStatisticsInDevelopment: true,
+    }),
+    /invalid_bics_industry/,
+  );
+
+  assert.throws(
+    () => buildBicsManufacturingObservation({
+      wave: 163,
+      releaseDate: "2026-09-03",
+      surveyPeriodLabel: "Wave 163",
+      industry: "MANUFACTURING",
+      metric: "ENERGY_PRICE_CONCERN",
+      percentage: 60,
+      sourceUrl,
+      officialStatisticsInDevelopment: false as never,
+    }),
+    /invalid_bics_statistics_status/,
+  );
+});
+
 test("high manufacturing energy pressure remains aggregate context with no company action capability", () => {
   const context = buildBicsManufacturingContext([
     observation("ENERGY_PRICE_CONCERN", 76),
