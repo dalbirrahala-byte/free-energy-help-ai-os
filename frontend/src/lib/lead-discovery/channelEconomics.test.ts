@@ -126,11 +126,18 @@ test("observation windows require explicit timezone and real calendar instants",
   );
 });
 
-test("missing provenance and invalid evidence basis fail closed", () => {
-  assert.throws(
-    () => buildChannelEconomicsRow({ ...baseRow, sourceReference: "" }),
-    /invalid_channel_source_reference/,
-  );
+test("missing or non-opaque provenance and invalid evidence basis fail closed", () => {
+  for (const sourceReference of [
+    "",
+    "provider ledger 2026-10",
+    "https://provider.example/cohort/42",
+    "person@example.com",
+  ]) {
+    assert.throws(
+      () => buildChannelEconomicsRow({ ...baseRow, sourceReference }),
+      /invalid_channel_source_reference/,
+    );
+  }
   assert.throws(
     () => buildChannelEconomicsRow({ ...baseRow, evidenceBasis: "GUESSED" as never }),
     /invalid_channel_evidence_basis/,
