@@ -50,6 +50,12 @@ function clean(value: string | null | undefined, max = 500): string | null {
   return cleaned ? cleaned.slice(0, max) : null;
 }
 
+function normalizeReference(value: string | null | undefined, errorCode: string): string {
+  const cleaned = clean(value, 160);
+  if (!cleaned || !/^[A-Za-z0-9._:-]+$/.test(cleaned)) throw new Error(errorCode);
+  return cleaned;
+}
+
 function normalizeInstant(value: string): string {
   const cleaned = value.trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
@@ -78,29 +84,23 @@ function normalizeInstant(value: string): string {
   return parsed.toISOString();
 }
 
-function canonical(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9._:-]/g, "");
+function canonicalReference(value: string): string {
+  return value.toLowerCase();
 }
 
 export function buildIntroducerReferralAttribution(
   input: IntroducerReferralInput,
 ): IntroducerReferralAttribution {
-  const introducerReference = clean(input.introducerReference, 160);
-  const agreementReference = clean(input.agreementReference, 160);
+  const introducerReference = normalizeReference(input.introducerReference, "invalid_introducer_reference");
+  const agreementReference = normalizeReference(input.agreementReference, "invalid_agreement_reference");
   const companyName = clean(input.companyName, 200);
-  const referralReference = clean(input.referralReference, 160);
+  const referralReference = normalizeReference(input.referralReference, "invalid_referral_reference");
   const businessReason = clean(input.businessReason, 1000);
-  if (!introducerReference || !agreementReference || !companyName || !referralReference || !businessReason) {
+  if (!companyName || !businessReason) {
     throw new Error("invalid_introducer_referral");
   }
   if (!INTRODUCER_CATEGORIES.includes(input.introducerCategory)) {
     throw new Error("invalid_introducer_category");
-  }
-
-  const canonicalIntroducerReference = canonical(introducerReference);
-  const canonicalReferralReference = canonical(referralReference);
-  if (!canonicalIntroducerReference || !canonicalReferralReference) {
-    throw new Error("invalid_introducer_reference");
   }
 
   const introducedAt = normalizeInstant(input.introducedAt);
@@ -120,7 +120,7 @@ export function buildIntroducerReferralAttribution(
 
   return {
     attributionStatus: ready ? "ATTRIBUTED_FOR_REVIEW" : "BLOCKED",
-    attributionKey: `introducer:${canonicalIntroducerReference}:${canonicalReferralReference}`,
+    attributionKey: `introducer:${canonicalReference(introducerReference)}:${canonicalReference(referralReference)}`,
     introducerReference,
     introducerCategory: input.introducerCategory,
     agreementReference,
