@@ -126,10 +126,15 @@ export function buildBicsManufacturingContext(
   ).values()];
 
   const latestRelease = [...deduped].sort((a, b) => b.releaseDate.localeCompare(a.releaseDate))[0];
-  const energyConcern = latestByMetric(deduped, "ENERGY_PRICE_CONCERN")?.percentage ?? 0;
-  const energyMainConcern = latestByMetric(deduped, "ENERGY_PRICE_MAIN_CONCERN")?.percentage ?? 0;
-  const priceRiseEnergy = latestByMetric(deduped, "RAISING_PRICES_DUE_TO_ENERGY")?.percentage ?? 0;
-  const pricesBought = latestByMetric(deduped, "PRICES_BOUGHT_INCREASED")?.percentage ?? 0;
+  const latestCohort = deduped.filter((item) =>
+    item.releaseDate === latestRelease.releaseDate &&
+    item.wave === latestRelease.wave &&
+    item.surveyPeriodLabel === latestRelease.surveyPeriodLabel
+  );
+  const energyConcern = latestByMetric(latestCohort, "ENERGY_PRICE_CONCERN")?.percentage ?? 0;
+  const energyMainConcern = latestByMetric(latestCohort, "ENERGY_PRICE_MAIN_CONCERN")?.percentage ?? 0;
+  const priceRiseEnergy = latestByMetric(latestCohort, "RAISING_PRICES_DUE_TO_ENERGY")?.percentage ?? 0;
+  const pricesBought = latestByMetric(latestCohort, "PRICES_BOUGHT_INCREASED")?.percentage ?? 0;
 
   const energyPressureScore = Math.min(
     100,
@@ -150,7 +155,7 @@ export function buildBicsManufacturingContext(
   return {
     industry: "MANUFACTURING",
     latestReleaseDate: latestRelease.releaseDate,
-    latestWave: Math.max(...deduped.map((item) => item.wave)),
+    latestWave: latestRelease.wave,
     observations: deduped.sort((a, b) => b.releaseDate.localeCompare(a.releaseDate)),
     energyPressureScore,
     opportunityContext,
