@@ -42,13 +42,35 @@ function clean(value: string | null | undefined, max = 160): string | null {
 }
 
 function normalizeInstant(value: string, code: string): string {
-  const parsed = new Date(value);
+  const cleaned = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
+  if (!match) throw new Error(code);
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  if (month < 1 || month > 12) throw new Error(code);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) throw new Error(code);
+  if (hour > 23 || minute > 59 || second > 59) throw new Error(code);
+
+  if (match[8] !== "Z") {
+    const offsetHour = Number(match[10]);
+    const offsetMinute = Number(match[11]);
+    if (offsetHour > 14 || offsetMinute > 59) throw new Error(code);
+    if (offsetHour === 14 && offsetMinute !== 0) throw new Error(code);
+  }
+
+  const parsed = new Date(cleaned);
   if (Number.isNaN(parsed.getTime())) throw new Error(code);
   return parsed.toISOString();
 }
 
 function assertCount(value: number, code: string): void {
-  if (!Number.isInteger(value) || value < 0) throw new Error(code);
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(code);
 }
 
 function unitCost(spendMinor: number, count: number): number | null {
@@ -65,7 +87,7 @@ export function buildChannelEconomicsRow(input: ChannelEconomicsInput): ChannelE
   const channelId = clean(input.channelId, 100);
   const channelName = clean(input.channelName, 160);
   if (!channelId || !channelName) throw new Error("invalid_channel_identity");
-  if (!Number.isInteger(input.spendMinor) || input.spendMinor < 0) throw new Error("invalid_channel_spend");
+  if (!Number.isSafeInteger(input.spendMinor) || input.spendMinor < 0) throw new Error("invalid_channel_spend");
   assertCount(input.rawLeads, "invalid_raw_leads");
   assertCount(input.qualifiedOpportunities, "invalid_qualified_opportunities");
   assertCount(input.signedContracts, "invalid_signed_contracts");
@@ -131,6 +153,9 @@ export function buildChannelEconomicsDashboard(
   const totalSpendMinor = rows.reduce((sum, row) => sum + row.spendMinor, 0);
   const totalQualifiedOpportunities = rows.reduce((sum, row) => sum + row.qualifiedOpportunities, 0);
   const totalSignedContracts = rows.reduce((sum, row) => sum + row.signedContracts, 0);
+  if (![totalSpendMinor, totalQualifiedOpportunities, totalSignedContracts].every(Number.isSafeInteger)) {
+    reasons.push("Aggregated channel economics exceed safe integer precision.");
+  }
   const ready = reasons.length === 0;
 
   if (ready) {
