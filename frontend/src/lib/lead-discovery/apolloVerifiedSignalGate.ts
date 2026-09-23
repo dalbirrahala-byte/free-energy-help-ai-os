@@ -1,4 +1,5 @@
 import {
+  buildIntentRadarSignal,
   buildIntentRadarSnapshot,
   type IntentRadarSnapshot,
 } from "./intentRadar.ts";
@@ -32,9 +33,30 @@ export function planApolloEnrichmentFromIntentRadar(
   let reconstructed: IntentRadarSnapshot | null = null;
 
   try {
-    reconstructed = buildIntentRadarSnapshot(snapshot.signals, asOf);
+    const canonicalSignals = snapshot.signals.map((signal) => buildIntentRadarSignal(signal));
+    const signalIntegrityMatches = canonicalSignals.every((signal, index) => {
+      const original = snapshot.signals[index];
+      return Boolean(
+        original &&
+        signal.idempotencyKey === original.idempotencyKey &&
+        signal.companyName === original.companyName &&
+        signal.companyNumber === original.companyNumber &&
+        signal.companyDomain === original.companyDomain &&
+        signal.sourceReference === original.sourceReference &&
+        signal.sourceUrl === original.sourceUrl &&
+        signal.observedAt === original.observedAt &&
+        signal.expiresAt === original.expiresAt &&
+        signal.signalType === original.signalType &&
+        signal.summary === original.summary
+      );
+    });
+    if (!signalIntegrityMatches) {
+      reasons.push("Intent Radar signal evidence is not in canonical validated form.");
+    } else {
+      reconstructed = buildIntentRadarSnapshot(canonicalSignals, asOf);
+    }
   } catch {
-    reasons.push("Intent Radar evidence could not be independently reconstructed for this review instant.");
+    reasons.push("Intent Radar evidence could not be independently validated and reconstructed for this review instant.");
   }
 
   const evidenceMatchesSnapshot = Boolean(
@@ -76,9 +98,9 @@ export function planApolloEnrichmentFromIntentRadar(
 
   return {
     status: ready ? "READY_FOR_HUMAN_ENRICHMENT_REVIEW" : "BLOCKED",
-    companyName: snapshot.companyName,
-    companyNumber: snapshot.companyNumber,
-    companyDomain: snapshot.companyDomain,
+    companyName: reconstructed?.companyName ?? snapshot.companyName,
+    companyNumber: reconstructed?.companyNumber ?? null,
+    companyDomain: reconstructed?.companyDomain ?? null,
     strongVerifiedSignals: reconstructed?.strongVerifiedSignals ?? 0,
     provider: "APOLLO",
     enrichmentScope: "COMPANY_AND_DECISION_MAKER",
