@@ -185,7 +185,7 @@ export function integrateBicsWithIntentRadar(
     opportunityContext: context.opportunityContext,
     reviewPriorityLift,
     strongVerifiedCompanySignalPresent,
-    apolloEnrichmentAllowed: snapshot.apolloEnrichmentAllowed,
+    apolloEnrichmentAllowed: strongVerifiedCompanySignalPresent && snapshot.apolloEnrichmentAllowed,
     crmWriteAllowed: false,
     outreachAllowed: false,
     explanation: strongVerifiedCompanySignalPresent
