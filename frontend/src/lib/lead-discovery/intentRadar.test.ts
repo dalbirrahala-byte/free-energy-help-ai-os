@@ -63,6 +63,33 @@ test("inference cannot be mislabeled as source verified", () => {
   );
 });
 
+test("observed timestamps require an explicit timezone", () => {
+  assert.throws(
+    () => buildIntentRadarSignal({
+      ...companiesHouseSignal(),
+      sourceReference: "filing:timezone-free",
+      observedAt: "2026-09-22T12:00:00",
+    }),
+    /invalid_observed_at/,
+  );
+});
+
+test("impossible calendar timestamps fail closed instead of rolling forward", () => {
+  assert.throws(
+    () => buildIntentRadarSignal({
+      ...companiesHouseSignal(),
+      sourceReference: "filing:impossible-date",
+      observedAt: "2026-02-31T12:00:00Z",
+    }),
+    /invalid_observed_at/,
+  );
+
+  assert.throws(
+    () => assessIntentRadarSignal(companiesHouseSignal(), "2026-09-23T20:00:00"),
+    /invalid_as_of/,
+  );
+});
+
 test("website identification alone cannot trigger Apollo enrichment", () => {
   const signal = buildIntentRadarSignal({
     companyName: "Example Manufacturing Ltd",
