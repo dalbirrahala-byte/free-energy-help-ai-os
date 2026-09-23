@@ -48,7 +48,7 @@ function clean(value: string | null | undefined, max = 160): string | null {
 
 function normalizeReference(value: string | null | undefined): string {
   const cleaned = clean(value, 300);
-  if (!cleaned) throw new Error("invalid_channel_source_reference");
+  if (!cleaned || !/^[A-Za-z0-9._:-]+$/.test(cleaned)) throw new Error("invalid_channel_source_reference");
   return cleaned;
 }
 
