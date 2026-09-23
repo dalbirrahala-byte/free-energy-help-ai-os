@@ -1,4 +1,7 @@
-import type { IntentRadarSnapshot } from "./intentRadar.ts";
+import {
+  buildIntentRadarSnapshot,
+  type IntentRadarSnapshot,
+} from "./intentRadar.ts";
 
 export type ApolloEnrichmentReviewPlan = Readonly<{
   status: "READY_FOR_HUMAN_ENRICHMENT_REVIEW" | "BLOCKED";
@@ -17,12 +20,45 @@ export type ApolloEnrichmentReviewPlan = Readonly<{
   reasons: readonly string[];
 }>;
 
+function sameNullableText(left: string | null, right: string | null): boolean {
+  return left === right;
+}
+
 export function planApolloEnrichmentFromIntentRadar(
   snapshot: IntentRadarSnapshot,
+  asOf: string,
 ): ApolloEnrichmentReviewPlan {
   const reasons: string[] = [];
-  const durableIdentity = Boolean(snapshot.companyNumber || snapshot.companyDomain);
-  const verifiedTrigger = snapshot.strongVerifiedSignals > 0 && snapshot.apolloEnrichmentAllowed;
+  let reconstructed: IntentRadarSnapshot | null = null;
+
+  try {
+    reconstructed = buildIntentRadarSnapshot(snapshot.signals, asOf);
+  } catch {
+    reasons.push("Intent Radar evidence could not be independently reconstructed for this review instant.");
+  }
+
+  const evidenceMatchesSnapshot = Boolean(
+    reconstructed &&
+    reconstructed.companyName === snapshot.companyName &&
+    sameNullableText(reconstructed.companyNumber, snapshot.companyNumber) &&
+    sameNullableText(reconstructed.companyDomain, snapshot.companyDomain) &&
+    reconstructed.totalSignals === snapshot.totalSignals &&
+    reconstructed.verifiedFacts === snapshot.verifiedFacts &&
+    reconstructed.inferences === snapshot.inferences &&
+    reconstructed.strongVerifiedSignals === snapshot.strongVerifiedSignals &&
+    reconstructed.apolloEnrichmentAllowed === snapshot.apolloEnrichmentAllowed,
+  );
+
+  if (!evidenceMatchesSnapshot) {
+    reasons.push("Intent Radar derived fields do not match the underlying signal evidence.");
+  }
+
+  const durableIdentity = Boolean(reconstructed?.companyNumber || reconstructed?.companyDomain);
+  const verifiedTrigger = Boolean(
+    reconstructed &&
+    reconstructed.strongVerifiedSignals > 0 &&
+    reconstructed.apolloEnrichmentAllowed,
+  );
 
   if (!durableIdentity) reasons.push("Durable company number or domain is required before Apollo enrichment review.");
   if (!verifiedTrigger) reasons.push("At least one independent strong verified company signal is required before Apollo enrichment review.");
@@ -30,7 +66,7 @@ export function planApolloEnrichmentFromIntentRadar(
     reasons.push("Intent Radar snapshot violates the fail-closed capability boundary.");
   }
 
-  const ready = durableIdentity && verifiedTrigger && reasons.length === 0;
+  const ready = durableIdentity && verifiedTrigger && evidenceMatchesSnapshot && reasons.length === 0;
   if (ready) {
     reasons.push(
       "Company is eligible for a human decision on Apollo enrichment only.",
@@ -43,7 +79,7 @@ export function planApolloEnrichmentFromIntentRadar(
     companyName: snapshot.companyName,
     companyNumber: snapshot.companyNumber,
     companyDomain: snapshot.companyDomain,
-    strongVerifiedSignals: snapshot.strongVerifiedSignals,
+    strongVerifiedSignals: reconstructed?.strongVerifiedSignals ?? 0,
     provider: "APOLLO",
     enrichmentScope: "COMPANY_AND_DECISION_MAKER",
     enrichmentExecutionAllowed: false,
