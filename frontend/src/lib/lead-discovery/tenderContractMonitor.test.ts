@@ -9,6 +9,19 @@ import { assessIntentRadarSignal } from "./intentRadar.ts";
 
 const asOf = new Date("2026-09-23T12:00:00Z");
 
+const officialTender = {
+  companyName: "Example Manufacturing Ltd",
+  companyNumber: "12345678",
+  companyDomain: "example-manufacturing.co.uk",
+  tenderReference: "TENDER-2026-42",
+  sourceUrl: "https://www.find-tender.service.gov.uk/Notice/012345-2026",
+  publishedAt: "2026-09-20T09:00:00Z",
+  closesAt: "2026-10-20T12:00:00Z",
+  title: "Electricity and gas supply procurement",
+  exactOrganisationMatch: true,
+  sourceOfficial: true,
+} as const;
+
 test("known near-term FEH contract expiry becomes verified first-party renewal evidence", () => {
   const signal = mapContractExpiryToIntentSignal({
     companyName: "Example Manufacturing Ltd",
@@ -54,30 +67,17 @@ test("missing, expired or distant contract dates do not fabricate an opportunity
 });
 
 test("official exact-organisation open tender becomes verified; weak association remains inference", () => {
-  const verified = mapPublicTenderToIntentSignal({
-    companyName: "Example Manufacturing Ltd",
-    companyNumber: "12345678",
-    companyDomain: "example-manufacturing.co.uk",
-    tenderReference: "TENDER-2026-42",
-    sourceUrl: "https://www.find-tender.service.gov.uk/Notice/012345-2026",
-    publishedAt: "2026-09-20T09:00:00Z",
-    closesAt: "2026-10-20T12:00:00Z",
-    title: "Electricity and gas supply procurement",
-    exactOrganisationMatch: true,
-    sourceOfficial: true,
-  }, asOf);
+  const verified = mapPublicTenderToIntentSignal(officialTender, asOf);
   assert.ok(verified);
   assert.equal(verified.evidenceBasis, "VERIFIED_FACT");
   assert.equal(verified.sourceVerified, true);
   assert.equal(verified.strength, "STRONG");
+  assert.equal(verified.provenance, "PUBLIC_OFFICIAL");
 
   const inferred = mapPublicTenderToIntentSignal({
-    companyName: "Example Manufacturing Ltd",
-    companyDomain: "example-manufacturing.co.uk",
+    ...officialTender,
     tenderReference: "TENDER-2026-43",
     sourceUrl: "https://example.org/tender/43",
-    publishedAt: "2026-09-20T09:00:00Z",
-    closesAt: "2026-10-20T12:00:00Z",
     title: "Possible energy procurement notice",
     exactOrganisationMatch: false,
     sourceOfficial: false,
@@ -85,31 +85,49 @@ test("official exact-organisation open tender becomes verified; weak association
   assert.ok(inferred);
   assert.equal(inferred.evidenceBasis, "INFERENCE");
   assert.equal(inferred.sourceVerified, false);
+  assert.equal(inferred.provenance, "PUBLIC_WEB");
   assert.equal(assessIntentRadarSignal(inferred, asOf.toISOString()).apolloEnrichmentAllowed, false);
+});
+
+test("an arbitrary web source cannot be promoted by setting sourceOfficial true", () => {
+  assert.throws(
+    () => mapPublicTenderToIntentSignal({
+      ...officialTender,
+      tenderReference: "FALSE-OFFICIAL",
+      sourceUrl: "https://example.org/tender/false-official",
+      sourceOfficial: true,
+    }, asOf),
+    /unverified_official_tender_source/,
+  );
+});
+
+test("tender timestamps require explicit timezone and real calendar dates", () => {
+  assert.throws(
+    () => mapPublicTenderToIntentSignal({ ...officialTender, publishedAt: "2026-09-20T09:00:00" }, asOf),
+    /invalid_tender_date/,
+  );
+  assert.throws(
+    () => mapPublicTenderToIntentSignal({ ...officialTender, closesAt: "2026-02-31T12:00:00Z" }, asOf),
+    /invalid_tender_date/,
+  );
 });
 
 test("closed tender is ignored and invalid tender window fails closed", () => {
   assert.equal(mapPublicTenderToIntentSignal({
-    companyName: "Example Manufacturing Ltd",
-    companyDomain: "example-manufacturing.co.uk",
+    ...officialTender,
     tenderReference: "CLOSED-1",
     sourceUrl: "https://www.find-tender.service.gov.uk/Notice/000001-2026",
     publishedAt: "2026-08-01T09:00:00Z",
     closesAt: "2026-09-01T12:00:00Z",
     title: "Closed tender",
-    exactOrganisationMatch: true,
-    sourceOfficial: true,
   }, asOf), null);
 
   assert.throws(() => mapPublicTenderToIntentSignal({
-    companyName: "Example Manufacturing Ltd",
-    companyDomain: "example-manufacturing.co.uk",
+    ...officialTender,
     tenderReference: "BAD-WINDOW",
     sourceUrl: "https://www.find-tender.service.gov.uk/Notice/000002-2026",
     publishedAt: "2026-10-01T09:00:00Z",
     closesAt: "2026-09-01T12:00:00Z",
     title: "Bad tender",
-    exactOrganisationMatch: true,
-    sourceOfficial: true,
   }, asOf), /invalid_tender_window/);
 });
