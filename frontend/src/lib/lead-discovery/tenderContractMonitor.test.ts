@@ -101,6 +101,29 @@ test("an arbitrary web source cannot be promoted by setting sourceOfficial true"
   );
 });
 
+test("reviewed official tender host requires HTTPS before it can become verified provenance", () => {
+  assert.throws(
+    () => mapPublicTenderToIntentSignal({
+      ...officialTender,
+      tenderReference: "HTTP-DOWNGRADE",
+      sourceUrl: "http://www.find-tender.service.gov.uk/Notice/012345-2026",
+      sourceOfficial: true,
+    }, asOf),
+    /unverified_official_tender_source/,
+  );
+
+  const inferred = mapPublicTenderToIntentSignal({
+    ...officialTender,
+    tenderReference: "HTTP-INFERENCE",
+    sourceUrl: "http://www.find-tender.service.gov.uk/Notice/012346-2026",
+    sourceOfficial: false,
+  }, asOf);
+  assert.ok(inferred);
+  assert.equal(inferred.evidenceBasis, "INFERENCE");
+  assert.equal(inferred.sourceVerified, false);
+  assert.equal(inferred.provenance, "PUBLIC_WEB");
+});
+
 test("tender timestamps require explicit timezone and real calendar dates", () => {
   assert.throws(
     () => mapPublicTenderToIntentSignal({ ...officialTender, publishedAt: "2026-09-20T09:00:00" }, asOf),
