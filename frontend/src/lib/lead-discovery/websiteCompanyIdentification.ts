@@ -85,12 +85,13 @@ function normalizeDomain(value: string): string {
   const cleaned = clean(value, 253)?.toLowerCase();
   if (!cleaned) throw new Error("invalid_company_domain");
   const normalized = cleaned.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  if (normalized.includes("/") || normalized.includes(":") || normalized.endsWith(".")) {
+  if (/[\/?#@:]/.test(normalized) || normalized.endsWith(".")) {
     throw new Error("invalid_company_domain");
   }
 
   const labels = normalized.split(".");
-  if (labels.length < 2 || labels.some((label) =>
+  const topLevelDomain = labels.at(-1) ?? "";
+  if (labels.length < 2 || !/[a-z]/.test(topLevelDomain) || labels.some((label) =>
     !label ||
     label.length > 63 ||
     !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
@@ -98,6 +99,14 @@ function normalizeDomain(value: string): string {
     throw new Error("invalid_company_domain");
   }
   return normalized;
+}
+
+function normalizeProviderEventReference(value: string): string {
+  const cleaned = clean(value, 160);
+  if (!cleaned || !/^[A-Za-z0-9._:-]+$/.test(cleaned)) throw new Error("invalid_provider_event_reference");
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(cleaned)) throw new Error("invalid_provider_event_reference");
+  if ((cleaned.match(/:/g)?.length ?? 0) > 1) throw new Error("invalid_provider_event_reference");
+  return cleaned;
 }
 
 function sanitizeVisitedPath(value: string): string | null {
@@ -111,9 +120,13 @@ function sanitizeVisitedPath(value: string): string | null {
   }
   if (url.origin !== "https://feh.invalid") return null;
 
-  let decodedPath: string;
+  let decodedPath = url.pathname;
   try {
-    decodedPath = decodeURIComponent(url.pathname);
+    for (let pass = 0; pass < 3; pass += 1) {
+      const decoded = decodeURIComponent(decodedPath);
+      if (decoded === decodedPath) break;
+      decodedPath = decoded;
+    }
   } catch {
     return null;
   }
@@ -174,9 +187,9 @@ export function evaluateWebsiteIdentificationTrial(
 
 export function buildWebsiteCompanyObservation(input: WebsiteCompanyObservationInput): WebsiteCompanyObservation {
   const providerName = clean(input.providerName, 120);
-  const providerEventReference = clean(input.providerEventReference, 240);
+  const providerEventReference = normalizeProviderEventReference(input.providerEventReference);
   const companyName = clean(input.companyName, 200);
-  if (!providerName || !providerEventReference || !companyName) throw new Error("invalid_website_company_observation");
+  if (!providerName || !companyName) throw new Error("invalid_website_company_observation");
   if (!Number.isInteger(input.matchConfidence) || input.matchConfidence < 0 || input.matchConfidence > 100) {
     throw new Error("invalid_match_confidence");
   }
