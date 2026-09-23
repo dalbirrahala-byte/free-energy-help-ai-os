@@ -90,6 +90,32 @@ test("impossible calendar timestamps fail closed instead of rolling forward", ()
   );
 });
 
+test("company domain identity is normalized and rejects URL/path/port/userinfo/IP lookalikes", () => {
+  const normalized = buildIntentRadarSignal({
+    ...companiesHouseSignal(),
+    companyDomain: "https://Example-Manufacturing.co.uk/",
+    sourceReference: "filing:domain-normalization",
+  });
+  assert.equal(normalized.companyDomain, "example-manufacturing.co.uk");
+
+  for (const companyDomain of [
+    "example-manufacturing.co.uk/path",
+    "example-manufacturing.co.uk?campaign=1",
+    "example-manufacturing.co.uk:443",
+    "user@example-manufacturing.co.uk",
+    "192.168.1.1",
+  ]) {
+    assert.throws(
+      () => buildIntentRadarSignal({
+        ...companiesHouseSignal(),
+        companyDomain,
+        sourceReference: `filing:invalid-domain:${companyDomain}`,
+      }),
+      /invalid_company_domain/,
+    );
+  }
+});
+
 test("website identification alone cannot trigger Apollo enrichment", () => {
   const signal = buildIntentRadarSignal({
     companyName: "Example Manufacturing Ltd",
