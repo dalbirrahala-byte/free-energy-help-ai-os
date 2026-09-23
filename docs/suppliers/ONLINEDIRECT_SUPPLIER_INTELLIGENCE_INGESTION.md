@@ -154,6 +154,19 @@ Extraction rules:
 8. Retain superseded evidence for audit/history.
 9. Surface stale/unverified supplier data in the CRM rather than presenting it as current.
 
+## Intent Radar / growth-signal boundary
+
+OnlineDIRECT supplier intelligence and FEH company intent are separate evidence domains and must remain separate in code and CRM presentation.
+
+- A supplier rule, product appetite change, commission matrix, LOA rule, credit policy or T&C update is a **supplier-level fact**. It must never create a company-level Intent Radar opportunity merely because the source is trusted.
+- `source_system = OnlineDIRECT` does not by itself make a record an `ONLINE_DIRECT` Intent Radar trigger. A trigger requires separate company-specific first-party evidence tied to a durable company identity and a stable source reference.
+- Examples of potentially valid company-specific first-party evidence are an already-held contract end date, an explicit renewal/tender event, a recorded quote/pricing request or another customer/account event whose provenance can be independently checked.
+- Contract-expiry evidence should reuse the controlled tender/contract-expiry boundary rather than creating a second renewal calculator or silently deriving new dates from supplier guidance.
+- **Verified supplier fact is not the same as verified company intent.** Any interpretation that a supplier-level change creates a company opportunity is an inference and must remain labelled as inference; it must not independently authorize Apollo enrichment.
+- Generic supplier intelligence may inform human routing, suitability and pricing review after a company opportunity already exists, but it cannot authorize CRM writes, provider execution or outbound contact.
+
+This separation is required even when both records ultimately originated from an authorised OnlineDIRECT session. Provenance identifies where evidence came from; it does not collapse different evidence meanings into one trigger.
+
 ## FEH CRM presentation target
 
 The existing `/suppliers` workspace should eventually show, per supplier:
