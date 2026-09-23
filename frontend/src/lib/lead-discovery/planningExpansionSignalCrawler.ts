@@ -12,6 +12,7 @@ export type PlanningDataCrawlPlan = Readonly<{
   readOnly: true;
   politeRateLimitRequired: true;
   bulkDownloadPreferredForLargeScans: true;
+  aggregateDatasetCanCreateVerifiedCompanyFact: false;
   executionPerformed: false;
 }>;
 
@@ -181,6 +182,7 @@ export function planPlanningApplicationCrawl(offset = 0): PlanningDataCrawlPlan 
     readOnly: true,
     politeRateLimitRequired: true,
     bulkDownloadPreferredForLargeScans: true,
+    aggregateDatasetCanCreateVerifiedCompanyFact: false,
     executionPerformed: false,
   };
 }
