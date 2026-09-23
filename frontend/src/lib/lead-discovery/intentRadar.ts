@@ -106,9 +106,21 @@ function cleanCompanyNumber(value: string | null | undefined): string | null {
 function cleanDomain(value: string | null | undefined): string | null {
   const cleaned = cleanText(value, 253)?.toLowerCase() ?? null;
   if (!cleaned) return null;
-  const withoutProtocol = cleaned.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  if (withoutProtocol.includes("/") || !withoutProtocol.includes(".")) throw new Error("invalid_company_domain");
-  return withoutProtocol;
+  const withoutProtocol = cleaned.replace(/^https?:\/\//, "");
+  const hostname = withoutProtocol.endsWith("/") ? withoutProtocol.slice(0, -1) : withoutProtocol;
+  if (!hostname || /[\/?#@:]/.test(hostname)) throw new Error("invalid_company_domain");
+
+  const labels = hostname.split(".");
+  const validLabel = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+  const topLevelDomain = labels.at(-1) ?? "";
+  if (
+    labels.length < 2 ||
+    labels.some((label) => label.length > 63 || !validLabel.test(label)) ||
+    !/[a-z]/.test(topLevelDomain)
+  ) {
+    throw new Error("invalid_company_domain");
+  }
+  return hostname;
 }
 
 function normalizeInstant(value: string, errorCode: string): string {
