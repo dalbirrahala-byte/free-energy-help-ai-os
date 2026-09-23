@@ -38,6 +38,17 @@ function isPlausibleWorkEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+function normalizeCapturedAt(value: string): string | null {
+  const cleaned = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(cleaned)) {
+    return null;
+  }
+
+  const parsed = new Date(cleaned);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
 /**
  * Phase 1 of the Apollo -> CRM bridge.
  *
@@ -54,7 +65,7 @@ export function createApolloCrmIntakeDraft(
   const contactName = input.contactName.trim();
   const workEmail = input.workEmail.trim().toLowerCase();
   const jobTitle = input.jobTitle?.trim() || null;
-  const capturedAt = input.capturedAt.trim();
+  const capturedAt = normalizeCapturedAt(input.capturedAt);
   const reasons: string[] = [];
 
   if (!personId) reasons.push("Apollo person identity is required.");
@@ -66,11 +77,13 @@ export function createApolloCrmIntakeDraft(
   if (input.emailStatus !== "verified") {
     reasons.push("Apollo work email must be verified before CRM intake review.");
   }
-  if (!capturedAt) reasons.push("Capture timestamp is required for provenance.");
+  if (!capturedAt) {
+    reasons.push("Capture timestamp must be a valid ISO-8601 instant with timezone for provenance.");
+  }
 
   const externalReference = personId ? `apollo:person:${personId}` : "";
   const idempotencyKey = externalReference ? `crm-intake:${externalReference}` : "";
-  const sourceProvenance = externalReference
+  const sourceProvenance = externalReference && capturedAt
     ? `${externalReference}:captured:${capturedAt}`
     : "";
 
