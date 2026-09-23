@@ -86,7 +86,6 @@ export type IntentRadarSnapshot = Readonly<{
 const APOLLO_TRIGGER_SOURCES: ReadonlySet<IntentRadarSource> = new Set([
   "COMPANIES_HOUSE",
   "PLANNING",
-  "BICS_MANUFACTURING",
   "INTRODUCER",
   "TENDER_CONTRACT",
   "ONLINE_DIRECT",
