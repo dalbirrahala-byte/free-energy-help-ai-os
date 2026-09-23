@@ -112,7 +112,30 @@ function cleanDomain(value: string | null | undefined): string | null {
 }
 
 function normalizeInstant(value: string, errorCode: string): string {
-  const parsed = new Date(value);
+  const cleaned = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
+  if (!match) throw new Error(errorCode);
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+
+  if (month < 1 || month > 12) throw new Error(errorCode);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) throw new Error(errorCode);
+  if (hour > 23 || minute > 59 || second > 59) throw new Error(errorCode);
+
+  if (match[8] !== "Z") {
+    const offsetHour = Number(match[10]);
+    const offsetMinute = Number(match[11]);
+    if (offsetHour > 14 || offsetMinute > 59) throw new Error(errorCode);
+    if (offsetHour === 14 && offsetMinute !== 0) throw new Error(errorCode);
+  }
+
+  const parsed = new Date(cleaned);
   if (Number.isNaN(parsed.getTime())) throw new Error(errorCode);
   return parsed.toISOString();
 }
