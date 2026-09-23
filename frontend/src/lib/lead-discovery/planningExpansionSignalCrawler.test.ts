@@ -54,6 +54,16 @@ test("authoritative exact-applicant expansion can become a strong verified revie
   assert.equal(assessment.outreachAllowed, false);
 });
 
+test("claimed exact applicant matches are ignored unless the applicant actually matches the company", () => {
+  const signal = mapPlanningApplicationToIntentSignal(company, {
+    ...localAuthorityApplication,
+    applicationReference: "ABC/2026/FALSE-MATCH",
+    applicantName: "Different Manufacturing Ltd",
+  });
+
+  assert.equal(signal, null);
+});
+
 test("MHCLG aggregate or address-only association remains inference", () => {
   const signal = mapPlanningApplicationToIntentSignal(company, {
     ...localAuthorityApplication,
@@ -69,6 +79,26 @@ test("MHCLG aggregate or address-only association remains inference", () => {
   assert.equal(signal.sourceVerified, false);
   assert.equal(signal.strength, "MEDIUM");
   assert.equal(assessIntentRadarSignal(signal, "2026-09-23T20:00:00Z").apolloEnrichmentAllowed, false);
+});
+
+test("invalid planning timestamps fail closed", () => {
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(company, {
+      ...localAuthorityApplication,
+      applicationReference: "ABC/2026/TZ-FREE",
+      receivedAt: "2026-09-20T09:00:00",
+    }),
+    /invalid_planning_date/,
+  );
+
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(company, {
+      ...localAuthorityApplication,
+      applicationReference: "ABC/2026/IMPOSSIBLE",
+      receivedAt: "2026-02-31T09:00:00Z",
+    }),
+    /invalid_planning_date/,
+  );
 });
 
 test("negative terminal outcomes are ignored", () => {
