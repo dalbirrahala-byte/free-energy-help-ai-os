@@ -79,6 +79,43 @@ test("forged derived readiness fields cannot bypass underlying signal evidence",
   assert.ok(plan.reasons.some((reason) => reason.includes("derived fields do not match")));
 });
 
+test("runtime-mutated signal evidence is revalidated before enrichment review", () => {
+  const snapshot = snapshotFor("COMPANIES_HOUSE");
+  const forgedSignal = {
+    ...snapshot.signals[0],
+    confidence: 95.5,
+  } as typeof snapshot.signals[number];
+  const forgedSnapshot = {
+    ...snapshot,
+    signals: [forgedSignal],
+  } as typeof snapshot;
+
+  const plan = planApolloEnrichmentFromIntentRadar(forgedSnapshot, asOf);
+  assert.equal(plan.status, "BLOCKED");
+  assert.equal(plan.companyNumber, null);
+  assert.equal(plan.companyDomain, null);
+  assert.equal(plan.strongVerifiedSignals, 0);
+  assert.equal(plan.enrichmentExecutionAllowed, false);
+  assert.ok(plan.reasons.some((reason) => reason.includes("independently validated")));
+});
+
+test("non-canonical signal timestamps cannot be trusted solely because snapshot counters still look ready", () => {
+  const snapshot = snapshotFor("COMPANIES_HOUSE");
+  const forgedSignal = {
+    ...snapshot.signals[0],
+    observedAt: "2026-09-22T10:00:00+00:00",
+  } as typeof snapshot.signals[number];
+  const forgedSnapshot = {
+    ...snapshot,
+    signals: [forgedSignal],
+  } as typeof snapshot;
+
+  const plan = planApolloEnrichmentFromIntentRadar(forgedSnapshot, asOf);
+  assert.equal(plan.status, "BLOCKED");
+  assert.equal(plan.creditsSpendAllowed, false);
+  assert.ok(plan.reasons.some((reason) => reason.includes("canonical validated form")));
+});
+
 test("expired evidence is re-evaluated at the requested review instant", () => {
   const snapshot = snapshotFor("COMPANIES_HOUSE");
   const plan = planApolloEnrichmentFromIntentRadar(snapshot, "2026-11-23T20:00:00Z");
