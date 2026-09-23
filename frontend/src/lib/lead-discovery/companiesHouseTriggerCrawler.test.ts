@@ -44,6 +44,7 @@ test("recognized official filing maps to a verified Intent Radar fact", () => {
   assert.equal(signal.provenance, "PUBLIC_OFFICIAL");
   assert.equal(signal.signalType, "SHARE_ALLOTMENT_FILED");
   assert.equal(signal.strength, "STRONG");
+  assert.equal(signal.observedAt, "2026-09-20T00:00:00.000Z");
 
   const assessment = assessIntentRadarSignal(signal, "2026-09-23T20:00:00Z");
   assert.equal(assessment.apolloEnrichmentAllowed, true);
@@ -76,6 +77,26 @@ test("accounts filing variants map to the same cautious medium trigger", () => {
   assert.equal(signal.signalType, "ACCOUNTS_FILED");
   assert.equal(signal.strength, "MEDIUM");
   assert.equal(assessIntentRadarSignal(signal, "2026-09-23T20:00:00Z").apolloEnrichmentAllowed, false);
+});
+
+test("invalid and impossible filing dates fail closed instead of rolling forward", () => {
+  assert.throws(
+    () => mapCompaniesHouseFilingToIntentSignal(company, {
+      ...strongFiling,
+      transactionId: "tx-bad-shape",
+      date: "20/09/2026",
+    }),
+    /invalid_filing_date/,
+  );
+
+  assert.throws(
+    () => mapCompaniesHouseFilingToIntentSignal(company, {
+      ...strongFiling,
+      transactionId: "tx-impossible-date",
+      date: "2026-02-31",
+    }),
+    /invalid_filing_date/,
+  );
 });
 
 test("selector deduplicates filings and orders newest first", () => {
