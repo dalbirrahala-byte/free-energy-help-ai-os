@@ -69,12 +69,27 @@ test("possible direct identifiers in URL paths are discarded instead of persiste
     visitedPaths: [
       "/business-energy",
       "/contact/person%40example.com",
+      "/contact/person%2540example.com",
       "/account/1234567890",
       "/session/550e8400-e29b-41d4-a716-446655440000",
     ],
   });
 
   assert.deepEqual(observation.visitedPaths, ["/business-energy"]);
+});
+
+test("provider event references reject obvious personal/network identifiers", () => {
+  for (const providerEventReference of [
+    "person@example.com",
+    "192.168.10.24",
+    "https://provider.example/event/42",
+    "2001:db8::1",
+  ]) {
+    assert.throws(
+      () => websiteObservation({ providerEventReference }),
+      /invalid_provider_event_reference/,
+    );
+  }
 });
 
 test("website observation timestamps require explicit timezone and real calendar dates", () => {
@@ -89,14 +104,17 @@ test("website observation timestamps require explicit timezone and real calendar
 });
 
 test("malformed company domains are rejected before they become company identity", () => {
-  assert.throws(
-    () => websiteObservation({ companyDomain: "example-manufacturing.co.uk:443" }),
-    /invalid_company_domain/,
-  );
-  assert.throws(
-    () => websiteObservation({ companyDomain: "bad domain.co.uk" }),
-    /invalid_company_domain/,
-  );
+  for (const companyDomain of [
+    "example-manufacturing.co.uk:443",
+    "bad domain.co.uk",
+    "example-manufacturing.co.uk?visitor=1",
+    "192.168.1.1",
+  ]) {
+    assert.throws(
+      () => websiteObservation({ companyDomain }),
+      /invalid_company_domain/,
+    );
+  }
 });
 
 test("strong company identification stays website context and cannot bootstrap Apollo", () => {
