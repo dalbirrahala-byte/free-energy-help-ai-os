@@ -33,7 +33,7 @@ function snapshotFor(source: "COMPANIES_HOUSE" | "WEBSITE_IDENTIFICATION" | "BIC
 }
 
 test("strong verified Companies House signal becomes enrichment-review eligible with every execution capability still off", () => {
-  const plan = planApolloEnrichmentFromIntentRadar(snapshotFor("COMPANIES_HOUSE"));
+  const plan = planApolloEnrichmentFromIntentRadar(snapshotFor("COMPANIES_HOUSE"), asOf);
 
   assert.equal(plan.status, "READY_FOR_HUMAN_ENRICHMENT_REVIEW");
   assert.equal(plan.strongVerifiedSignals, 1);
@@ -46,20 +46,44 @@ test("strong verified Companies House signal becomes enrichment-review eligible 
 });
 
 test("website identification cannot bootstrap Apollo even when provider match is strong and verified", () => {
-  const plan = planApolloEnrichmentFromIntentRadar(snapshotFor("WEBSITE_IDENTIFICATION"));
+  const plan = planApolloEnrichmentFromIntentRadar(snapshotFor("WEBSITE_IDENTIFICATION"), asOf);
   assert.equal(plan.status, "BLOCKED");
   assert.equal(plan.enrichmentExecutionAllowed, false);
   assert.ok(plan.reasons.some((reason) => reason.includes("strong verified company signal")));
 });
 
 test("BICS aggregate context cannot bootstrap Apollo", () => {
-  const plan = planApolloEnrichmentFromIntentRadar(snapshotFor("BICS_MANUFACTURING"));
+  const plan = planApolloEnrichmentFromIntentRadar(snapshotFor("BICS_MANUFACTURING"), asOf);
   assert.equal(plan.status, "BLOCKED");
   assert.equal(plan.creditsSpendAllowed, false);
 });
 
 test("inference cannot become Apollo enrichment eligible", () => {
-  const plan = planApolloEnrichmentFromIntentRadar(snapshotFor("COMPANIES_HOUSE", false));
+  const plan = planApolloEnrichmentFromIntentRadar(snapshotFor("COMPANIES_HOUSE", false), asOf);
   assert.equal(plan.status, "BLOCKED");
   assert.equal(plan.emailSendAllowed, false);
+});
+
+test("forged derived readiness fields cannot bypass underlying signal evidence", () => {
+  const weakSnapshot = snapshotFor("WEBSITE_IDENTIFICATION");
+  const forgedSnapshot = {
+    ...weakSnapshot,
+    strongVerifiedSignals: 1,
+    apolloEnrichmentAllowed: true,
+  } as typeof weakSnapshot;
+
+  const plan = planApolloEnrichmentFromIntentRadar(forgedSnapshot, asOf);
+  assert.equal(plan.status, "BLOCKED");
+  assert.equal(plan.strongVerifiedSignals, 0);
+  assert.equal(plan.creditsSpendAllowed, false);
+  assert.ok(plan.reasons.some((reason) => reason.includes("derived fields do not match")));
+});
+
+test("expired evidence is re-evaluated at the requested review instant", () => {
+  const snapshot = snapshotFor("COMPANIES_HOUSE");
+  const plan = planApolloEnrichmentFromIntentRadar(snapshot, "2026-11-23T20:00:00Z");
+
+  assert.equal(plan.status, "BLOCKED");
+  assert.equal(plan.strongVerifiedSignals, 0);
+  assert.equal(plan.enrichmentExecutionAllowed, false);
 });
