@@ -47,11 +47,41 @@ test("authoritative exact-applicant expansion can become a strong verified revie
   assert.equal(signal.sourceVerified, true);
   assert.equal(signal.strength, "STRONG");
   assert.equal(signal.source, "PLANNING");
+  assert.equal(signal.provenance, "PUBLIC_OFFICIAL");
 
   const assessment = assessIntentRadarSignal(signal, "2026-09-23T20:00:00Z");
   assert.equal(assessment.apolloEnrichmentAllowed, true);
   assert.equal(assessment.crmWriteAllowed, false);
   assert.equal(assessment.outreachAllowed, false);
+});
+
+test("caller-claimed local-authority tier cannot verify an arbitrary web source", () => {
+  const signal = mapPlanningApplicationToIntentSignal(company, {
+    ...localAuthorityApplication,
+    applicationReference: "ABC/2026/UNTRUSTED-SOURCE",
+    sourceUrl: "https://planning-example.com/application/ABC-2026-UNTRUSTED-SOURCE",
+  });
+
+  assert.ok(signal);
+  assert.equal(signal.evidenceBasis, "INFERENCE");
+  assert.equal(signal.sourceVerified, false);
+  assert.equal(signal.provenance, "PUBLIC_WEB");
+  assert.equal(signal.strength, "MEDIUM");
+  assert.equal(assessIntentRadarSignal(signal, "2026-09-23T20:00:00Z").apolloEnrichmentAllowed, false);
+});
+
+test("aggregate planning host cannot be promoted by relabeling it as local authority", () => {
+  const signal = mapPlanningApplicationToIntentSignal(company, {
+    ...localAuthorityApplication,
+    applicationReference: "MHCLG-MISLABELLED-42",
+    sourceUrl: "https://www.planning.data.gov.uk/entity/42",
+  });
+
+  assert.ok(signal);
+  assert.equal(signal.evidenceBasis, "INFERENCE");
+  assert.equal(signal.sourceVerified, false);
+  assert.equal(signal.provenance, "PUBLIC_OFFICIAL");
+  assert.equal(assessIntentRadarSignal(signal, "2026-09-23T20:00:00Z").apolloEnrichmentAllowed, false);
 });
 
 test("claimed exact applicant matches are ignored unless the applicant actually matches the company", () => {
@@ -78,6 +108,7 @@ test("MHCLG aggregate or address-only association remains inference", () => {
   assert.equal(signal.evidenceBasis, "INFERENCE");
   assert.equal(signal.sourceVerified, false);
   assert.equal(signal.strength, "MEDIUM");
+  assert.equal(signal.provenance, "PUBLIC_OFFICIAL");
   assert.equal(assessIntentRadarSignal(signal, "2026-09-23T20:00:00Z").apolloEnrichmentAllowed, false);
 });
 
