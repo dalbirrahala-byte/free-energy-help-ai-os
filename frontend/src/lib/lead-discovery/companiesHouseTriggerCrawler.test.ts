@@ -64,12 +64,24 @@ test("unknown filing types are ignored rather than guessed", () => {
   assert.equal(signal, null);
 });
 
-test("accounts filing variants map to the same cautious medium trigger", () => {
+test("AA-prefixed filing types are not guessed as accounts filings", () => {
   const signal = mapCompaniesHouseFilingToIntentSignal(company, {
-    transactionId: "tx-aa-small",
+    transactionId: "tx-aa01",
     type: "AA01",
     category: "accounts",
-    description: "Accounts for a small company",
+    description: "Accounting reference date changed",
+    date: "2026-09-19",
+  });
+
+  assert.equal(signal, null);
+});
+
+test("exact AA accounts filing keeps the cautious medium trigger", () => {
+  const signal = mapCompaniesHouseFilingToIntentSignal(company, {
+    transactionId: "tx-aa-accounts",
+    type: "AA",
+    category: "accounts",
+    description: "Accounts filed",
     date: "2026-09-19",
   });
 
