@@ -147,6 +147,24 @@ function classifyDescription(description: string): PlanningTrigger | null {
   return null;
 }
 
+function planningSourceTrust(sourceUrl: string): Readonly<{
+  officialPublicSource: boolean;
+  localAuthoritySource: boolean;
+}> {
+  try {
+    const parsed = new URL(sourceUrl);
+    const hostname = parsed.hostname.toLowerCase();
+    const officialPublicSource = parsed.protocol === "https:" && hostname.endsWith(".gov.uk");
+    const aggregateHost = hostname === "planning.data.gov.uk" || hostname === "www.planning.data.gov.uk";
+    return {
+      officialPublicSource,
+      localAuthoritySource: officialPublicSource && !aggregateHost,
+    };
+  } catch {
+    return { officialPublicSource: false, localAuthoritySource: false };
+  }
+}
+
 export function planPlanningApplicationCrawl(offset = 0): PlanningDataCrawlPlan {
   const normalizedOffset = normalizeOffset(offset);
   const params = new URLSearchParams({
@@ -189,7 +207,8 @@ export function mapPlanningApplicationToIntentSignal(
   const exactApplicantMatch = claimedExactApplicantMatch && applicantName !== null && applicantName === companyName;
   if (claimedExactApplicantMatch && !exactApplicantMatch) return null;
 
-  const authoritative = application.sourceTier === "LOCAL_AUTHORITY";
+  const sourceTrust = planningSourceTrust(sourceUrl);
+  const authoritative = application.sourceTier === "LOCAL_AUTHORITY" && sourceTrust.localAuthoritySource;
   const verifiedFact = exactApplicantMatch && authoritative;
 
   const adjustedStrength: IntentRadarSignalStrength = verifiedFact ? trigger.strength : "MEDIUM";
@@ -214,7 +233,7 @@ export function mapPlanningApplicationToIntentSignal(
     sourceVerified: verifiedFact,
     confidence: adjustedConfidence,
     strength: adjustedStrength,
-    provenance: "PUBLIC_OFFICIAL",
+    provenance: sourceTrust.officialPublicSource ? "PUBLIC_OFFICIAL" : "PUBLIC_WEB",
   });
 }
 
