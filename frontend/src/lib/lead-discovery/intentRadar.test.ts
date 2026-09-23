@@ -87,6 +87,31 @@ test("website identification alone cannot trigger Apollo enrichment", () => {
   assert.ok(assessment.reasons.some((reason) => reason.includes("cannot independently trigger Apollo")));
 });
 
+test("BICS aggregate context cannot independently trigger Apollo enrichment", () => {
+  const signal = buildIntentRadarSignal({
+    companyName: "Example Manufacturing Ltd",
+    companyDomain: "example-manufacturing.co.uk",
+    source: "BICS_MANUFACTURING",
+    sourceReference: "bics:wave-163:manufacturing",
+    sourceUrl: "https://www.ons.gov.uk/economy/economicoutputandproductivity/output/datasets/businessinsightsandimpactontheukeconomy",
+    observedAt: "2026-09-03T07:00:00Z",
+    expiresAt: "2026-10-03T07:00:00Z",
+    signalFamily: "COMMERCIAL_INTELLIGENCE",
+    signalType: "MANUFACTURING_ENERGY_PRESSURE",
+    summary: "Official industry-level BICS context, not a company-level observation.",
+    evidenceBasis: "VERIFIED_FACT",
+    sourceVerified: true,
+    confidence: 95,
+    strength: "STRONG",
+    provenance: "PUBLIC_OFFICIAL",
+  });
+
+  const assessment = assessIntentRadarSignal(signal, asOf);
+  assert.equal(assessment.status, "REVIEW_ONLY");
+  assert.equal(assessment.apolloEnrichmentAllowed, false);
+  assert.ok(assessment.reasons.some((reason) => reason.includes("cannot independently trigger Apollo")));
+});
+
 test("expired signal fails closed even when it was previously strong and verified", () => {
   const signal = buildIntentRadarSignal({
     ...companiesHouseSignal(),
