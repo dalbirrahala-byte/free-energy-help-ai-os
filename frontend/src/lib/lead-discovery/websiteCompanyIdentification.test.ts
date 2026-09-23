@@ -20,6 +20,21 @@ const candidate = {
   dpaAvailable: true,
 } as const;
 
+function websiteObservation(overrides: Partial<Parameters<typeof buildWebsiteCompanyObservation>[0]> = {}) {
+  return buildWebsiteCompanyObservation({
+    providerName: "Example Provider",
+    providerEventReference: "event-42",
+    companyName: "Example Manufacturing Ltd",
+    companyDomain: "example-manufacturing.co.uk",
+    firstSeenAt: "2026-09-23T10:00:00Z",
+    lastSeenAt: "2026-09-23T10:10:00Z",
+    matchConfidence: 92,
+    providerMatchVerified: true,
+    visitedPaths: ["/free-business-energy-health-check"],
+    ...overrides,
+  });
+}
+
 test("trial candidate can be prepared for human review without allowing install or payment", () => {
   const decision = evaluateWebsiteIdentificationTrial(candidate, 5000);
 
@@ -38,15 +53,7 @@ test("unknown price, payment-details requirement or missing privacy evidence blo
 });
 
 test("website observation strips query strings/fragments and ignores absolute external URLs", () => {
-  const observation = buildWebsiteCompanyObservation({
-    providerName: "Example Provider",
-    providerEventReference: "event-42",
-    companyName: "Example Manufacturing Ltd",
-    companyDomain: "example-manufacturing.co.uk",
-    firstSeenAt: "2026-09-23T10:00:00Z",
-    lastSeenAt: "2026-09-23T10:10:00Z",
-    matchConfidence: 92,
-    providerMatchVerified: true,
+  const observation = websiteObservation({
     visitedPaths: [
       "/free-business-energy-health-check?email=person@example.com#form",
       "/business-energy",
@@ -57,18 +64,43 @@ test("website observation strips query strings/fragments and ignores absolute ex
   assert.deepEqual(observation.visitedPaths, ["/free-business-energy-health-check", "/business-energy"]);
 });
 
-test("strong company identification stays website context and cannot bootstrap Apollo", () => {
-  const observation = buildWebsiteCompanyObservation({
-    providerName: "Example Provider",
-    providerEventReference: "event-42",
-    companyName: "Example Manufacturing Ltd",
-    companyDomain: "example-manufacturing.co.uk",
-    firstSeenAt: "2026-09-23T10:00:00Z",
-    lastSeenAt: "2026-09-23T10:10:00Z",
-    matchConfidence: 92,
-    providerMatchVerified: true,
-    visitedPaths: ["/free-business-energy-health-check"],
+test("possible direct identifiers in URL paths are discarded instead of persisted", () => {
+  const observation = websiteObservation({
+    visitedPaths: [
+      "/business-energy",
+      "/contact/person%40example.com",
+      "/account/1234567890",
+      "/session/550e8400-e29b-41d4-a716-446655440000",
+    ],
   });
+
+  assert.deepEqual(observation.visitedPaths, ["/business-energy"]);
+});
+
+test("website observation timestamps require explicit timezone and real calendar dates", () => {
+  assert.throws(
+    () => websiteObservation({ firstSeenAt: "2026-09-23T10:00:00" }),
+    /invalid_first_seen_at/,
+  );
+  assert.throws(
+    () => websiteObservation({ lastSeenAt: "2026-02-31T10:10:00Z" }),
+    /invalid_last_seen_at/,
+  );
+});
+
+test("malformed company domains are rejected before they become company identity", () => {
+  assert.throws(
+    () => websiteObservation({ companyDomain: "example-manufacturing.co.uk:443" }),
+    /invalid_company_domain/,
+  );
+  assert.throws(
+    () => websiteObservation({ companyDomain: "bad domain.co.uk" }),
+    /invalid_company_domain/,
+  );
+});
+
+test("strong company identification stays website context and cannot bootstrap Apollo", () => {
+  const observation = websiteObservation();
 
   const signal = mapWebsiteCompanyObservationToIntentSignal(observation);
   const assessment = assessWebsiteCompanySignal(signal, "2026-09-23T20:00:00Z");
@@ -81,13 +113,8 @@ test("strong company identification stays website context and cannot bootstrap A
 });
 
 test("unverified provider match is explicitly inference", () => {
-  const observation = buildWebsiteCompanyObservation({
-    providerName: "Example Provider",
+  const observation = websiteObservation({
     providerEventReference: "event-weak",
-    companyName: "Example Manufacturing Ltd",
-    companyDomain: "example-manufacturing.co.uk",
-    firstSeenAt: "2026-09-23T10:00:00Z",
-    lastSeenAt: "2026-09-23T10:10:00Z",
     matchConfidence: 58,
     providerMatchVerified: false,
     visitedPaths: [],
