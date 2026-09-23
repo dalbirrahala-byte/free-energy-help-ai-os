@@ -137,6 +137,36 @@ test("high manufacturing energy pressure remains aggregate context with no compa
   assert.equal(context.outreachAllowed, false);
 });
 
+test("energy pressure never mixes metrics from older BICS release cohorts", () => {
+  const olderHighConcern = buildBicsManufacturingObservation({
+    wave: 162,
+    releaseDate: "2026-08-20",
+    surveyPeriodLabel: "BICS Wave 162",
+    industry: "MANUFACTURING",
+    metric: "ENERGY_PRICE_CONCERN",
+    percentage: 100,
+    sourceUrl,
+    officialStatisticsInDevelopment: true,
+  });
+  const latestLowConcern = buildBicsManufacturingObservation({
+    wave: 163,
+    releaseDate: "2026-09-03",
+    surveyPeriodLabel: "BICS Wave 163",
+    industry: "MANUFACTURING",
+    metric: "ENERGY_PRICE_MAIN_CONCERN",
+    percentage: 4,
+    sourceUrl,
+    officialStatisticsInDevelopment: true,
+  });
+
+  const context = buildBicsManufacturingContext([olderHighConcern, latestLowConcern]);
+  assert.ok(context);
+  assert.equal(context.latestReleaseDate, "2026-09-03T00:00:00.000Z");
+  assert.equal(context.latestWave, 163);
+  assert.equal(context.energyPressureScore, 1);
+  assert.equal(context.opportunityContext, "NORMAL");
+});
+
 test("BICS can raise review priority only when an independent strong verified company signal already exists", () => {
   const context = buildBicsManufacturingContext([
     observation("ENERGY_PRICE_CONCERN", 76),
