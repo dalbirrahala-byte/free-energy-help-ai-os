@@ -80,8 +80,35 @@ function clean(value: string | null | undefined, max = 1000): string | null {
   return cleaned ? cleaned.slice(0, max) : null;
 }
 
+function canonicalCompanyName(value: string | null | undefined): string | null {
+  const cleaned = clean(value, 200)?.toLowerCase() ?? null;
+  return cleaned ? cleaned.replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim() : null;
+}
+
 function normalizeInstant(value: string): string {
-  const parsed = new Date(value);
+  const cleaned = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
+  if (!match) throw new Error("invalid_planning_date");
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  if (month < 1 || month > 12) throw new Error("invalid_planning_date");
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) throw new Error("invalid_planning_date");
+  if (hour > 23 || minute > 59 || second > 59) throw new Error("invalid_planning_date");
+
+  if (match[8] !== "Z") {
+    const offsetHour = Number(match[10]);
+    const offsetMinute = Number(match[11]);
+    if (offsetHour > 14 || offsetMinute > 59) throw new Error("invalid_planning_date");
+    if (offsetHour === 14 && offsetMinute !== 0) throw new Error("invalid_planning_date");
+  }
+
+  const parsed = new Date(cleaned);
   if (Number.isNaN(parsed.getTime())) throw new Error("invalid_planning_date");
   return parsed.toISOString();
 }
@@ -156,14 +183,19 @@ export function mapPlanningApplicationToIntentSignal(
   if (!trigger) return null;
 
   const observedAt = normalizeInstant(application.receivedAt);
-  const exactApplicantMatch = application.matchBasis === "EXACT_APPLICANT_NAME";
+  const claimedExactApplicantMatch = application.matchBasis === "EXACT_APPLICANT_NAME";
+  const applicantName = canonicalCompanyName(application.applicantName);
+  const companyName = canonicalCompanyName(company.companyName);
+  const exactApplicantMatch = claimedExactApplicantMatch && applicantName !== null && applicantName === companyName;
+  if (claimedExactApplicantMatch && !exactApplicantMatch) return null;
+
   const authoritative = application.sourceTier === "LOCAL_AUTHORITY";
   const verifiedFact = exactApplicantMatch && authoritative;
 
   const adjustedStrength: IntentRadarSignalStrength = verifiedFact ? trigger.strength : "MEDIUM";
   const adjustedConfidence = verifiedFact ? trigger.confidence : Math.min(trigger.confidence, 68);
   const matchSummary = exactApplicantMatch
-    ? `applicant matched ${clean(application.applicantName, 200) ?? "company name"}`
+    ? `applicant matched ${clean(application.applicantName, 200)}`
     : `site address matched ${clean(application.siteAddress, 300) ?? "CRM site"}`;
 
   return buildIntentRadarSignal({
