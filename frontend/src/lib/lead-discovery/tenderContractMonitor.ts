@@ -131,12 +131,13 @@ export function mapPublicTenderToIntentSignal(
   }
   if (sourceUrl.protocol !== "https:" && sourceUrl.protocol !== "http:") throw new Error("invalid_tender_source_url");
 
-  const sourceHostReviewedOfficial = REVIEWED_OFFICIAL_TENDER_HOSTS.has(sourceUrl.hostname.toLowerCase());
-  if (tender.sourceOfficial && !sourceHostReviewedOfficial) {
+  const sourceHostReviewed = REVIEWED_OFFICIAL_TENDER_HOSTS.has(sourceUrl.hostname.toLowerCase());
+  const sourceIsReviewedOfficial = sourceUrl.protocol === "https:" && sourceHostReviewed;
+  if (tender.sourceOfficial && !sourceIsReviewedOfficial) {
     throw new Error("unverified_official_tender_source");
   }
 
-  const verifiedCompanyAssociation = tender.sourceOfficial && sourceHostReviewedOfficial && tender.exactOrganisationMatch;
+  const verifiedCompanyAssociation = tender.sourceOfficial && sourceIsReviewedOfficial && tender.exactOrganisationMatch;
   const daysToClose = Math.ceil((closesAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
   const strength: IntentRadarSignalStrength = verifiedCompanyAssociation && daysToClose <= 90 ? "STRONG" : "MEDIUM";
 
@@ -156,6 +157,6 @@ export function mapPublicTenderToIntentSignal(
     sourceVerified: verifiedCompanyAssociation,
     confidence: verifiedCompanyAssociation ? 95 : 65,
     strength,
-    provenance: sourceHostReviewedOfficial ? "PUBLIC_OFFICIAL" : "PUBLIC_WEB",
+    provenance: sourceIsReviewedOfficial ? "PUBLIC_OFFICIAL" : "PUBLIC_WEB",
   });
 }
