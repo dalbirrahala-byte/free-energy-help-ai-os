@@ -164,7 +164,7 @@ export function mapWebsiteCompanyObservationToIntentSignal(
     companyDomain: observation.companyDomain,
     source: "WEBSITE_IDENTIFICATION",
     sourceReference: `website-id:${observation.providerName}:${observation.providerEventReference}`,
-    sourceUrl: `https://${observation.companyDomain}/`,
+    sourceUrl: null,
     observedAt: observation.lastSeenAt,
     expiresAt: new Date(new Date(observation.lastSeenAt).getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
     signalFamily: "DIGITAL_INTENT",
