@@ -127,6 +127,21 @@ function filingTypeKey(value: string): string {
   return cleaned;
 }
 
+function normalizeFilingDate(value: string): string {
+  const cleaned = cleanToken(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cleaned);
+  if (!match) throw new Error("invalid_filing_date");
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12) throw new Error("invalid_filing_date");
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) throw new Error("invalid_filing_date");
+
+  return `${match[1]}-${match[2]}-${match[3]}T00:00:00.000Z`;
+}
+
 function addDays(instant: string, days: number): string {
   const parsed = new Date(instant);
   if (Number.isNaN(parsed.getTime())) throw new Error("invalid_filing_date");
@@ -158,9 +173,7 @@ export function mapCompaniesHouseFilingToIntentSignal(
 
   const companyNumber = normalizeCompanyNumber(company.companyNumber);
   const transactionId = normalizeTransactionId(filing.transactionId);
-  const filingDate = new Date(filing.date);
-  if (Number.isNaN(filingDate.getTime())) throw new Error("invalid_filing_date");
-  const observedAt = filingDate.toISOString();
+  const observedAt = normalizeFilingDate(filing.date);
   const description = cleanToken(filing.description);
   const category = cleanToken(filing.category);
   if (!description || !category) throw new Error("invalid_filing_metadata");
