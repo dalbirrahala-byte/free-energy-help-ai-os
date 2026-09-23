@@ -1,14 +1,16 @@
 import { buildIntentRadarSignal, type IntentRadarSignal } from "./intentRadar.ts";
 
-export type IntroducerCategory =
-  | "ACCOUNTANT"
-  | "COMMERCIAL_PROPERTY"
-  | "FINANCE_BROKER"
-  | "INSURANCE_BROKER"
-  | "SOLICITOR"
-  | "BUSINESS_ADVISER"
-  | "OTHER_PROFESSIONAL";
+export const INTRODUCER_CATEGORIES = [
+  "ACCOUNTANT",
+  "COMMERCIAL_PROPERTY",
+  "FINANCE_BROKER",
+  "INSURANCE_BROKER",
+  "SOLICITOR",
+  "BUSINESS_ADVISER",
+  "OTHER_PROFESSIONAL",
+] as const;
 
+export type IntroducerCategory = (typeof INTRODUCER_CATEGORIES)[number];
 export type IntroducerAgreementStatus = "ACTIVE" | "EXPIRED" | "NOT_VERIFIED";
 export type IntroducerContactPermissionEvidence = "BUSINESS_INTRODUCTION_CONFIRMED" | "UNKNOWN";
 
@@ -49,7 +51,29 @@ function clean(value: string | null | undefined, max = 500): string | null {
 }
 
 function normalizeInstant(value: string): string {
-  const parsed = new Date(value);
+  const cleaned = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
+  if (!match) throw new Error("invalid_introduced_at");
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  if (month < 1 || month > 12) throw new Error("invalid_introduced_at");
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) throw new Error("invalid_introduced_at");
+  if (hour > 23 || minute > 59 || second > 59) throw new Error("invalid_introduced_at");
+
+  if (match[8] !== "Z") {
+    const offsetHour = Number(match[10]);
+    const offsetMinute = Number(match[11]);
+    if (offsetHour > 14 || offsetMinute > 59) throw new Error("invalid_introduced_at");
+    if (offsetHour === 14 && offsetMinute !== 0) throw new Error("invalid_introduced_at");
+  }
+
+  const parsed = new Date(cleaned);
   if (Number.isNaN(parsed.getTime())) throw new Error("invalid_introduced_at");
   return parsed.toISOString();
 }
@@ -69,6 +93,15 @@ export function buildIntroducerReferralAttribution(
   if (!introducerReference || !agreementReference || !companyName || !referralReference || !businessReason) {
     throw new Error("invalid_introducer_referral");
   }
+  if (!INTRODUCER_CATEGORIES.includes(input.introducerCategory)) {
+    throw new Error("invalid_introducer_category");
+  }
+
+  const canonicalIntroducerReference = canonical(introducerReference);
+  const canonicalReferralReference = canonical(referralReference);
+  if (!canonicalIntroducerReference || !canonicalReferralReference) {
+    throw new Error("invalid_introducer_reference");
+  }
 
   const introducedAt = normalizeInstant(input.introducedAt);
   const reasons: string[] = [];
@@ -87,7 +120,7 @@ export function buildIntroducerReferralAttribution(
 
   return {
     attributionStatus: ready ? "ATTRIBUTED_FOR_REVIEW" : "BLOCKED",
-    attributionKey: `introducer:${canonical(introducerReference)}:${canonical(referralReference)}`,
+    attributionKey: `introducer:${canonicalIntroducerReference}:${canonicalReferralReference}`,
     introducerReference,
     introducerCategory: input.introducerCategory,
     agreementReference,
