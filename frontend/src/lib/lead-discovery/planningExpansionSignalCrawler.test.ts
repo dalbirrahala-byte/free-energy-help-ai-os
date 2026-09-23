@@ -34,6 +34,7 @@ test("planning crawl plan is public read-only preparation with no execution", ()
   assert.equal(plan.readOnly, true);
   assert.equal(plan.politeRateLimitRequired, true);
   assert.equal(plan.bulkDownloadPreferredForLargeScans, true);
+  assert.equal(plan.aggregateDatasetCanCreateVerifiedCompanyFact, false);
   assert.equal(plan.executionPerformed, false);
   assert.match(plan.endpoint, /dataset=planning-application/);
   assert.match(plan.endpoint, /limit=100/);
