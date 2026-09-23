@@ -121,10 +121,7 @@ function normalizeTransactionId(value: string): string {
 }
 
 function filingTypeKey(value: string): string {
-  const cleaned = cleanToken(value).toUpperCase();
-  if (FILING_TRIGGERS[cleaned]) return cleaned;
-  if (/^AA/.test(cleaned)) return "AA";
-  return cleaned;
+  return cleanToken(value).toUpperCase();
 }
 
 function normalizeFilingDate(value: string): string {
