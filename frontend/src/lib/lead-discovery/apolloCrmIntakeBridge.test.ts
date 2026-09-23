@@ -47,8 +47,28 @@ test("blocks intake when Apollo identity or provenance timestamp is missing", ()
   assert.equal(result.status, "BLOCKED");
   assert.equal(result.externalReference, "");
   assert.equal(result.idempotencyKey, "");
+  assert.equal(result.sourceProvenance, "");
   assert.match(result.reasons.join(" "), /identity/i);
   assert.match(result.reasons.join(" "), /timestamp/i);
+});
+
+test("blocks malformed or timezone-free provenance timestamps", () => {
+  const malformed = createApolloCrmIntakeDraft({
+    ...verifiedProspect,
+    capturedAt: "2026-09-22 11:30:00",
+  });
+
+  assert.equal(malformed.status, "BLOCKED");
+  assert.equal(malformed.sourceProvenance, "");
+  assert.match(malformed.reasons.join(" "), /ISO-8601/i);
+
+  const impossible = createApolloCrmIntakeDraft({
+    ...verifiedProspect,
+    capturedAt: "2026-02-30T11:30:00Z",
+  });
+
+  assert.equal(impossible.status, "BLOCKED");
+  assert.equal(impossible.sourceProvenance, "");
 });
 
 test("intake never grants CRM write or outreach permission", () => {
@@ -68,6 +88,7 @@ test("normalises Apollo identity into deterministic provenance and idempotency",
     organisationName: " Example Manufacturing Ltd ",
     contactName: " Alex Example ",
     workEmail: " ALEX@EXAMPLE-MANUFACTURING.TEST ",
+    capturedAt: "2026-09-22T12:30:00+01:00",
   });
 
   assert.equal(result.organisationName, "Example Manufacturing Ltd");
@@ -77,6 +98,6 @@ test("normalises Apollo identity into deterministic provenance and idempotency",
   assert.equal(result.idempotencyKey, "crm-intake:apollo:person:person-001");
   assert.equal(
     result.sourceProvenance,
-    "apollo:person:person-001:captured:2026-09-22T11:30:00Z",
+    "apollo:person:person-001:captured:2026-09-22T11:30:00.000Z",
   );
 });
