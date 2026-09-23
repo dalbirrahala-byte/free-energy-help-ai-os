@@ -1,6 +1,10 @@
+export type ChannelEconomicsEvidenceBasis = "OBSERVED_VERIFIED" | "ESTIMATED";
+
 export type ChannelEconomicsInput = Readonly<{
   channelId: string;
   channelName: string;
+  sourceReference: string;
+  evidenceBasis: ChannelEconomicsEvidenceBasis;
   windowStart: string;
   windowEnd: string;
   spendMinor: number;
@@ -12,6 +16,7 @@ export type ChannelEconomicsInput = Readonly<{
 export type ChannelEconomicsRow = Readonly<ChannelEconomicsInput & {
   channelId: string;
   channelName: string;
+  sourceReference: string;
   windowStart: string;
   windowEnd: string;
   costPerQualifiedOpportunityMinor: number | null;
@@ -39,6 +44,12 @@ export type ChannelEconomicsDashboard = Readonly<{
 function clean(value: string | null | undefined, max = 160): string | null {
   const cleaned = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, max) : null;
+}
+
+function normalizeReference(value: string | null | undefined): string {
+  const cleaned = clean(value, 300);
+  if (!cleaned) throw new Error("invalid_channel_source_reference");
+  return cleaned;
 }
 
 function normalizeInstant(value: string, code: string): string {
@@ -86,7 +97,11 @@ function conversionRate(numerator: number, denominator: number): number | null {
 export function buildChannelEconomicsRow(input: ChannelEconomicsInput): ChannelEconomicsRow {
   const channelId = clean(input.channelId, 100);
   const channelName = clean(input.channelName, 160);
+  const sourceReference = normalizeReference(input.sourceReference);
   if (!channelId || !channelName) throw new Error("invalid_channel_identity");
+  if (input.evidenceBasis !== "OBSERVED_VERIFIED" && input.evidenceBasis !== "ESTIMATED") {
+    throw new Error("invalid_channel_evidence_basis");
+  }
   if (!Number.isSafeInteger(input.spendMinor) || input.spendMinor < 0) throw new Error("invalid_channel_spend");
   assertCount(input.rawLeads, "invalid_raw_leads");
   assertCount(input.qualifiedOpportunities, "invalid_qualified_opportunities");
@@ -108,6 +123,7 @@ export function buildChannelEconomicsRow(input: ChannelEconomicsInput): ChannelE
     ...input,
     channelId,
     channelName,
+    sourceReference,
     windowStart,
     windowEnd,
     costPerQualifiedOpportunityMinor: unitCost(input.spendMinor, input.qualifiedOpportunities),
@@ -149,6 +165,9 @@ export function buildChannelEconomicsDashboard(
   if (new Set(rows.map((row) => row.channelId.toLowerCase())).size !== rows.length) {
     reasons.push("Channel identifiers must be unique.");
   }
+  if (rows.some((row) => row.evidenceBasis !== "OBSERVED_VERIFIED")) {
+    reasons.push("Cross-channel economics require observed verified source data; estimates are planning context only.");
+  }
 
   const totalSpendMinor = rows.reduce((sum, row) => sum + row.spendMinor, 0);
   const totalQualifiedOpportunities = rows.reduce((sum, row) => sum + row.qualifiedOpportunities, 0);
@@ -165,18 +184,22 @@ export function buildChannelEconomicsDashboard(
     );
   }
 
+  const orderedRows = ready
+    ? [...rows].sort((a, b) => {
+        const signedA = a.costPerSignedContractMinor ?? Number.POSITIVE_INFINITY;
+        const signedB = b.costPerSignedContractMinor ?? Number.POSITIVE_INFINITY;
+        if (signedA !== signedB) return signedA - signedB;
+        const qualifiedA = a.costPerQualifiedOpportunityMinor ?? Number.POSITIVE_INFINITY;
+        const qualifiedB = b.costPerQualifiedOpportunityMinor ?? Number.POSITIVE_INFINITY;
+        return qualifiedA - qualifiedB;
+      })
+    : [...rows].sort((a, b) => a.channelId.localeCompare(b.channelId));
+
   return {
     status: ready ? "READY_FOR_REVIEW" : "BLOCKED",
     windowStart,
     windowEnd,
-    rows: [...rows].sort((a, b) => {
-      const signedA = a.costPerSignedContractMinor ?? Number.POSITIVE_INFINITY;
-      const signedB = b.costPerSignedContractMinor ?? Number.POSITIVE_INFINITY;
-      if (signedA !== signedB) return signedA - signedB;
-      const qualifiedA = a.costPerQualifiedOpportunityMinor ?? Number.POSITIVE_INFINITY;
-      const qualifiedB = b.costPerQualifiedOpportunityMinor ?? Number.POSITIVE_INFINITY;
-      return qualifiedA - qualifiedB;
-    }),
+    rows: orderedRows,
     totalSpendMinor,
     totalQualifiedOpportunities,
     totalSignedContracts,
