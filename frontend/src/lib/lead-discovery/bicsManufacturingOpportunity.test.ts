@@ -215,3 +215,22 @@ test("BICS cannot bootstrap a company opportunity from weak context alone", () =
   assert.equal(integration.reviewPriorityLift, 0);
   assert.equal(integration.apolloEnrichmentAllowed, false);
 });
+
+test("BICS fails closed when a caller supplies inconsistent derived snapshot readiness", () => {
+  const context = buildBicsManufacturingContext([
+    observation("ENERGY_PRICE_CONCERN", 80),
+    observation("RAISING_PRICES_DUE_TO_ENERGY", 55),
+  ]);
+  assert.ok(context);
+
+  const forgedSnapshot = {
+    ...strongSnapshot(),
+    strongVerifiedSignals: 0,
+    apolloEnrichmentAllowed: true,
+  };
+
+  const integration = integrateBicsWithIntentRadar(forgedSnapshot, context);
+  assert.equal(integration.strongVerifiedCompanySignalPresent, false);
+  assert.equal(integration.reviewPriorityLift, 0);
+  assert.equal(integration.apolloEnrichmentAllowed, false);
+});
