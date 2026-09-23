@@ -47,6 +47,28 @@ test("unknown business-introduction permission blocks referral attribution", () 
   assert.equal(mapIntroducerReferralToIntentSignal({ ...referral, contactPermissionEvidence: "UNKNOWN" }), null);
 });
 
+test("introduced-at provenance requires explicit timezone and a real calendar instant", () => {
+  assert.throws(
+    () => buildIntroducerReferralAttribution({ ...referral, introducedAt: "2026-09-23T14:00:00" }),
+    /invalid_introduced_at/,
+  );
+  assert.throws(
+    () => buildIntroducerReferralAttribution({ ...referral, introducedAt: "2026-02-31T14:00:00Z" }),
+    /invalid_introduced_at/,
+  );
+});
+
+test("unreviewed introducer categories and empty canonical references fail closed", () => {
+  assert.throws(
+    () => buildIntroducerReferralAttribution({ ...referral, introducerCategory: "INFLUENCER" as never }),
+    /invalid_introducer_category/,
+  );
+  assert.throws(
+    () => buildIntroducerReferralAttribution({ ...referral, introducerReference: "$$$" }),
+    /invalid_introducer_reference/,
+  );
+});
+
 test("verified introduction becomes a strong Intent Radar fact but still grants no outbound capability", () => {
   const signal = mapIntroducerReferralToIntentSignal(referral);
   assert.ok(signal);
