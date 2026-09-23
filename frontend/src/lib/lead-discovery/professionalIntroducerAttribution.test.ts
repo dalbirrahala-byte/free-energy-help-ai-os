@@ -58,14 +58,36 @@ test("introduced-at provenance requires explicit timezone and a real calendar in
   );
 });
 
-test("unreviewed introducer categories and empty canonical references fail closed", () => {
+test("unreviewed introducer categories and unsafe references fail closed", () => {
   assert.throws(
     () => buildIntroducerReferralAttribution({ ...referral, introducerCategory: "INFLUENCER" as never }),
     /invalid_introducer_category/,
   );
   assert.throws(
-    () => buildIntroducerReferralAttribution({ ...referral, introducerReference: "$$$" }),
+    () => buildIntroducerReferralAttribution({ ...referral, introducerReference: "partner/001" }),
     /invalid_introducer_reference/,
+  );
+  assert.throws(
+    () => buildIntroducerReferralAttribution({ ...referral, agreementReference: "agreement 2026 001" }),
+    /invalid_agreement_reference/,
+  );
+  assert.throws(
+    () => buildIntroducerReferralAttribution({ ...referral, referralReference: "referral#42" }),
+    /invalid_referral_reference/,
+  );
+});
+
+test("reference punctuation cannot be silently stripped into an attribution-key collision", () => {
+  const normal = buildIntroducerReferralAttribution(referral);
+  assert.equal(normal.attributionKey, "introducer:partner-001:referral-42");
+
+  assert.throws(
+    () => buildIntroducerReferralAttribution({ ...referral, introducerReference: "partner!/001" }),
+    /invalid_introducer_reference/,
+  );
+  assert.throws(
+    () => buildIntroducerReferralAttribution({ ...referral, referralReference: "referral/@42" }),
+    /invalid_referral_reference/,
   );
 });
 
