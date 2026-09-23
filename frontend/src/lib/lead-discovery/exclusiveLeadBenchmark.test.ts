@@ -128,3 +128,24 @@ test("invalid funnel counts fail closed", () => {
     /qualified_exceeds_raw_leads/,
   );
 });
+
+test("economics inputs outside safe integer precision fail closed", () => {
+  const unsafe = Number.MAX_SAFE_INTEGER + 1;
+
+  assert.throws(
+    () => buildControlledLeadBenchmark(exclusive({ acquisitionCostMinor: unsafe }), feh()),
+    /invalid_acquisition_cost/,
+  );
+  assert.throws(
+    () => buildControlledLeadBenchmark(exclusive({ rawLeads: unsafe }), feh()),
+    /invalid_raw_leads/,
+  );
+  assert.throws(
+    () => buildControlledLeadBenchmark(exclusive({ qualifiedOpportunities: unsafe, rawLeads: unsafe }), feh()),
+    /invalid_raw_leads|invalid_qualified_opportunities/,
+  );
+  assert.throws(
+    () => buildControlledLeadBenchmark(exclusive({ signedContracts: unsafe, qualifiedOpportunities: unsafe, rawLeads: unsafe }), feh()),
+    /invalid_raw_leads|invalid_qualified_opportunities|invalid_signed_contracts/,
+  );
+});
