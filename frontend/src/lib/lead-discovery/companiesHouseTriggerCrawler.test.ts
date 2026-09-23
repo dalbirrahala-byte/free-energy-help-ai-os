@@ -126,6 +126,20 @@ test("selector deduplicates filings and orders newest first", () => {
   assert.equal(signals[1]?.signalType, "REGISTERED_OFFICE_CHANGED");
 });
 
-test("invalid company numbers fail closed before any crawl can be planned", () => {
-  assert.throws(() => planCompaniesHouseFilingCrawl("not-a-company-number"), /invalid_company_number/);
+test("company numbers require the canonical eight-character API form", () => {
+  const alphaPrefix = planCompaniesHouseFilingCrawl("sc123456");
+  assert.equal(
+    alphaPrefix.endpoint,
+    "https://api.company-information.service.gov.uk/company/SC123456/filing-history",
+  );
+
+  for (const invalid of [
+    "not-a-company-number",
+    "1234567",
+    "123456789",
+    "SC12345",
+    "SC1234567",
+  ]) {
+    assert.throws(() => planCompaniesHouseFilingCrawl(invalid), /invalid_company_number/);
+  }
 });
