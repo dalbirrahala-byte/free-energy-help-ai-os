@@ -78,7 +78,7 @@ function normalizeInstant(value: string, code: string): string {
 }
 
 function assertCount(value: number, code: string): void {
-  if (!Number.isInteger(value) || value < 0) throw new Error(code);
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(code);
 }
 
 function ratio(numerator: number, denominator: number): number | null {
@@ -99,7 +99,9 @@ export function buildLeadBenchmarkCohort(input: LeadBenchmarkCohortInput): LeadB
   if (input.evidenceBasis !== "OBSERVED_VERIFIED" && input.evidenceBasis !== "ESTIMATED") {
     throw new Error("invalid_benchmark_evidence_basis");
   }
-  if (!Number.isInteger(input.acquisitionCostMinor) || input.acquisitionCostMinor < 0) throw new Error("invalid_acquisition_cost");
+  if (!Number.isSafeInteger(input.acquisitionCostMinor) || input.acquisitionCostMinor < 0) {
+    throw new Error("invalid_acquisition_cost");
+  }
   assertCount(input.rawLeads, "invalid_raw_leads");
   assertCount(input.qualifiedOpportunities, "invalid_qualified_opportunities");
   assertCount(input.signedContracts, "invalid_signed_contracts");
