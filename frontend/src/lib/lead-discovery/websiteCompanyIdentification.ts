@@ -54,7 +54,29 @@ function clean(value: string | null | undefined, max = 500): string | null {
 }
 
 function normalizeInstant(value: string, error: string): string {
-  const parsed = new Date(value);
+  const cleaned = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
+  if (!match) throw new Error(error);
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  if (month < 1 || month > 12) throw new Error(error);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) throw new Error(error);
+  if (hour > 23 || minute > 59 || second > 59) throw new Error(error);
+
+  if (match[8] !== "Z") {
+    const offsetHour = Number(match[10]);
+    const offsetMinute = Number(match[11]);
+    if (offsetHour > 14 || offsetMinute > 59) throw new Error(error);
+    if (offsetHour === 14 && offsetMinute !== 0) throw new Error(error);
+  }
+
+  const parsed = new Date(cleaned);
   if (Number.isNaN(parsed.getTime())) throw new Error(error);
   return parsed.toISOString();
 }
@@ -63,7 +85,18 @@ function normalizeDomain(value: string): string {
   const cleaned = clean(value, 253)?.toLowerCase();
   if (!cleaned) throw new Error("invalid_company_domain");
   const normalized = cleaned.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  if (normalized.includes("/") || !normalized.includes(".")) throw new Error("invalid_company_domain");
+  if (normalized.includes("/") || normalized.includes(":") || normalized.endsWith(".")) {
+    throw new Error("invalid_company_domain");
+  }
+
+  const labels = normalized.split(".");
+  if (labels.length < 2 || labels.some((label) =>
+    !label ||
+    label.length > 63 ||
+    !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+  )) {
+    throw new Error("invalid_company_domain");
+  }
   return normalized;
 }
 
@@ -77,6 +110,22 @@ function sanitizeVisitedPath(value: string): string | null {
     return null;
   }
   if (url.origin !== "https://feh.invalid") return null;
+
+  let decodedPath: string;
+  try {
+    decodedPath = decodeURIComponent(url.pathname);
+  } catch {
+    return null;
+  }
+
+  const segments = decodedPath.split("/").filter(Boolean);
+  const containsPossibleDirectIdentifier =
+    /[^/\s]+@[^/\s]+/.test(decodedPath) ||
+    /\d{8,}/.test(decodedPath) ||
+    /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i.test(decodedPath) ||
+    segments.some((segment) => segment.length > 80);
+  if (containsPossibleDirectIdentifier) return null;
+
   return url.pathname.replace(/\/+/g, "/").slice(0, 300) || "/";
 }
 
