@@ -59,9 +59,18 @@ function clean(value: string | null | undefined, max = 500): string | null {
 }
 
 function normalizeDate(value: string): string {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) throw new Error("invalid_bics_release_date");
-  return parsed.toISOString();
+  const cleaned = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cleaned);
+  if (!match) throw new Error("invalid_bics_release_date");
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12) throw new Error("invalid_bics_release_date");
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (day < 1 || day > daysInMonth) throw new Error("invalid_bics_release_date");
+
+  return `${match[1]}-${match[2]}-${match[3]}T00:00:00.000Z`;
 }
 
 function normalizeSourceUrl(value: string): string {
@@ -81,6 +90,9 @@ export function buildBicsManufacturingObservation(
   input: BicsManufacturingObservationInput,
 ): BicsManufacturingObservation {
   if (!Number.isInteger(input.wave) || input.wave <= 0) throw new Error("invalid_bics_wave");
+  if (input.industry !== "MANUFACTURING") throw new Error("invalid_bics_industry");
+  if (input.officialStatisticsInDevelopment !== true) throw new Error("invalid_bics_statistics_status");
+  if (!BICS_MANUFACTURING_METRICS.includes(input.metric)) throw new Error("invalid_bics_metric");
   if (!Number.isFinite(input.percentage) || input.percentage < 0 || input.percentage > 100) {
     throw new Error("invalid_bics_percentage");
   }
