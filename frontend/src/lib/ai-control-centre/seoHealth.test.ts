@@ -2,14 +2,23 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isHomepageIndexingBlocked,
   isUserAgentFullyBlocked,
   resolveWebsiteSeoStatus,
 } from "./seoHealth.ts";
 
-function response(body: string, status = 200, contentType = "text/plain") {
+function response(
+  body: string,
+  status = 200,
+  contentType = "text/plain",
+  headers: Record<string, string> = {},
+) {
   return new Response(body, {
     status,
-    headers: { "content-type": contentType },
+    headers: {
+      "content-type": contentType,
+      ...headers,
+    },
   });
 }
 
@@ -32,6 +41,39 @@ Allow: /
 `;
 
   assert.equal(isUserAgentFullyBlocked(robots, "OAI-SearchBot"), false);
+});
+
+test("detects homepage noindex in HTML meta robots directives", () => {
+  const homepageResponse = response(
+    '<html><head><meta content="follow, NOINDEX" name="robots"></head></html>',
+    200,
+    "text/html",
+  );
+
+  assert.equal(
+    isHomepageIndexingBlocked(
+      homepageResponse,
+      '<html><head><meta content="follow, NOINDEX" name="robots"></head></html>',
+    ),
+    true,
+  );
+});
+
+test("detects homepage noindex in X-Robots-Tag headers", () => {
+  const homepageResponse = response(
+    "<html><body>FEH</body></html>",
+    200,
+    "text/html",
+    { "x-robots-tag": "noarchive, noindex" },
+  );
+
+  assert.equal(
+    isHomepageIndexingBlocked(
+      homepageResponse,
+      "<html><body>FEH</body></html>",
+    ),
+    true,
+  );
 });
 
 test("reports Connected only after live homepage, robots and sitemap checks pass", async () => {
@@ -59,7 +101,37 @@ test("reports Connected only after live homepage, robots and sitemap checks pass
   );
 
   assert.equal(result.status, "Connected");
+  assert.match(result.detail, /indexable homepage/);
   assert.match(result.detail, /OAI-SearchBot/);
+});
+
+test("reports Unavailable when the public homepage is explicitly noindex", async () => {
+  const fetcher = async (input: string | URL | Request) => {
+    const url = input.toString();
+
+    if (url.endsWith("/robots.txt")) {
+      return response("User-agent: *\nAllow: /\n");
+    }
+
+    if (url.endsWith("/sitemap.xml")) {
+      return response(
+        '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>',
+        200,
+        "application/xml",
+      );
+    }
+
+    return response(
+      '<html><head><meta name="robots" content="index, noindex"></head></html>',
+      200,
+      "text/html",
+    );
+  };
+
+  const result = await resolveWebsiteSeoStatus(fetcher);
+
+  assert.equal(result.status, "Unavailable");
+  assert.match(result.detail, /noindex/);
 });
 
 test("reports Unavailable when robots rules fully block OAI-SearchBot", async () => {
