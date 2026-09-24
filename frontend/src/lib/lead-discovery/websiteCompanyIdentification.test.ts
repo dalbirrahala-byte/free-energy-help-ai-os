@@ -52,6 +52,33 @@ test("unknown price, payment-details requirement or missing privacy evidence blo
   assert.equal(evaluateWebsiteIdentificationTrial({ ...candidate, dpaAvailable: false }, 5000).status, "BLOCKED");
 });
 
+test("trial evidence must use real booleans, reviewed currency and safe integer economics", () => {
+  for (const forgedCandidate of [
+    { ...candidate, apiAvailable: "true" as never },
+    { ...candidate, companyLevelIdentification: 1 as never },
+    { ...candidate, privacyDocumentationAvailable: "yes" as never },
+    { ...candidate, dpaAvailable: {} as never },
+  ]) {
+    assert.throws(
+      () => evaluateWebsiteIdentificationTrial(forgedCandidate, 5000),
+      /invalid_trial_evidence/,
+    );
+  }
+
+  assert.throws(
+    () => evaluateWebsiteIdentificationTrial({ ...candidate, currency: "BTC" as never }, 5000),
+    /invalid_trial_currency/,
+  );
+  assert.throws(
+    () => evaluateWebsiteIdentificationTrial(candidate, Number.MAX_SAFE_INTEGER + 1),
+    /invalid_budget/,
+  );
+  assert.throws(
+    () => evaluateWebsiteIdentificationTrial({ ...candidate, monthlyPriceMinor: Number.MAX_SAFE_INTEGER + 1 }, 5000),
+    /invalid_monthly_price/,
+  );
+});
+
 test("website observation strips query strings/fragments and ignores absolute external URLs", () => {
   const observation = websiteObservation({
     visitedPaths: [
