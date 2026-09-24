@@ -118,3 +118,58 @@ test("unknown Meta message type fails closed rather than inventing content", () 
     providerExecutionAllowed: false,
   });
 });
+
+test("truthy signature lookalikes cannot satisfy verified webhook evidence", () => {
+  const result = prepareMetaWhatsAppIngress({
+    ...validInput(),
+    signatureVerified: "true" as never,
+  });
+
+  assert.deepEqual(result, {
+    disposition: "rejected",
+    reason: "unverified_webhook",
+    crmWriteAllowed: false,
+    outboundReplyAllowed: false,
+    providerExecutionAllowed: false,
+  });
+});
+
+test("non-record ingress payloads fail closed before field access", () => {
+  const result = prepareMetaWhatsAppIngress(null as never);
+
+  assert.deepEqual(result, {
+    disposition: "rejected",
+    reason: "unverified_webhook",
+    crmWriteAllowed: false,
+    outboundReplyAllowed: false,
+    providerExecutionAllowed: false,
+  });
+});
+
+test("malformed or delimiter-bearing provider identity is rejected", () => {
+  for (const wabaId of [123 as never, "waba:001" as never]) {
+    const result = prepareMetaWhatsAppIngress({
+      ...validInput(),
+      wabaId,
+    });
+    assert.equal(result.disposition, "rejected");
+    if (result.disposition === "rejected") {
+      assert.equal(result.reason, "missing_provider_identity");
+    }
+  }
+});
+
+test("non-record message payload is rejected without throwing", () => {
+  const result = prepareMetaWhatsAppIngress({
+    ...validInput(),
+    message: null as never,
+  });
+
+  assert.deepEqual(result, {
+    disposition: "rejected",
+    reason: "invalid_message",
+    crmWriteAllowed: false,
+    outboundReplyAllowed: false,
+    providerExecutionAllowed: false,
+  });
+});
