@@ -92,9 +92,10 @@ export function createApolloCrmIntakeDraft(
   input: ApolloProspectInput,
 ): ApolloCrmIntakeDraft {
   const reasons: string[] = [];
-  const raw = isRecord(input) ? input : {};
+  const unknownInput: unknown = input;
+  const raw: Record<string, unknown> = isRecord(unknownInput) ? unknownInput : {};
 
-  if (!isRecord(input)) {
+  if (!isRecord(unknownInput)) {
     reasons.push("Apollo prospect payload must be a record.");
   }
 
