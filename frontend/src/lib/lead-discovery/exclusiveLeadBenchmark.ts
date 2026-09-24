@@ -38,18 +38,20 @@ export type ControlledLeadBenchmark = Readonly<{
   crmWriteAllowed: false;
 }>;
 
-function clean(value: string | null | undefined, max = 160): string | null {
-  const cleaned = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+function clean(value: unknown, max = 160): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, max) : null;
 }
 
-function normalizeReference(value: string | null | undefined): string {
+function normalizeReference(value: unknown): string {
   const cleaned = clean(value, 300);
   if (!cleaned) throw new Error("invalid_benchmark_source_reference");
   return cleaned;
 }
 
-function normalizeInstant(value: string, code: string): string {
+function normalizeInstant(value: unknown, code: string): string {
+  if (typeof value !== "string") throw new Error(code);
   const cleaned = value.trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
   if (!match) throw new Error(code);
@@ -92,6 +94,10 @@ function unitCost(costMinor: number, count: number): number | null {
 }
 
 export function buildLeadBenchmarkCohort(input: LeadBenchmarkCohortInput): LeadBenchmarkCohort {
+  if (input.sourceKind !== "EXCLUSIVE_PROVIDER" && input.sourceKind !== "FEH_GENERATED") {
+    throw new Error("invalid_benchmark_source_kind");
+  }
+
   const sourceName = clean(input.sourceName);
   const sourceReference = normalizeReference(input.sourceReference);
   const definition = clean(input.qualificationDefinitionVersion);
