@@ -29,8 +29,9 @@ const REVIEWED_OFFICIAL_TENDER_HOSTS = new Set([
   "www.contractsfinder.service.gov.uk",
 ]);
 
-function clean(value: string | null | undefined, max = 500): string | null {
-  const cleaned = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+function clean(value: unknown, max = 500): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, max) : null;
 }
 
@@ -38,7 +39,8 @@ function dateOnlyFromInstant(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
-function normalizeInstant(value: string, code: string): Date {
+function normalizeInstant(value: unknown, code: string): Date {
+  if (typeof value !== "string") throw new Error(code);
   const cleaned = value.trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
   if (!match) throw new Error(code);
@@ -115,6 +117,12 @@ export function mapPublicTenderToIntentSignal(
   const tenderReference = clean(tender.tenderReference, 180);
   const title = clean(tender.title, 500);
   if (!tenderReference || !title) throw new Error("invalid_tender_metadata");
+  if (typeof tender.exactOrganisationMatch !== "boolean") {
+    throw new Error("invalid_tender_match_evidence");
+  }
+  if (typeof tender.sourceOfficial !== "boolean") {
+    throw new Error("invalid_tender_source_evidence");
+  }
 
   const publishedAt = normalizeInstant(tender.publishedAt, "invalid_tender_date");
   const closesAt = normalizeInstant(tender.closesAt, "invalid_tender_date");
@@ -123,6 +131,7 @@ export function mapPublicTenderToIntentSignal(
   if (closesAt.getTime() <= publishedAt.getTime()) throw new Error("invalid_tender_window");
   if (closesAt.getTime() <= now.getTime()) return null;
 
+  if (typeof tender.sourceUrl !== "string") throw new Error("invalid_tender_source_url");
   let sourceUrl: URL;
   try {
     sourceUrl = new URL(tender.sourceUrl);
