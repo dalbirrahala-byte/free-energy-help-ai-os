@@ -43,6 +43,8 @@ type PlanningTrigger = Readonly<{
   confidence: number;
 }>;
 
+type UnknownRecord = Record<string, unknown>;
+
 const PLANNING_SOURCE_TIERS: ReadonlySet<PlanningApplicationSourceTier> = new Set([
   "LOCAL_AUTHORITY",
   "MHCLG_AGGREGATE",
@@ -136,13 +138,68 @@ function normalizeOffset(offset: number): number {
   return offset;
 }
 
-function validatePlanningRuntimeEnums(application: PlanningApplicationCandidate): void {
-  if (!PLANNING_SOURCE_TIERS.has(application.sourceTier)) {
+function asRecord(value: unknown, errorCode: string): UnknownRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(errorCode);
+  }
+  return value as UnknownRecord;
+}
+
+function requireString(record: UnknownRecord, key: string, errorCode: string): string {
+  const value = record[key];
+  if (typeof value !== "string") throw new Error(errorCode);
+  return value;
+}
+
+function optionalNullableString(
+  record: UnknownRecord,
+  key: string,
+  errorCode: string,
+): string | null | undefined {
+  const value = record[key];
+  if (value === undefined || value === null) return value;
+  if (typeof value !== "string") throw new Error(errorCode);
+  return value;
+}
+
+function normalizePlanningSourceTier(value: unknown): PlanningApplicationSourceTier {
+  if (typeof value !== "string" || !PLANNING_SOURCE_TIERS.has(value as PlanningApplicationSourceTier)) {
     throw new Error("invalid_planning_source_tier");
   }
-  if (!PLANNING_MATCH_BASES.has(application.matchBasis)) {
+  return value as PlanningApplicationSourceTier;
+}
+
+function normalizePlanningMatchBasis(value: unknown): PlanningCompanyMatchBasis {
+  if (typeof value !== "string" || !PLANNING_MATCH_BASES.has(value as PlanningCompanyMatchBasis)) {
     throw new Error("invalid_planning_match_basis");
   }
+  return value as PlanningCompanyMatchBasis;
+}
+
+function normalizePlanningCompanyIdentity(company: unknown): PlanningCompanyIdentity {
+  const record = asRecord(company, "invalid_planning_company");
+  return {
+    companyName: requireString(record, "companyName", "invalid_planning_company_name"),
+    companyNumber: optionalNullableString(record, "companyNumber", "invalid_planning_company_number"),
+    companyDomain: optionalNullableString(record, "companyDomain", "invalid_planning_company_domain"),
+  };
+}
+
+function normalizePlanningApplicationCandidate(
+  application: unknown,
+): PlanningApplicationCandidate {
+  const record = asRecord(application, "invalid_planning_record");
+  return {
+    applicationReference: requireString(record, "applicationReference", "invalid_planning_reference"),
+    description: requireString(record, "description", "invalid_planning_description"),
+    status: requireString(record, "status", "invalid_planning_status"),
+    receivedAt: requireString(record, "receivedAt", "invalid_planning_date"),
+    sourceUrl: requireString(record, "sourceUrl", "invalid_planning_source_url"),
+    sourceTier: normalizePlanningSourceTier(record.sourceTier),
+    applicantName: optionalNullableString(record, "applicantName", "invalid_planning_applicant_name"),
+    siteAddress: optionalNullableString(record, "siteAddress", "invalid_planning_site_address"),
+    matchBasis: normalizePlanningMatchBasis(record.matchBasis),
+  };
 }
 
 function classifyDescription(description: string): PlanningTrigger | null {
@@ -211,40 +268,41 @@ export function mapPlanningApplicationToIntentSignal(
   company: PlanningCompanyIdentity,
   application: PlanningApplicationCandidate,
 ): IntentRadarSignal | null {
-  validatePlanningRuntimeEnums(application);
+  const normalizedCompany = normalizePlanningCompanyIdentity(company);
+  const normalizedApplication = normalizePlanningApplicationCandidate(application);
 
-  const reference = clean(application.applicationReference, 240);
-  const description = clean(application.description, 1500);
-  const status = clean(application.status, 120)?.toLowerCase();
-  const sourceUrl = clean(application.sourceUrl, 2048);
+  const reference = clean(normalizedApplication.applicationReference, 240);
+  const description = clean(normalizedApplication.description, 1500);
+  const status = clean(normalizedApplication.status, 120)?.toLowerCase();
+  const sourceUrl = clean(normalizedApplication.sourceUrl, 2048);
   if (!reference || !description || !status || !sourceUrl) throw new Error("invalid_planning_record");
   if (TERMINAL_NEGATIVE_STATUSES.has(status)) return null;
-  if (application.matchBasis === "NONE") return null;
+  if (normalizedApplication.matchBasis === "NONE") return null;
 
   const trigger = classifyDescription(description);
   if (!trigger) return null;
 
-  const observedAt = normalizeInstant(application.receivedAt);
-  const claimedExactApplicantMatch = application.matchBasis === "EXACT_APPLICANT_NAME";
-  const applicantName = canonicalCompanyName(application.applicantName);
-  const companyName = canonicalCompanyName(company.companyName);
+  const observedAt = normalizeInstant(normalizedApplication.receivedAt);
+  const claimedExactApplicantMatch = normalizedApplication.matchBasis === "EXACT_APPLICANT_NAME";
+  const applicantName = canonicalCompanyName(normalizedApplication.applicantName);
+  const companyName = canonicalCompanyName(normalizedCompany.companyName);
   const exactApplicantMatch = claimedExactApplicantMatch && applicantName !== null && applicantName === companyName;
   if (claimedExactApplicantMatch && !exactApplicantMatch) return null;
 
   const sourceTrust = planningSourceTrust(sourceUrl);
-  const authoritative = application.sourceTier === "LOCAL_AUTHORITY" && sourceTrust.localAuthoritySource;
+  const authoritative = normalizedApplication.sourceTier === "LOCAL_AUTHORITY" && sourceTrust.localAuthoritySource;
   const verifiedFact = exactApplicantMatch && authoritative;
 
   const adjustedStrength: IntentRadarSignalStrength = verifiedFact ? trigger.strength : "MEDIUM";
   const adjustedConfidence = verifiedFact ? trigger.confidence : Math.min(trigger.confidence, 68);
   const matchSummary = exactApplicantMatch
-    ? `applicant matched ${clean(application.applicantName, 200)}`
-    : `site address matched ${clean(application.siteAddress, 300) ?? "CRM site"}`;
+    ? `applicant matched ${clean(normalizedApplication.applicantName, 200)}`
+    : `site address matched ${clean(normalizedApplication.siteAddress, 300) ?? "CRM site"}`;
 
   return buildIntentRadarSignal({
-    companyName: company.companyName,
-    companyNumber: company.companyNumber ?? null,
-    companyDomain: company.companyDomain ?? null,
+    companyName: normalizedCompany.companyName,
+    companyNumber: normalizedCompany.companyNumber ?? null,
+    companyDomain: normalizedCompany.companyDomain ?? null,
     source: "PLANNING",
     sourceReference: `planning:${reference}`,
     sourceUrl,
