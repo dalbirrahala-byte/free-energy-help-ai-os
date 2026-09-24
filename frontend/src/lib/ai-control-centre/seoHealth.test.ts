@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   isHomepageIndexingBlocked,
   isUserAgentFullyBlocked,
+  isXRobotsTagNoindexForUserAgent,
   resolveWebsiteSeoStatus,
 } from "./seoHealth.ts";
 
@@ -71,6 +72,36 @@ test("detects homepage noindex in X-Robots-Tag headers", () => {
     isHomepageIndexingBlocked(
       homepageResponse,
       "<html><body>FEH</body></html>",
+    ),
+    true,
+  );
+});
+
+test("ignores X-Robots-Tag noindex scoped to a different crawler", () => {
+  assert.equal(
+    isXRobotsTagNoindexForUserAgent(
+      "googlebot: noindex, nofollow",
+      "OAI-SearchBot",
+    ),
+    false,
+  );
+});
+
+test("detects X-Robots-Tag noindex scoped to OAI-SearchBot", () => {
+  assert.equal(
+    isXRobotsTagNoindexForUserAgent(
+      "googlebot: nofollow, OAI-SearchBot: noindex, nofollow",
+      "OAI-SearchBot",
+    ),
+    true,
+  );
+});
+
+test("keeps global noindex active after value-bearing robots directives", () => {
+  assert.equal(
+    isXRobotsTagNoindexForUserAgent(
+      "max-snippet:160, noindex",
+      "OAI-SearchBot",
     ),
     true,
   );
