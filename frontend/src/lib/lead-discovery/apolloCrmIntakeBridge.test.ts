@@ -101,3 +101,46 @@ test("normalises Apollo identity into deterministic provenance and idempotency",
     "apollo:person:person-001:captured:2026-09-22T11:30:00.000Z",
   );
 });
+
+test("fails closed instead of throwing when provider runtime field types are forged", () => {
+  const result = createApolloCrmIntakeDraft({
+    personId: 123,
+    organisationName: { name: "Example Manufacturing Ltd" },
+    contactName: null,
+    jobTitle: 99,
+    workEmail: ["alex@example-manufacturing.test"],
+    emailStatus: true,
+    capturedAt: { instant: "2026-09-22T11:30:00Z" },
+  } as unknown as ApolloProspectInput);
+
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(result.externalReference, "");
+  assert.equal(result.idempotencyKey, "");
+  assert.equal(result.sourceProvenance, "");
+  assert.equal(result.emailVerified, false);
+  assert.equal(result.crmWriteAllowed, false);
+  assert.equal(result.outreachAllowed, false);
+  assert.match(result.reasons.join(" "), /recognised provider value/i);
+});
+
+test("fails closed on a non-record Apollo payload", () => {
+  const result = createApolloCrmIntakeDraft(null as unknown as ApolloProspectInput);
+
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(result.externalReference, "");
+  assert.equal(result.workEmail, "");
+  assert.equal(result.emailVerified, false);
+  assert.equal(result.executionPerformed, false);
+  assert.match(result.reasons.join(" "), /payload must be a record/i);
+});
+
+test("does not treat an email-status lookalike as verified evidence", () => {
+  const result = createApolloCrmIntakeDraft({
+    ...verifiedProspect,
+    emailStatus: "VERIFIED",
+  } as unknown as ApolloProspectInput);
+
+  assert.equal(result.status, "BLOCKED");
+  assert.equal(result.emailVerified, false);
+  assert.match(result.reasons.join(" "), /recognised provider value/i);
+});
