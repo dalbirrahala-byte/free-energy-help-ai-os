@@ -3,6 +3,12 @@ import type { ServiceStatusInfo } from "./types";
 const DEFAULT_PUBLIC_SITE_ORIGIN = "https://www.freeenergyhelp.co.uk";
 const SEO_CHECK_TIMEOUT_MS = 5000;
 const OAI_SEARCH_BOT = "oai-searchbot";
+const X_ROBOTS_DIRECTIVES_WITH_VALUES = new Set([
+  "max-snippet",
+  "max-image-preview",
+  "max-video-preview",
+  "unavailable_after",
+]);
 
 type FetchLike = (
   input: string | URL | Request,
@@ -140,11 +146,55 @@ function containsNoindexDirective(value: string | null): boolean {
     .some((directive) => directive === "noindex");
 }
 
+export function isXRobotsTagNoindexForUserAgent(
+  value: string | null,
+  userAgent: string,
+): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const target = userAgent.toLowerCase();
+  let activeAgent: string | null = null;
+
+  for (const rawSegment of value.split(",")) {
+    const segment = rawSegment.trim().toLowerCase();
+    if (!segment) {
+      continue;
+    }
+
+    const scoped = segment.match(/^([a-z0-9_-]+)\s*:\s*(.*)$/i);
+    if (scoped) {
+      const prefix = scoped[1] ?? "";
+      const remainder = scoped[2]?.trim() ?? "";
+
+      if (!X_ROBOTS_DIRECTIVES_WITH_VALUES.has(prefix)) {
+        activeAgent = prefix;
+        if (remainder === "noindex" && activeAgent === target) {
+          return true;
+        }
+        continue;
+      }
+    }
+
+    if (segment === "noindex" && (activeAgent === null || activeAgent === target)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function isHomepageIndexingBlocked(
   homepageResponse: Response,
   homepageHtml: string,
 ): boolean {
-  if (containsNoindexDirective(homepageResponse.headers.get("x-robots-tag"))) {
+  if (
+    isXRobotsTagNoindexForUserAgent(
+      homepageResponse.headers.get("x-robots-tag"),
+      OAI_SEARCH_BOT,
+    )
+  ) {
     return true;
   }
 
@@ -260,7 +310,7 @@ export async function resolveWebsiteSeoStatus(
 
     if (isHomepageIndexingBlocked(homepageResponse, homepageHtml)) {
       return unavailable(
-        "Public homepage is explicitly marked noindex and cannot be treated as search-ready.",
+        "Public homepage is explicitly marked noindex for OAI-SearchBot or all crawlers and cannot be treated as search-ready.",
       );
     }
 
