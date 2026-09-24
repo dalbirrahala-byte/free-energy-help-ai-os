@@ -86,10 +86,8 @@ function normalizeSourceUrl(value: string): string {
   return url.toString();
 }
 
-export function buildBicsManufacturingObservation(
-  input: BicsManufacturingObservationInput,
-): BicsManufacturingObservation {
-  if (!Number.isInteger(input.wave) || input.wave <= 0) throw new Error("invalid_bics_wave");
+function validateObservationFields(input: BicsManufacturingObservationInput): string {
+  if (!Number.isSafeInteger(input.wave) || input.wave <= 0) throw new Error("invalid_bics_wave");
   if (input.industry !== "MANUFACTURING") throw new Error("invalid_bics_industry");
   if (input.officialStatisticsInDevelopment !== true) throw new Error("invalid_bics_statistics_status");
   if (!BICS_MANUFACTURING_METRICS.includes(input.metric)) throw new Error("invalid_bics_metric");
@@ -98,10 +96,32 @@ export function buildBicsManufacturingObservation(
   }
   const surveyPeriodLabel = clean(input.surveyPeriodLabel, 160);
   if (!surveyPeriodLabel) throw new Error("invalid_bics_period");
+  return surveyPeriodLabel;
+}
+
+export function buildBicsManufacturingObservation(
+  input: BicsManufacturingObservationInput,
+): BicsManufacturingObservation {
+  const surveyPeriodLabel = validateObservationFields(input);
 
   return {
     ...input,
     releaseDate: normalizeDate(input.releaseDate),
+    surveyPeriodLabel,
+    sourceUrl: normalizeSourceUrl(input.sourceUrl),
+  };
+}
+
+function revalidateBicsManufacturingObservation(
+  input: BicsManufacturingObservation,
+): BicsManufacturingObservation {
+  const surveyPeriodLabel = validateObservationFields(input);
+  const releaseMatch = /^(\d{4}-\d{2}-\d{2})T00:00:00\.000Z$/.exec(input.releaseDate);
+  if (!releaseMatch) throw new Error("invalid_bics_release_date");
+
+  return {
+    ...input,
+    releaseDate: normalizeDate(releaseMatch[1]),
     surveyPeriodLabel,
     sourceUrl: normalizeSourceUrl(input.sourceUrl),
   };
@@ -121,8 +141,9 @@ export function buildBicsManufacturingContext(
 ): BicsManufacturingContext | null {
   if (observations.length === 0) return null;
 
+  const validatedObservations = observations.map(revalidateBicsManufacturingObservation);
   const deduped = [...new Map(
-    observations.map((item) => [`${item.wave}:${item.metric}:${item.surveyPeriodLabel}`, item]),
+    validatedObservations.map((item) => [`${item.wave}:${item.metric}:${item.surveyPeriodLabel}`, item]),
   ).values()];
 
   const latestRelease = [...deduped].sort((a, b) => b.releaseDate.localeCompare(a.releaseDate))[0];
@@ -167,29 +188,56 @@ export function buildBicsManufacturingContext(
   };
 }
 
+function contextMatchesRebuild(
+  context: BicsManufacturingContext,
+  rebuilt: BicsManufacturingContext,
+): boolean {
+  return context.industry === rebuilt.industry &&
+    context.latestReleaseDate === rebuilt.latestReleaseDate &&
+    context.latestWave === rebuilt.latestWave &&
+    context.energyPressureScore === rebuilt.energyPressureScore &&
+    context.opportunityContext === rebuilt.opportunityContext &&
+    context.companyFact === false &&
+    context.sourceVerifiedAtIndustryLevel === true &&
+    context.apolloEnrichmentAllowed === false &&
+    context.crmWriteAllowed === false &&
+    context.outreachAllowed === false;
+}
+
 export function integrateBicsWithIntentRadar(
   snapshot: IntentRadarSnapshot,
   context: BicsManufacturingContext,
 ): BicsIntentRadarIntegration {
   const strongVerifiedCompanySignalPresent = snapshot.strongVerifiedSignals > 0;
-  const reviewPriorityLift = !strongVerifiedCompanySignalPresent
+
+  let rebuiltContext: BicsManufacturingContext | null = null;
+  try {
+    rebuiltContext = buildBicsManufacturingContext(context.observations);
+  } catch {
+    rebuiltContext = null;
+  }
+  const contextConsistent = rebuiltContext !== null && contextMatchesRebuild(context, rebuiltContext);
+  const opportunityContext = contextConsistent ? rebuiltContext.opportunityContext : "NORMAL";
+  const reviewPriorityLift = !strongVerifiedCompanySignalPresent || !contextConsistent
     ? 0
-    : context.opportunityContext === "HIGH"
+    : opportunityContext === "HIGH"
       ? 15
-      : context.opportunityContext === "ELEVATED"
+      : opportunityContext === "ELEVATED"
         ? 8
         : 0;
 
   return {
     companyName: snapshot.companyName,
-    opportunityContext: context.opportunityContext,
+    opportunityContext,
     reviewPriorityLift,
     strongVerifiedCompanySignalPresent,
-    apolloEnrichmentAllowed: strongVerifiedCompanySignalPresent && snapshot.apolloEnrichmentAllowed,
+    apolloEnrichmentAllowed: contextConsistent && strongVerifiedCompanySignalPresent && snapshot.apolloEnrichmentAllowed,
     crmWriteAllowed: false,
     outreachAllowed: false,
-    explanation: strongVerifiedCompanySignalPresent
-      ? "BICS is aggregate manufacturing context only; it may raise human review priority but does not create or strengthen a company fact."
-      : "BICS is aggregate manufacturing context only and cannot create a company-level opportunity without an independent verified company signal.",
+    explanation: !contextConsistent
+      ? "BICS context failed runtime provenance reconstruction and cannot affect company review priority or Apollo readiness."
+      : strongVerifiedCompanySignalPresent
+        ? "BICS is aggregate manufacturing context only; it may raise human review priority but does not create or strengthen a company fact."
+        : "BICS is aggregate manufacturing context only and cannot create a company-level opportunity without an independent verified company signal.",
   };
 }
