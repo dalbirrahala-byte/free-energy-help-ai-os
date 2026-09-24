@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   mapCompaniesHouseFilingToIntentSignal,
+  normalizeCompaniesHouseFilingHistoryPayload,
   planCompaniesHouseFilingCrawl,
   selectCompaniesHouseTriggerSignals,
 } from "./companiesHouseTriggerCrawler.ts";
@@ -33,6 +34,61 @@ test("crawl plan is read-only, credential-free at planning time and does not exe
   assert.equal(plan.maxRequestsPerWindow, 600);
   assert.equal(plan.rateLimitWindowSeconds, 300);
   assert.equal(plan.endpoint, "https://api.company-information.service.gov.uk/company/12345678/filing-history");
+});
+
+test("runtime payload normalization accepts official filing-history field names only", () => {
+  const filings = normalizeCompaniesHouseFilingHistoryPayload({
+    items: [
+      {
+        transaction_id: "tx-2026-sh01-1",
+        type: "SH01",
+        category: "capital",
+        description: "Statement of capital following an allotment of shares",
+        date: "2026-09-20",
+        ignored_extra_field: "not persisted",
+      },
+    ],
+    total_count: 1,
+    start_index: 0,
+    items_per_page: 25,
+  });
+
+  assert.deepEqual(filings, [strongFiling]);
+  assert.equal(selectCompaniesHouseTriggerSignals(company, filings).length, 1);
+});
+
+test("runtime payload normalization fails closed on non-object/non-array provider shapes", () => {
+  for (const payload of [null, "items", [], { items: "not-an-array" }]) {
+    assert.throws(
+      () => normalizeCompaniesHouseFilingHistoryPayload(payload),
+      /invalid_filing_history_/,
+    );
+  }
+});
+
+test("runtime payload normalization rejects truthy non-string filing evidence", () => {
+  const base = {
+    transaction_id: "tx-2026-sh01-1",
+    type: "SH01",
+    category: "capital",
+    description: "Statement of capital following an allotment of shares",
+    date: "2026-09-20",
+  };
+
+  for (const [field, value] of [
+    ["transaction_id", 123],
+    ["type", true],
+    ["category", { value: "capital" }],
+    ["description", ["allotment"]],
+    ["date", 20260920],
+  ] as const) {
+    assert.throws(
+      () => normalizeCompaniesHouseFilingHistoryPayload({
+        items: [{ ...base, [field]: value }],
+      }),
+      /invalid_filing_/,
+    );
+  }
 });
 
 test("recognized official filing maps to a verified Intent Radar fact", () => {
