@@ -121,6 +121,26 @@ test("BICS release dates and runtime provenance markers fail closed", () => {
   );
 });
 
+test("BICS context revalidates observation provenance instead of trusting typed callers", () => {
+  const forgedObservation = {
+    ...observation("ENERGY_PRICE_CONCERN", 76),
+    sourceUrl: "https://example.com/not-ons",
+  };
+
+  assert.throws(
+    () => buildBicsManufacturingContext([forgedObservation]),
+    /invalid_bics_source_url/,
+  );
+
+  assert.throws(
+    () => buildBicsManufacturingContext([{
+      ...observation("ENERGY_PRICE_CONCERN", 76),
+      percentage: 1000,
+    }]),
+    /invalid_bics_percentage/,
+  );
+});
+
 test("high manufacturing energy pressure remains aggregate context with no company action capability", () => {
   const context = buildBicsManufacturingContext([
     observation("ENERGY_PRICE_CONCERN", 76),
@@ -182,6 +202,26 @@ test("BICS can raise review priority only when an independent strong verified co
   assert.equal(integration.apolloEnrichmentAllowed, true);
   assert.equal(integration.crmWriteAllowed, false);
   assert.equal(integration.outreachAllowed, false);
+});
+
+test("forged derived BICS context cannot raise priority or propagate Apollo readiness", () => {
+  const context = buildBicsManufacturingContext([
+    observation("ENERGY_PRICE_CONCERN", 10),
+    observation("ENERGY_PRICE_MAIN_CONCERN", 2),
+  ]);
+  assert.ok(context);
+  assert.equal(context.opportunityContext, "NORMAL");
+
+  const forgedContext = {
+    ...context,
+    energyPressureScore: 100,
+    opportunityContext: "HIGH" as const,
+  };
+
+  const integration = integrateBicsWithIntentRadar(strongSnapshot(), forgedContext);
+  assert.equal(integration.opportunityContext, "NORMAL");
+  assert.equal(integration.reviewPriorityLift, 0);
+  assert.equal(integration.apolloEnrichmentAllowed, false);
 });
 
 test("BICS cannot bootstrap a company opportunity from weak context alone", () => {
