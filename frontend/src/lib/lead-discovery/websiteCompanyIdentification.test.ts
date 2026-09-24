@@ -117,6 +117,25 @@ test("malformed company domains are rejected before they become company identity
   }
 });
 
+test("provider verification must be a real boolean before provenance is derived", () => {
+  for (const providerMatchVerified of ["true", 1]) {
+    assert.throws(
+      () => websiteObservation({ providerMatchVerified: providerMatchVerified as never }),
+      /invalid_provider_match_verification/,
+    );
+  }
+
+  const forgedObservation = {
+    ...websiteObservation(),
+    providerMatchVerified: "true" as never,
+  };
+
+  assert.throws(
+    () => mapWebsiteCompanyObservationToIntentSignal(forgedObservation),
+    /invalid_provider_match_verification/,
+  );
+});
+
 test("strong company identification stays website context and cannot bootstrap Apollo", () => {
   const observation = websiteObservation();
 
