@@ -38,6 +38,8 @@ type FilingTrigger = Readonly<{
   ttlDays: number;
 }>;
 
+type UnknownRecord = Record<string, unknown>;
+
 const FILING_TRIGGERS: Readonly<Record<string, FilingTrigger>> = {
   NEWINC: {
     signalType: "COMPANY_INCORPORATED",
@@ -146,6 +148,19 @@ function addDays(instant: string, days: number): string {
   return parsed.toISOString();
 }
 
+function asRecord(value: unknown, errorCode: string): UnknownRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(errorCode);
+  }
+  return value as UnknownRecord;
+}
+
+function requireString(record: UnknownRecord, key: string, errorCode: string): string {
+  const value = record[key];
+  if (typeof value !== "string") throw new Error(errorCode);
+  return value;
+}
+
 export function planCompaniesHouseFilingCrawl(companyNumber: string): CompaniesHouseCrawlerPlan {
   const normalized = normalizeCompanyNumber(companyNumber);
   return {
@@ -159,6 +174,24 @@ export function planCompaniesHouseFilingCrawl(companyNumber: string): CompaniesH
     executionPerformed: false,
     credentialAccessed: false,
   };
+}
+
+export function normalizeCompaniesHouseFilingHistoryPayload(
+  payload: unknown,
+): readonly CompaniesHouseFilingItem[] {
+  const root = asRecord(payload, "invalid_filing_history_payload");
+  if (!Array.isArray(root.items)) throw new Error("invalid_filing_history_items");
+
+  return root.items.map((rawItem) => {
+    const item = asRecord(rawItem, "invalid_filing_history_item");
+    return {
+      transactionId: requireString(item, "transaction_id", "invalid_filing_transaction_id"),
+      type: requireString(item, "type", "invalid_filing_type"),
+      category: requireString(item, "category", "invalid_filing_category"),
+      description: requireString(item, "description", "invalid_filing_description"),
+      date: requireString(item, "date", "invalid_filing_date"),
+    };
+  });
 }
 
 export function mapCompaniesHouseFilingToIntentSignal(
