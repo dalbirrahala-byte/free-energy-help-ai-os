@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildIntroducerReferralAttribution,
   mapIntroducerReferralToIntentSignal,
+  type IntroducerReferralInput,
 } from "./professionalIntroducerAttribution.ts";
 import { assessIntentRadarSignal } from "./intentRadar.ts";
 
@@ -103,4 +104,42 @@ test("verified introduction becomes a strong Intent Radar fact but still grants 
   assert.equal(assessment.apolloEnrichmentAllowed, true);
   assert.equal(assessment.crmWriteAllowed, false);
   assert.equal(assessment.outreachAllowed, false);
+});
+
+test("runtime enum lookalikes cannot become introducer evidence", () => {
+  assert.throws(
+    () => buildIntroducerReferralAttribution({
+      ...referral,
+      agreementStatus: "active",
+    } as unknown as IntroducerReferralInput),
+    /invalid_introducer_agreement_status/,
+  );
+  assert.throws(
+    () => buildIntroducerReferralAttribution({
+      ...referral,
+      contactPermissionEvidence: true,
+    } as unknown as IntroducerReferralInput),
+    /invalid_introducer_contact_permission_evidence/,
+  );
+});
+
+test("malformed runtime field types fail with controlled validation errors", () => {
+  assert.throws(
+    () => buildIntroducerReferralAttribution({
+      ...referral,
+      introducerReference: 42,
+    } as unknown as IntroducerReferralInput),
+    /invalid_introducer_reference/,
+  );
+  assert.throws(
+    () => buildIntroducerReferralAttribution({
+      ...referral,
+      introducedAt: { instant: "2026-09-23T14:00:00Z" },
+    } as unknown as IntroducerReferralInput),
+    /invalid_introduced_at/,
+  );
+  assert.throws(
+    () => buildIntroducerReferralAttribution(null as unknown as IntroducerReferralInput),
+    /invalid_introducer_referral/,
+  );
 });
