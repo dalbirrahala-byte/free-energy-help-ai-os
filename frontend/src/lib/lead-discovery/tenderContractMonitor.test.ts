@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   mapContractExpiryToIntentSignal,
   mapPublicTenderToIntentSignal,
+  type PublicTenderObservation,
 } from "./tenderContractMonitor.ts";
 import { assessIntentRadarSignal } from "./intentRadar.ts";
 
@@ -153,4 +154,48 @@ test("closed tender is ignored and invalid tender window fails closed", () => {
     closesAt: "2026-09-01T12:00:00Z",
     title: "Bad tender",
   }, asOf), /invalid_tender_window/);
+});
+
+test("truthy non-boolean tender evidence cannot become verified official provenance", () => {
+  assert.throws(
+    () => mapPublicTenderToIntentSignal({
+      ...officialTender,
+      sourceOfficial: "true",
+    } as unknown as PublicTenderObservation, asOf),
+    /invalid_tender_source_evidence/,
+  );
+
+  assert.throws(
+    () => mapPublicTenderToIntentSignal({
+      ...officialTender,
+      exactOrganisationMatch: 1,
+    } as unknown as PublicTenderObservation, asOf),
+    /invalid_tender_match_evidence/,
+  );
+});
+
+test("malformed tender text and timestamp runtime values fail with controlled errors", () => {
+  assert.throws(
+    () => mapPublicTenderToIntentSignal({
+      ...officialTender,
+      tenderReference: { id: "TENDER-2026-42" },
+    } as unknown as PublicTenderObservation, asOf),
+    /invalid_tender_metadata/,
+  );
+
+  assert.throws(
+    () => mapPublicTenderToIntentSignal({
+      ...officialTender,
+      sourceUrl: { href: officialTender.sourceUrl },
+    } as unknown as PublicTenderObservation, asOf),
+    /invalid_tender_source_url/,
+  );
+
+  assert.throws(
+    () => mapPublicTenderToIntentSignal({
+      ...officialTender,
+      publishedAt: { instant: officialTender.publishedAt },
+    } as unknown as PublicTenderObservation, asOf),
+    /invalid_tender_date/,
+  );
 });
