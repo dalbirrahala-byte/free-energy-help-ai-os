@@ -64,6 +64,43 @@ test("inference cannot become Apollo enrichment eligible", () => {
   assert.equal(plan.emailSendAllowed, false);
 });
 
+test("non-record or malformed snapshot runtime shapes fail closed without leaking identity", () => {
+  for (const malformed of [
+    null,
+    "snapshot",
+    [],
+    { signals: "not-an-array" },
+    { signals: [null] },
+  ]) {
+    const plan = planApolloEnrichmentFromIntentRadar(
+      malformed as unknown as ReturnType<typeof snapshotFor>,
+      asOf,
+    );
+    assert.equal(plan.status, "BLOCKED");
+    assert.equal(plan.companyName, "");
+    assert.equal(plan.companyNumber, null);
+    assert.equal(plan.companyDomain, null);
+    assert.equal(plan.strongVerifiedSignals, 0);
+    assert.equal(plan.enrichmentExecutionAllowed, false);
+    assert.equal(plan.creditsSpendAllowed, false);
+  }
+});
+
+test("capability locks must be literal false values at runtime", () => {
+  const snapshot = snapshotFor("COMPANIES_HOUSE");
+  for (const patch of [
+    { crmWriteAllowed: "false" },
+    { outreachAllowed: 0 },
+    { promotionAllowed: null },
+  ]) {
+    const forged = { ...snapshot, ...patch } as unknown as typeof snapshot;
+    const plan = planApolloEnrichmentFromIntentRadar(forged, asOf);
+    assert.equal(plan.status, "BLOCKED");
+    assert.equal(plan.enrichmentExecutionAllowed, false);
+    assert.ok(plan.reasons.some((reason) => reason.includes("fail-closed capability boundary")));
+  }
+});
+
 test("forged derived readiness fields cannot bypass underlying signal evidence", () => {
   const weakSnapshot = snapshotFor("WEBSITE_IDENTIFICATION");
   const forgedSnapshot = {
