@@ -32,6 +32,10 @@ function sameNullableText(left: string | null, right: unknown): boolean {
   return (right === null || typeof right === "string") && left === right;
 }
 
+function sameSafeInteger(left: number, right: unknown): boolean {
+  return typeof right === "number" && Number.isSafeInteger(right) && left === right;
+}
+
 export function planApolloEnrichmentFromIntentRadar(
   snapshot: IntentRadarSnapshot,
   asOf: string,
@@ -46,12 +50,13 @@ export function planApolloEnrichmentFromIntentRadar(
   }
 
   try {
-    if (!Array.isArray(raw.signals)) throw new Error("invalid_snapshot_signals");
-    const canonicalSignals = raw.signals.map((signal) =>
+    const rawSignals = raw.signals;
+    if (!Array.isArray(rawSignals)) throw new Error("invalid_snapshot_signals");
+    const canonicalSignals = rawSignals.map((signal) =>
       buildIntentRadarSignal(signal as IntentRadarSignalInput)
     );
     const signalIntegrityMatches = canonicalSignals.every((signal, index) => {
-      const original = raw.signals?.[index];
+      const original = rawSignals[index];
       return Boolean(
         isRecord(original) &&
         signal.idempotencyKey === original.idempotencyKey &&
@@ -80,10 +85,10 @@ export function planApolloEnrichmentFromIntentRadar(
     typeof raw.companyName === "string" && reconstructed.companyName === raw.companyName &&
     sameNullableText(reconstructed.companyNumber, raw.companyNumber) &&
     sameNullableText(reconstructed.companyDomain, raw.companyDomain) &&
-    Number.isSafeInteger(raw.totalSignals) && reconstructed.totalSignals === raw.totalSignals &&
-    Number.isSafeInteger(raw.verifiedFacts) && reconstructed.verifiedFacts === raw.verifiedFacts &&
-    Number.isSafeInteger(raw.inferences) && reconstructed.inferences === raw.inferences &&
-    Number.isSafeInteger(raw.strongVerifiedSignals) && reconstructed.strongVerifiedSignals === raw.strongVerifiedSignals &&
+    sameSafeInteger(reconstructed.totalSignals, raw.totalSignals) &&
+    sameSafeInteger(reconstructed.verifiedFacts, raw.verifiedFacts) &&
+    sameSafeInteger(reconstructed.inferences, raw.inferences) &&
+    sameSafeInteger(reconstructed.strongVerifiedSignals, raw.strongVerifiedSignals) &&
     typeof raw.apolloEnrichmentAllowed === "boolean" && reconstructed.apolloEnrichmentAllowed === raw.apolloEnrichmentAllowed,
   );
 
