@@ -56,6 +56,24 @@ test("authoritative exact-applicant expansion can become a strong verified revie
   assert.equal(assessment.outreachAllowed, false);
 });
 
+test("runtime enum lookalikes fail closed instead of becoming address-match inference", () => {
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(company, {
+      ...localAuthorityApplication,
+      matchBasis: "CLAIMED_MATCH" as never,
+    }),
+    /invalid_planning_match_basis/,
+  );
+
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(company, {
+      ...localAuthorityApplication,
+      sourceTier: "TRUSTED_LOCAL_AUTHORITY" as never,
+    }),
+    /invalid_planning_source_tier/,
+  );
+});
+
 test("caller-claimed local-authority tier cannot verify an arbitrary web source", () => {
   const signal = mapPlanningApplicationToIntentSignal(company, {
     ...localAuthorityApplication,
@@ -167,4 +185,5 @@ test("selector deduplicates planning records", () => {
 test("invalid offsets fail closed", () => {
   assert.throws(() => planPlanningApplicationCrawl(-1), /invalid_offset/);
   assert.throws(() => planPlanningApplicationCrawl(1.5), /invalid_offset/);
+  assert.throws(() => planPlanningApplicationCrawl(Number.MAX_SAFE_INTEGER + 1), /invalid_offset/);
 });
