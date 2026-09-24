@@ -190,6 +190,9 @@ export function buildWebsiteCompanyObservation(input: WebsiteCompanyObservationI
   const providerEventReference = normalizeProviderEventReference(input.providerEventReference);
   const companyName = clean(input.companyName, 200);
   if (!providerName || !companyName) throw new Error("invalid_website_company_observation");
+  if (typeof input.providerMatchVerified !== "boolean") {
+    throw new Error("invalid_provider_match_verification");
+  }
   if (!Number.isInteger(input.matchConfidence) || input.matchConfidence < 0 || input.matchConfidence > 100) {
     throw new Error("invalid_match_confidence");
   }
@@ -216,6 +219,10 @@ export function buildWebsiteCompanyObservation(input: WebsiteCompanyObservationI
 export function mapWebsiteCompanyObservationToIntentSignal(
   observation: WebsiteCompanyObservation,
 ): IntentRadarSignal {
+  if (typeof observation.providerMatchVerified !== "boolean") {
+    throw new Error("invalid_provider_match_verification");
+  }
+
   const highConfidence = observation.providerMatchVerified && observation.matchConfidence >= 85;
   const pageContext = observation.visitedPaths.length > 0
     ? ` Visited paths: ${observation.visitedPaths.join(", ")}.`
