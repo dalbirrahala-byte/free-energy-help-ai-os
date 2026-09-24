@@ -216,9 +216,11 @@ export function integrateBicsWithIntentRadar(
   } catch {
     rebuiltContext = null;
   }
-  const contextConsistent = rebuiltContext !== null && contextMatchesRebuild(context, rebuiltContext);
-  const opportunityContext = contextConsistent ? rebuiltContext.opportunityContext : "NORMAL";
-  const reviewPriorityLift = !strongVerifiedCompanySignalPresent || !contextConsistent
+  const canonicalContext = rebuiltContext !== null && contextMatchesRebuild(context, rebuiltContext)
+    ? rebuiltContext
+    : null;
+  const opportunityContext = canonicalContext?.opportunityContext ?? "NORMAL";
+  const reviewPriorityLift = !strongVerifiedCompanySignalPresent || canonicalContext === null
     ? 0
     : opportunityContext === "HIGH"
       ? 15
@@ -231,10 +233,10 @@ export function integrateBicsWithIntentRadar(
     opportunityContext,
     reviewPriorityLift,
     strongVerifiedCompanySignalPresent,
-    apolloEnrichmentAllowed: contextConsistent && strongVerifiedCompanySignalPresent && snapshot.apolloEnrichmentAllowed,
+    apolloEnrichmentAllowed: canonicalContext !== null && strongVerifiedCompanySignalPresent && snapshot.apolloEnrichmentAllowed,
     crmWriteAllowed: false,
     outreachAllowed: false,
-    explanation: !contextConsistent
+    explanation: canonicalContext === null
       ? "BICS context failed runtime provenance reconstruction and cannot affect company review priority or Apollo readiness."
       : strongVerifiedCompanySignalPresent
         ? "BICS is aggregate manufacturing context only; it may raise human review priority but does not create or strengthen a company fact."
