@@ -142,17 +142,33 @@ function sanitizeVisitedPath(value: string): string | null {
   return url.pathname.replace(/\/+/g, "/").slice(0, 300) || "/";
 }
 
+function assertTrialEvidenceRuntime(candidate: WebsiteIdentificationTrialCandidate): void {
+  if (!["GBP", "EUR", "USD"].includes(candidate.currency)) throw new Error("invalid_trial_currency");
+
+  const runtimeBooleans = [
+    candidate.creditCardRequiredForTrial,
+    candidate.apiAvailable,
+    candidate.companyLevelIdentification,
+    candidate.privacyDocumentationAvailable,
+    candidate.dpaAvailable,
+  ];
+  if (runtimeBooleans.some((value) => typeof value !== "boolean")) {
+    throw new Error("invalid_trial_evidence");
+  }
+}
+
 export function evaluateWebsiteIdentificationTrial(
   candidate: WebsiteIdentificationTrialCandidate,
   maxMonthlyPriceMinor: number,
 ): WebsiteIdentificationTrialDecision {
   const providerName = clean(candidate.providerName, 120);
   if (!providerName) throw new Error("invalid_provider_name");
-  if (!Number.isInteger(maxMonthlyPriceMinor) || maxMonthlyPriceMinor < 0) throw new Error("invalid_budget");
-  if (candidate.monthlyPriceMinor !== null && (!Number.isInteger(candidate.monthlyPriceMinor) || candidate.monthlyPriceMinor < 0)) {
+  assertTrialEvidenceRuntime(candidate);
+  if (!Number.isSafeInteger(maxMonthlyPriceMinor) || maxMonthlyPriceMinor < 0) throw new Error("invalid_budget");
+  if (candidate.monthlyPriceMinor !== null && (!Number.isSafeInteger(candidate.monthlyPriceMinor) || candidate.monthlyPriceMinor < 0)) {
     throw new Error("invalid_monthly_price");
   }
-  if (!Number.isInteger(candidate.freeTrialDays) || candidate.freeTrialDays < 0) throw new Error("invalid_trial_days");
+  if (!Number.isSafeInteger(candidate.freeTrialDays) || candidate.freeTrialDays < 0) throw new Error("invalid_trial_days");
 
   const withinBudget = candidate.monthlyPriceMinor !== null && candidate.monthlyPriceMinor <= maxMonthlyPriceMinor;
   const reasons: string[] = [];
