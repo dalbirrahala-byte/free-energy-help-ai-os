@@ -45,18 +45,35 @@ export type IntroducerReferralAttribution = Readonly<{
   outreachAllowed: false;
 }>;
 
-function clean(value: string | null | undefined, max = 500): string | null {
-  const cleaned = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+const INTRODUCER_AGREEMENT_STATUSES = new Set<IntroducerAgreementStatus>([
+  "ACTIVE",
+  "EXPIRED",
+  "NOT_VERIFIED",
+]);
+
+const INTRODUCER_CONTACT_PERMISSION_VALUES = new Set<IntroducerContactPermissionEvidence>([
+  "BUSINESS_INTRODUCTION_CONFIRMED",
+  "UNKNOWN",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function clean(value: unknown, max = 500): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, max) : null;
 }
 
-function normalizeReference(value: string | null | undefined, errorCode: string): string {
+function normalizeReference(value: unknown, errorCode: string): string {
   const cleaned = clean(value, 160);
   if (!cleaned || !/^[A-Za-z0-9._:-]+$/.test(cleaned)) throw new Error(errorCode);
   return cleaned;
 }
 
-function normalizeInstant(value: string): string {
+function normalizeInstant(value: unknown): string {
+  if (typeof value !== "string") throw new Error("invalid_introduced_at");
   const cleaned = value.trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
   if (!match) throw new Error("invalid_introduced_at");
@@ -91,22 +108,49 @@ function canonicalReference(value: string): string {
 export function buildIntroducerReferralAttribution(
   input: IntroducerReferralInput,
 ): IntroducerReferralAttribution {
-  const introducerReference = normalizeReference(input.introducerReference, "invalid_introducer_reference");
-  const agreementReference = normalizeReference(input.agreementReference, "invalid_agreement_reference");
-  const companyName = clean(input.companyName, 200);
-  const referralReference = normalizeReference(input.referralReference, "invalid_referral_reference");
-  const businessReason = clean(input.businessReason, 1000);
+  const unknownInput: unknown = input;
+  if (!isRecord(unknownInput)) throw new Error("invalid_introducer_referral");
+  const raw: Record<string, unknown> = unknownInput;
+
+  const introducerReference = normalizeReference(raw.introducerReference, "invalid_introducer_reference");
+  const agreementReference = normalizeReference(raw.agreementReference, "invalid_agreement_reference");
+  const companyName = clean(raw.companyName, 200);
+  const referralReference = normalizeReference(raw.referralReference, "invalid_referral_reference");
+  const businessReason = clean(raw.businessReason, 1000);
   if (!companyName || !businessReason) {
     throw new Error("invalid_introducer_referral");
   }
-  if (!INTRODUCER_CATEGORIES.includes(input.introducerCategory)) {
+
+  if (
+    typeof raw.introducerCategory !== "string" ||
+    !INTRODUCER_CATEGORIES.includes(raw.introducerCategory as IntroducerCategory)
+  ) {
     throw new Error("invalid_introducer_category");
   }
+  const introducerCategory = raw.introducerCategory as IntroducerCategory;
 
-  const introducedAt = normalizeInstant(input.introducedAt);
+  if (
+    typeof raw.agreementStatus !== "string" ||
+    !INTRODUCER_AGREEMENT_STATUSES.has(raw.agreementStatus as IntroducerAgreementStatus)
+  ) {
+    throw new Error("invalid_introducer_agreement_status");
+  }
+  const agreementStatus = raw.agreementStatus as IntroducerAgreementStatus;
+
+  if (
+    typeof raw.contactPermissionEvidence !== "string" ||
+    !INTRODUCER_CONTACT_PERMISSION_VALUES.has(
+      raw.contactPermissionEvidence as IntroducerContactPermissionEvidence,
+    )
+  ) {
+    throw new Error("invalid_introducer_contact_permission_evidence");
+  }
+  const contactPermissionEvidence = raw.contactPermissionEvidence as IntroducerContactPermissionEvidence;
+
+  const introducedAt = normalizeInstant(raw.introducedAt);
   const reasons: string[] = [];
-  if (input.agreementStatus !== "ACTIVE") reasons.push("Introducer agreement is not verified active.");
-  if (input.contactPermissionEvidence !== "BUSINESS_INTRODUCTION_CONFIRMED") {
+  if (agreementStatus !== "ACTIVE") reasons.push("Introducer agreement is not verified active.");
+  if (contactPermissionEvidence !== "BUSINESS_INTRODUCTION_CONFIRMED") {
     reasons.push("Introducer has not supplied explicit business-introduction evidence.");
   }
 
@@ -122,12 +166,12 @@ export function buildIntroducerReferralAttribution(
     attributionStatus: ready ? "ATTRIBUTED_FOR_REVIEW" : "BLOCKED",
     attributionKey: `introducer:${canonicalReference(introducerReference)}:${canonicalReference(referralReference)}`,
     introducerReference,
-    introducerCategory: input.introducerCategory,
+    introducerCategory,
     agreementReference,
     companyName,
     referralReference,
     introducedAt,
-    contactPermissionEvidence: input.contactPermissionEvidence,
+    contactPermissionEvidence,
     reasons,
     commissionAccrualAllowed: false,
     commissionPaymentAllowed: false,
