@@ -74,6 +74,52 @@ test("runtime enum lookalikes fail closed instead of becoming address-match infe
   );
 });
 
+test("runtime record fields fail closed instead of throwing through string methods", () => {
+  for (const [field, value] of [
+    ["applicationReference", 123],
+    ["description", { value: "new factory" }],
+    ["status", true],
+    ["receivedAt", ["2026-09-20T09:00:00Z"]],
+    ["sourceUrl", 999],
+    ["applicantName", { value: "Example Manufacturing Ltd" }],
+    ["siteAddress", ["1 Industrial Way"]],
+  ] as const) {
+    assert.throws(
+      () => mapPlanningApplicationToIntentSignal(
+        company,
+        { ...localAuthorityApplication, [field]: value } as unknown as typeof localAuthorityApplication,
+      ),
+      /invalid_planning_/,
+    );
+  }
+});
+
+test("runtime company identity fields are revalidated at the mapper boundary", () => {
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(
+      { ...company, companyName: 123 as unknown as string },
+      localAuthorityApplication,
+    ),
+    /invalid_planning_company_name/,
+  );
+
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(
+      { ...company, companyNumber: true as unknown as string },
+      localAuthorityApplication,
+    ),
+    /invalid_planning_company_number/,
+  );
+
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(
+      { ...company, companyDomain: { value: "example-manufacturing.co.uk" } as unknown as string },
+      localAuthorityApplication,
+    ),
+    /invalid_planning_company_domain/,
+  );
+});
+
 test("caller-claimed local-authority tier cannot verify an arbitrary web source", () => {
   const signal = mapPlanningApplicationToIntentSignal(company, {
     ...localAuthorityApplication,
