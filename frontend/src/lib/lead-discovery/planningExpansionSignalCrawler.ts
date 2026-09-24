@@ -43,6 +43,17 @@ type PlanningTrigger = Readonly<{
   confidence: number;
 }>;
 
+const PLANNING_SOURCE_TIERS: ReadonlySet<PlanningApplicationSourceTier> = new Set([
+  "LOCAL_AUTHORITY",
+  "MHCLG_AGGREGATE",
+]);
+
+const PLANNING_MATCH_BASES: ReadonlySet<PlanningCompanyMatchBasis> = new Set([
+  "EXACT_APPLICANT_NAME",
+  "CRM_SITE_ADDRESS",
+  "NONE",
+]);
+
 const TERMINAL_NEGATIVE_STATUSES = new Set([
   "appeal-refused",
   "expired",
@@ -121,8 +132,17 @@ function addDays(value: string, days: number): string {
 }
 
 function normalizeOffset(offset: number): number {
-  if (!Number.isInteger(offset) || offset < 0) throw new Error("invalid_offset");
+  if (!Number.isSafeInteger(offset) || offset < 0) throw new Error("invalid_offset");
   return offset;
+}
+
+function validatePlanningRuntimeEnums(application: PlanningApplicationCandidate): void {
+  if (!PLANNING_SOURCE_TIERS.has(application.sourceTier)) {
+    throw new Error("invalid_planning_source_tier");
+  }
+  if (!PLANNING_MATCH_BASES.has(application.matchBasis)) {
+    throw new Error("invalid_planning_match_basis");
+  }
 }
 
 function classifyDescription(description: string): PlanningTrigger | null {
@@ -191,6 +211,8 @@ export function mapPlanningApplicationToIntentSignal(
   company: PlanningCompanyIdentity,
   application: PlanningApplicationCandidate,
 ): IntentRadarSignal | null {
+  validatePlanningRuntimeEnums(application);
+
   const reference = clean(application.applicationReference, 240);
   const description = clean(application.description, 1500);
   const status = clean(application.status, 120)?.toLowerCase();
