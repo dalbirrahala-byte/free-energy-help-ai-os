@@ -34,11 +34,24 @@ export type ApolloCrmIntakeDraft = Readonly<{
   executionPerformed: false;
 }>;
 
+const APOLLO_EMAIL_STATUSES = new Set<ApolloEmailStatus>([
+  "verified",
+  "unverified",
+  "guessed",
+  "unknown",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isPlausibleWorkEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-function normalizeCapturedAt(value: string): string | null {
+function normalizeCapturedAt(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+
   const cleaned = value.trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
   if (!match) return null;
@@ -78,21 +91,52 @@ function normalizeCapturedAt(value: string): string | null {
 export function createApolloCrmIntakeDraft(
   input: ApolloProspectInput,
 ): ApolloCrmIntakeDraft {
-  const personId = input.personId.trim();
-  const organisationName = input.organisationName.trim();
-  const contactName = input.contactName.trim();
-  const workEmail = input.workEmail.trim().toLowerCase();
-  const jobTitle = input.jobTitle?.trim() || null;
-  const capturedAt = normalizeCapturedAt(input.capturedAt);
   const reasons: string[] = [];
+  const unknownInput: unknown = input;
+  const raw: Record<string, unknown> = isRecord(unknownInput) ? unknownInput : {};
 
-  if (!personId) reasons.push("Apollo person identity is required.");
-  if (!organisationName) reasons.push("Organisation name is required.");
-  if (!contactName) reasons.push("Contact name is required.");
-  if (!workEmail || !isPlausibleWorkEmail(workEmail)) {
-    reasons.push("A plausible work email is required.");
+  if (!isRecord(unknownInput)) {
+    reasons.push("Apollo prospect payload must be a record.");
   }
-  if (input.emailStatus !== "verified") {
+
+  const personId = typeof raw.personId === "string" ? raw.personId.trim() : "";
+  const organisationName = typeof raw.organisationName === "string"
+    ? raw.organisationName.trim()
+    : "";
+  const contactName = typeof raw.contactName === "string" ? raw.contactName.trim() : "";
+  const workEmail = typeof raw.workEmail === "string"
+    ? raw.workEmail.trim().toLowerCase()
+    : "";
+
+  let jobTitle: string | null = null;
+  if (raw.jobTitle === null) {
+    jobTitle = null;
+  } else if (typeof raw.jobTitle === "string") {
+    jobTitle = raw.jobTitle.trim() || null;
+  } else {
+    reasons.push("Apollo job title must be text or null.");
+  }
+
+  const emailStatus = typeof raw.emailStatus === "string" && APOLLO_EMAIL_STATUSES.has(raw.emailStatus as ApolloEmailStatus)
+    ? raw.emailStatus as ApolloEmailStatus
+    : null;
+  const capturedAt = normalizeCapturedAt(raw.capturedAt);
+
+  if (typeof raw.personId !== "string" || !personId) {
+    reasons.push("Apollo person identity is required as text.");
+  }
+  if (typeof raw.organisationName !== "string" || !organisationName) {
+    reasons.push("Organisation name is required as text.");
+  }
+  if (typeof raw.contactName !== "string" || !contactName) {
+    reasons.push("Contact name is required as text.");
+  }
+  if (typeof raw.workEmail !== "string" || !workEmail || !isPlausibleWorkEmail(workEmail)) {
+    reasons.push("A plausible work email is required as text.");
+  }
+  if (!emailStatus) {
+    reasons.push("Apollo email status must be a recognised provider value.");
+  } else if (emailStatus !== "verified") {
     reasons.push("Apollo work email must be verified before CRM intake review.");
   }
   if (!capturedAt) {
@@ -123,7 +167,7 @@ export function createApolloCrmIntakeDraft(
     contactName,
     jobTitle,
     workEmail,
-    emailVerified: input.emailStatus === "verified",
+    emailVerified: emailStatus === "verified",
     leadStatus: "New",
     leadOwner: null,
     nextAction: "Review Apollo prospect, verify suppression/compliance, and decide contact path",
