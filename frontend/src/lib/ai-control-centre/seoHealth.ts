@@ -3,6 +3,12 @@ import type { ServiceStatusInfo } from "./types";
 const DEFAULT_PUBLIC_SITE_ORIGIN = "https://www.freeenergyhelp.co.uk";
 const SEO_CHECK_TIMEOUT_MS = 5000;
 const OAI_SEARCH_BOT = "oai-searchbot";
+const X_ROBOTS_DIRECTIVES_WITH_VALUES = new Set([
+  "max-snippet",
+  "max-image-preview",
+  "max-video-preview",
+  "unavailable_after",
+]);
 
 type FetchLike = (
   input: string | URL | Request,
@@ -113,6 +119,100 @@ function parseRobotsGroups(robotsText: string): RobotsGroup[] {
   return groups;
 }
 
+function readHtmlAttribute(tag: string, attribute: string): string | null {
+  const quoted = tag.match(
+    new RegExp(`\\b${attribute}\\s*=\\s*["']([^"']*)["']`, "i"),
+  );
+
+  if (quoted) {
+    return quoted[1]?.trim() ?? "";
+  }
+
+  const unquoted = tag.match(
+    new RegExp(`\\b${attribute}\\s*=\\s*([^\\s>]+)`, "i"),
+  );
+
+  return unquoted?.[1]?.trim() ?? null;
+}
+
+function containsNoindexDirective(value: string | null): boolean {
+  if (!value) {
+    return false;
+  }
+
+  return value
+    .toLowerCase()
+    .split(/[,\s]+/)
+    .some((directive) => directive === "noindex");
+}
+
+export function isXRobotsTagNoindexForUserAgent(
+  value: string | null,
+  userAgent: string,
+): boolean {
+  if (!value) {
+    return false;
+  }
+
+  const target = userAgent.toLowerCase();
+  let activeAgent: string | null = null;
+
+  for (const rawSegment of value.split(",")) {
+    const segment = rawSegment.trim().toLowerCase();
+    if (!segment) {
+      continue;
+    }
+
+    const scoped = segment.match(/^([a-z0-9_-]+)\s*:\s*(.*)$/i);
+    if (scoped) {
+      const prefix = scoped[1] ?? "";
+      const remainder = scoped[2]?.trim() ?? "";
+
+      if (!X_ROBOTS_DIRECTIVES_WITH_VALUES.has(prefix)) {
+        activeAgent = prefix;
+        if (remainder === "noindex" && activeAgent === target) {
+          return true;
+        }
+        continue;
+      }
+    }
+
+    if (segment === "noindex" && (activeAgent === null || activeAgent === target)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function isHomepageIndexingBlocked(
+  homepageResponse: Response,
+  homepageHtml: string,
+): boolean {
+  if (
+    isXRobotsTagNoindexForUserAgent(
+      homepageResponse.headers.get("x-robots-tag"),
+      OAI_SEARCH_BOT,
+    )
+  ) {
+    return true;
+  }
+
+  for (const match of homepageHtml.matchAll(/<meta\b[^>]*>/gi)) {
+    const tag = match[0];
+    const name = readHtmlAttribute(tag, "name");
+
+    if (
+      name?.toLowerCase() === "robots" &&
+      containsNoindexDirective(readHtmlAttribute(tag, "content"))
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function isUserAgentFullyBlocked(
   robotsText: string,
   userAgent: string,
@@ -202,10 +302,17 @@ export async function resolveWebsiteSeoStatus(
       );
     }
 
-    const [robotsText, sitemapText] = await Promise.all([
+    const [homepageHtml, robotsText, sitemapText] = await Promise.all([
+      homepageResponse.text(),
       robotsResponse.text(),
       sitemapResponse.text(),
     ]);
+
+    if (isHomepageIndexingBlocked(homepageResponse, homepageHtml)) {
+      return unavailable(
+        "Public homepage is explicitly marked noindex for OAI-SearchBot or all crawlers and cannot be treated as search-ready.",
+      );
+    }
 
     if (!/user-agent\s*:/i.test(robotsText)) {
       return notConfigured(
@@ -230,7 +337,7 @@ export async function resolveWebsiteSeoStatus(
       name: "Website SEO + AI Search",
       status: "Connected",
       detail:
-        "Verified live homepage, robots.txt and sitemap.xml; OAI-SearchBot is not fully blocked.",
+        "Verified indexable homepage, robots.txt and sitemap.xml; OAI-SearchBot is not fully blocked.",
     };
   } catch {
     return unavailable(

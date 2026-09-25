@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildControlledLeadBenchmark } from "./exclusiveLeadBenchmark.ts";
+import {
+  buildControlledLeadBenchmark,
+  buildLeadBenchmarkCohort,
+  type LeadBenchmarkCohortInput,
+} from "./exclusiveLeadBenchmark.ts";
 
 const base = {
   windowStart: "2026-10-01T00:00:00Z",
@@ -147,5 +151,39 @@ test("economics inputs outside safe integer precision fail closed", () => {
   assert.throws(
     () => buildControlledLeadBenchmark(exclusive({ signedContracts: unsafe, qualifiedOpportunities: unsafe, rawLeads: unsafe }), feh()),
     /invalid_raw_leads|invalid_qualified_opportunities|invalid_signed_contracts/,
+  );
+});
+
+test("direct cohort builder rejects runtime source-kind lookalikes", () => {
+  assert.throws(
+    () => buildLeadBenchmarkCohort({
+      ...exclusive(),
+      sourceKind: "exclusive_provider",
+    } as unknown as LeadBenchmarkCohortInput),
+    /invalid_benchmark_source_kind/,
+  );
+});
+
+test("malformed runtime text evidence fails with controlled validation errors", () => {
+  assert.throws(
+    () => buildLeadBenchmarkCohort({
+      ...exclusive(),
+      sourceName: { value: "Controlled Provider A" },
+    } as unknown as LeadBenchmarkCohortInput),
+    /invalid_benchmark_metadata/,
+  );
+  assert.throws(
+    () => buildLeadBenchmarkCohort({
+      ...exclusive(),
+      sourceReference: 42,
+    } as unknown as LeadBenchmarkCohortInput),
+    /invalid_benchmark_source_reference/,
+  );
+  assert.throws(
+    () => buildLeadBenchmarkCohort({
+      ...exclusive(),
+      windowStart: { instant: "2026-10-01T00:00:00Z" },
+    } as unknown as LeadBenchmarkCohortInput),
+    /invalid_window_start/,
   );
 });

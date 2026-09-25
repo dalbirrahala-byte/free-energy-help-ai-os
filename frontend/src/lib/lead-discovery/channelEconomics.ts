@@ -41,18 +41,30 @@ export type ChannelEconomicsDashboard = Readonly<{
   campaignActivationAllowed: false;
 }>;
 
-function clean(value: string | null | undefined, max = 160): string | null {
-  const cleaned = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("invalid_channel_input");
+  }
+  return value as UnknownRecord;
+}
+
+function clean(value: unknown, max = 160, code = "invalid_channel_text"): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw new Error(code);
+  const cleaned = value.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, max) : null;
 }
 
-function normalizeReference(value: string | null | undefined): string {
-  const cleaned = clean(value, 300);
+function normalizeReference(value: unknown): string {
+  const cleaned = clean(value, 300, "invalid_channel_source_reference");
   if (!cleaned || !/^[A-Za-z0-9._:-]+$/.test(cleaned)) throw new Error("invalid_channel_source_reference");
   return cleaned;
 }
 
-function normalizeInstant(value: string, code: string): string {
+function normalizeInstant(value: unknown, code: string): string {
+  if (typeof value !== "string") throw new Error(code);
   const cleaned = value.trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(cleaned);
   if (!match) throw new Error(code);
@@ -80,8 +92,14 @@ function normalizeInstant(value: string, code: string): string {
   return parsed.toISOString();
 }
 
-function assertCount(value: number, code: string): void {
-  if (!Number.isSafeInteger(value) || value < 0) throw new Error(code);
+function assertCount(value: unknown, code: string): asserts value is number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error(code);
+}
+
+function assertSpend(value: unknown): asserts value is number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error("invalid_channel_spend");
+  }
 }
 
 function unitCost(spendMinor: number, count: number): number | null {
@@ -95,41 +113,53 @@ function conversionRate(numerator: number, denominator: number): number | null {
 }
 
 export function buildChannelEconomicsRow(input: ChannelEconomicsInput): ChannelEconomicsRow {
-  const channelId = clean(input.channelId, 100);
-  const channelName = clean(input.channelName, 160);
-  const sourceReference = normalizeReference(input.sourceReference);
+  const runtimeInput = asRecord(input as unknown);
+  const channelId = clean(runtimeInput.channelId, 100, "invalid_channel_identity");
+  const channelName = clean(runtimeInput.channelName, 160, "invalid_channel_identity");
+  const sourceReference = normalizeReference(runtimeInput.sourceReference);
   if (!channelId || !channelName) throw new Error("invalid_channel_identity");
-  if (input.evidenceBasis !== "OBSERVED_VERIFIED" && input.evidenceBasis !== "ESTIMATED") {
+
+  const evidenceBasis = runtimeInput.evidenceBasis;
+  if (evidenceBasis !== "OBSERVED_VERIFIED" && evidenceBasis !== "ESTIMATED") {
     throw new Error("invalid_channel_evidence_basis");
   }
-  if (!Number.isSafeInteger(input.spendMinor) || input.spendMinor < 0) throw new Error("invalid_channel_spend");
-  assertCount(input.rawLeads, "invalid_raw_leads");
-  assertCount(input.qualifiedOpportunities, "invalid_qualified_opportunities");
-  assertCount(input.signedContracts, "invalid_signed_contracts");
-  if (input.qualifiedOpportunities > input.rawLeads) throw new Error("qualified_exceeds_raw_leads");
-  if (input.signedContracts > input.qualifiedOpportunities) throw new Error("signed_exceeds_qualified");
 
-  const windowStart = normalizeInstant(input.windowStart, "invalid_window_start");
-  const windowEnd = normalizeInstant(input.windowEnd, "invalid_window_end");
+  const spendMinor = runtimeInput.spendMinor;
+  const rawLeads = runtimeInput.rawLeads;
+  const qualifiedOpportunities = runtimeInput.qualifiedOpportunities;
+  const signedContracts = runtimeInput.signedContracts;
+  assertSpend(spendMinor);
+  assertCount(rawLeads, "invalid_raw_leads");
+  assertCount(qualifiedOpportunities, "invalid_qualified_opportunities");
+  assertCount(signedContracts, "invalid_signed_contracts");
+  if (qualifiedOpportunities > rawLeads) throw new Error("qualified_exceeds_raw_leads");
+  if (signedContracts > qualifiedOpportunities) throw new Error("signed_exceeds_qualified");
+
+  const windowStart = normalizeInstant(runtimeInput.windowStart, "invalid_window_start");
+  const windowEnd = normalizeInstant(runtimeInput.windowEnd, "invalid_window_end");
   if (new Date(windowEnd).getTime() <= new Date(windowStart).getTime()) throw new Error("invalid_channel_window");
 
-  const decisionMetricStatus = input.qualifiedOpportunities === 0
+  const decisionMetricStatus = qualifiedOpportunities === 0
     ? "NO_QUALIFIED_OPPORTUNITIES"
-    : input.signedContracts === 0
+    : signedContracts === 0
       ? "NO_SIGNED_CONTRACTS"
       : "MEASURABLE";
 
   return {
-    ...input,
     channelId,
     channelName,
     sourceReference,
+    evidenceBasis,
     windowStart,
     windowEnd,
-    costPerQualifiedOpportunityMinor: unitCost(input.spendMinor, input.qualifiedOpportunities),
-    costPerSignedContractMinor: unitCost(input.spendMinor, input.signedContracts),
-    qualifiedToSignedRate: conversionRate(input.signedContracts, input.qualifiedOpportunities),
-    rawLeadCostMinor: unitCost(input.spendMinor, input.rawLeads),
+    spendMinor,
+    rawLeads,
+    qualifiedOpportunities,
+    signedContracts,
+    costPerQualifiedOpportunityMinor: unitCost(spendMinor, qualifiedOpportunities),
+    costPerSignedContractMinor: unitCost(spendMinor, signedContracts),
+    qualifiedToSignedRate: conversionRate(signedContracts, qualifiedOpportunities),
+    rawLeadCostMinor: unitCost(spendMinor, rawLeads),
     decisionMetricStatus,
   };
 }
@@ -137,6 +167,7 @@ export function buildChannelEconomicsRow(input: ChannelEconomicsInput): ChannelE
 export function buildChannelEconomicsDashboard(
   inputs: readonly ChannelEconomicsInput[],
 ): ChannelEconomicsDashboard {
+  if (!Array.isArray(inputs)) throw new Error("invalid_channel_inputs");
   if (inputs.length === 0) {
     return {
       status: "BLOCKED",
