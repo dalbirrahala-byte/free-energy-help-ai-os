@@ -108,6 +108,50 @@ test("recognized official filing maps to a verified Intent Radar fact", () => {
   assert.equal(assessment.outreachAllowed, false);
 });
 
+test("direct mapper revalidates company identity runtime types", () => {
+  assert.throws(
+    () => mapCompaniesHouseFilingToIntentSignal(
+      { ...company, companyName: 123 as unknown as string },
+      strongFiling,
+    ),
+    /invalid_company_name/,
+  );
+
+  assert.throws(
+    () => mapCompaniesHouseFilingToIntentSignal(
+      { ...company, companyNumber: true as unknown as string },
+      strongFiling,
+    ),
+    /invalid_company_number/,
+  );
+
+  assert.throws(
+    () => mapCompaniesHouseFilingToIntentSignal(
+      { ...company, companyDomain: { value: "example-manufacturing.co.uk" } as unknown as string },
+      strongFiling,
+    ),
+    /invalid_company_domain/,
+  );
+});
+
+test("direct mapper revalidates filing runtime types even when provider normalization is bypassed", () => {
+  for (const [field, value] of [
+    ["transactionId", 123],
+    ["type", true],
+    ["category", { value: "capital" }],
+    ["description", ["allotment"]],
+    ["date", 20260920],
+  ] as const) {
+    assert.throws(
+      () => mapCompaniesHouseFilingToIntentSignal(
+        company,
+        { ...strongFiling, [field]: value } as unknown as typeof strongFiling,
+      ),
+      /invalid_filing_|invalid_transaction_id/,
+    );
+  }
+});
+
 test("unknown filing types are ignored rather than guessed", () => {
   const signal = mapCompaniesHouseFilingToIntentSignal(company, {
     transactionId: "tx-unknown",
