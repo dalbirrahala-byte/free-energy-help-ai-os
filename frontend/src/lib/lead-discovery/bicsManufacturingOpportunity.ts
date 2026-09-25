@@ -53,9 +53,61 @@ export type BicsIntentRadarIntegration = Readonly<{
   explanation: string;
 }>;
 
+type UnknownRecord = Record<string, unknown>;
+
 function clean(value: string | null | undefined, max = 500): string | null {
   const cleaned = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, max) : null;
+}
+
+function asRecord(value: unknown, errorCode: string): UnknownRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(errorCode);
+  }
+  return value as UnknownRecord;
+}
+
+function requireString(record: UnknownRecord, key: string, errorCode: string): string {
+  const value = record[key];
+  if (typeof value !== "string") throw new Error(errorCode);
+  return value;
+}
+
+function requireNumber(record: UnknownRecord, key: string, errorCode: string): number {
+  const value = record[key];
+  if (typeof value !== "number") throw new Error(errorCode);
+  return value;
+}
+
+function normalizeMetric(value: unknown): BicsManufacturingMetric {
+  if (
+    typeof value !== "string" ||
+    !BICS_MANUFACTURING_METRICS.includes(value as BicsManufacturingMetric)
+  ) {
+    throw new Error("invalid_bics_metric");
+  }
+  return value as BicsManufacturingMetric;
+}
+
+function normalizeObservationRuntime(
+  input: unknown,
+): BicsManufacturingObservationInput {
+  const record = asRecord(input, "invalid_bics_observation");
+  if (record.industry !== "MANUFACTURING") throw new Error("invalid_bics_industry");
+  if (record.officialStatisticsInDevelopment !== true) {
+    throw new Error("invalid_bics_statistics_status");
+  }
+
+  return {
+    wave: requireNumber(record, "wave", "invalid_bics_wave"),
+    releaseDate: requireString(record, "releaseDate", "invalid_bics_release_date"),
+    surveyPeriodLabel: requireString(record, "surveyPeriodLabel", "invalid_bics_period"),
+    industry: "MANUFACTURING",
+    metric: normalizeMetric(record.metric),
+    percentage: requireNumber(record, "percentage", "invalid_bics_percentage"),
+    sourceUrl: requireString(record, "sourceUrl", "invalid_bics_source_url"),
+    officialStatisticsInDevelopment: true,
+  };
 }
 
 function normalizeDate(value: string): string {
@@ -102,28 +154,38 @@ function validateObservationFields(input: BicsManufacturingObservationInput): st
 export function buildBicsManufacturingObservation(
   input: BicsManufacturingObservationInput,
 ): BicsManufacturingObservation {
-  const surveyPeriodLabel = validateObservationFields(input);
+  const normalizedInput = normalizeObservationRuntime(input);
+  const surveyPeriodLabel = validateObservationFields(normalizedInput);
 
   return {
-    ...input,
-    releaseDate: normalizeDate(input.releaseDate),
+    wave: normalizedInput.wave,
+    releaseDate: normalizeDate(normalizedInput.releaseDate),
     surveyPeriodLabel,
-    sourceUrl: normalizeSourceUrl(input.sourceUrl),
+    industry: "MANUFACTURING",
+    metric: normalizedInput.metric,
+    percentage: normalizedInput.percentage,
+    sourceUrl: normalizeSourceUrl(normalizedInput.sourceUrl),
+    officialStatisticsInDevelopment: true,
   };
 }
 
 function revalidateBicsManufacturingObservation(
   input: BicsManufacturingObservation,
 ): BicsManufacturingObservation {
-  const surveyPeriodLabel = validateObservationFields(input);
-  const releaseMatch = /^(\d{4}-\d{2}-\d{2})T00:00:00\.000Z$/.exec(input.releaseDate);
+  const normalizedInput = normalizeObservationRuntime(input);
+  const surveyPeriodLabel = validateObservationFields(normalizedInput);
+  const releaseMatch = /^(\d{4}-\d{2}-\d{2})T00:00:00\.000Z$/.exec(normalizedInput.releaseDate);
   if (!releaseMatch) throw new Error("invalid_bics_release_date");
 
   return {
-    ...input,
+    wave: normalizedInput.wave,
     releaseDate: normalizeDate(releaseMatch[1]),
     surveyPeriodLabel,
-    sourceUrl: normalizeSourceUrl(input.sourceUrl),
+    industry: "MANUFACTURING",
+    metric: normalizedInput.metric,
+    percentage: normalizedInput.percentage,
+    sourceUrl: normalizeSourceUrl(normalizedInput.sourceUrl),
+    officialStatisticsInDevelopment: true,
   };
 }
 
@@ -139,6 +201,7 @@ function latestByMetric(
 export function buildBicsManufacturingContext(
   observations: readonly BicsManufacturingObservation[],
 ): BicsManufacturingContext | null {
+  if (!Array.isArray(observations)) throw new Error("invalid_bics_observations");
   if (observations.length === 0) return null;
 
   const validatedObservations = observations.map(revalidateBicsManufacturingObservation);
