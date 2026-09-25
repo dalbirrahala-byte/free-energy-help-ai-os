@@ -165,3 +165,46 @@ test("invalid funnel counts fail closed", () => {
     signedContracts: 0,
   }), /qualified_exceeds_raw_leads/);
 });
+
+test("runtime payloads reject non-record roots and forged field types", () => {
+  assert.throws(
+    () => buildChannelEconomicsRow(null as never),
+    /invalid_channel_input/,
+  );
+  assert.throws(
+    () => buildChannelEconomicsRow({ ...baseRow, channelId: 42 as never }),
+    /invalid_channel_identity/,
+  );
+  assert.throws(
+    () => buildChannelEconomicsRow({ ...baseRow, sourceReference: true as never }),
+    /invalid_channel_source_reference/,
+  );
+  assert.throws(
+    () => buildChannelEconomicsRow({ ...baseRow, spendMinor: "10000" as never }),
+    /invalid_channel_spend/,
+  );
+  assert.throws(
+    () => buildChannelEconomicsRow({ ...baseRow, rawLeads: "20" as never }),
+    /invalid_raw_leads/,
+  );
+  assert.throws(
+    () => buildChannelEconomicsRow({ ...baseRow, windowStart: 123 as never }),
+    /invalid_window_start/,
+  );
+});
+
+test("canonical row reconstruction drops unreviewed runtime fields", () => {
+  const row = buildChannelEconomicsRow({
+    ...baseRow,
+    unreviewedProviderPayload: "must-not-propagate",
+  } as typeof baseRow & { unreviewedProviderPayload: string });
+
+  assert.equal("unreviewedProviderPayload" in row, false);
+});
+
+test("dashboard rejects non-array runtime inputs with a controlled validation error", () => {
+  assert.throws(
+    () => buildChannelEconomicsDashboard({ length: 1, map: () => [] } as never),
+    /invalid_channel_inputs/,
+  );
+});
