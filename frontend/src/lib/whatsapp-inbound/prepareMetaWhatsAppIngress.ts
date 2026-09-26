@@ -49,11 +49,23 @@ export type MetaWhatsAppIngressResult =
   | PreparedMetaWhatsAppIngress
   | RejectedMetaWhatsAppIngress;
 
-function normalizeProviderIdentity(value: string): string {
-  return value.trim().slice(0, 200);
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as UnknownRecord;
 }
 
-function normalizeReceivedAt(value: string): string | null {
+function normalizeProviderIdentity(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized || normalized.length > 200) return null;
+  if (!/^[A-Za-z0-9._-]+$/.test(normalized)) return null;
+  return normalized;
+}
+
+function normalizeReceivedAt(value: unknown): string | null {
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   const date = new Date(trimmed);
@@ -81,7 +93,8 @@ const CAPABILITY_LOCKS = {
 export function prepareMetaWhatsAppIngress(
   input: MetaWhatsAppIngressInput,
 ): MetaWhatsAppIngressResult {
-  if (!input.signatureVerified) {
+  const runtimeInput = asRecord(input as unknown);
+  if (!runtimeInput || runtimeInput.signatureVerified !== true) {
     return {
       disposition: "rejected",
       reason: "unverified_webhook",
@@ -89,8 +102,8 @@ export function prepareMetaWhatsAppIngress(
     };
   }
 
-  const wabaId = normalizeProviderIdentity(input.wabaId);
-  const phoneNumberId = normalizeProviderIdentity(input.phoneNumberId);
+  const wabaId = normalizeProviderIdentity(runtimeInput.wabaId);
+  const phoneNumberId = normalizeProviderIdentity(runtimeInput.phoneNumberId);
   if (!wabaId || !phoneNumberId) {
     return {
       disposition: "rejected",
@@ -99,7 +112,7 @@ export function prepareMetaWhatsAppIngress(
     };
   }
 
-  const receivedAt = normalizeReceivedAt(input.receivedAt);
+  const receivedAt = normalizeReceivedAt(runtimeInput.receivedAt);
   if (!receivedAt) {
     return {
       disposition: "rejected",
@@ -108,7 +121,16 @@ export function prepareMetaWhatsAppIngress(
     };
   }
 
-  const normalized = normalizeWhatsAppInbound(input.message);
+  const runtimeMessage = asRecord(runtimeInput.message);
+  if (!runtimeMessage) {
+    return {
+      disposition: "rejected",
+      reason: "invalid_message",
+      ...CAPABILITY_LOCKS,
+    };
+  }
+
+  const normalized = normalizeWhatsAppInbound(runtimeMessage as WhatsAppInboundInput);
   if (!normalized.success) {
     return {
       disposition: "rejected",
