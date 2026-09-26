@@ -48,9 +48,82 @@ export type WebsiteCompanyObservation = Readonly<WebsiteCompanyObservationInput 
   visitedPaths: readonly string[];
 }>;
 
+type UnknownRecord = Record<string, unknown>;
+
+const TRIAL_CURRENCIES = new Set(["GBP", "EUR", "USD"] as const);
+
 function clean(value: string | null | undefined, max = 500): string | null {
   const cleaned = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, max) : null;
+}
+
+function asRecord(value: unknown, errorCode: string): UnknownRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(errorCode);
+  }
+  return value as UnknownRecord;
+}
+
+function requireString(record: UnknownRecord, key: string, errorCode: string): string {
+  const value = record[key];
+  if (typeof value !== "string") throw new Error(errorCode);
+  return value;
+}
+
+function requireNumber(record: UnknownRecord, key: string, errorCode: string): number {
+  const value = record[key];
+  if (typeof value !== "number") throw new Error(errorCode);
+  return value;
+}
+
+function requireBoolean(record: UnknownRecord, key: string, errorCode: string): boolean {
+  const value = record[key];
+  if (typeof value !== "boolean") throw new Error(errorCode);
+  return value;
+}
+
+function normalizeTrialCandidateRuntime(candidate: unknown): WebsiteIdentificationTrialCandidate {
+  const record = asRecord(candidate, "invalid_trial_candidate");
+  const currency = record.currency;
+  if (typeof currency !== "string" || !TRIAL_CURRENCIES.has(currency as "GBP" | "EUR" | "USD")) {
+    throw new Error("invalid_trial_currency");
+  }
+
+  const monthlyPriceMinor = record.monthlyPriceMinor;
+  if (monthlyPriceMinor !== null && typeof monthlyPriceMinor !== "number") {
+    throw new Error("invalid_monthly_price");
+  }
+
+  return {
+    providerName: requireString(record, "providerName", "invalid_provider_name"),
+    monthlyPriceMinor,
+    currency: currency as "GBP" | "EUR" | "USD",
+    freeTrialDays: requireNumber(record, "freeTrialDays", "invalid_trial_days"),
+    creditCardRequiredForTrial: requireBoolean(record, "creditCardRequiredForTrial", "invalid_trial_evidence"),
+    apiAvailable: requireBoolean(record, "apiAvailable", "invalid_trial_evidence"),
+    companyLevelIdentification: requireBoolean(record, "companyLevelIdentification", "invalid_trial_evidence"),
+    privacyDocumentationAvailable: requireBoolean(record, "privacyDocumentationAvailable", "invalid_trial_evidence"),
+    dpaAvailable: requireBoolean(record, "dpaAvailable", "invalid_trial_evidence"),
+  };
+}
+
+function normalizeObservationRuntime(input: unknown): WebsiteCompanyObservationInput {
+  const record = asRecord(input, "invalid_website_company_observation");
+  if (!Array.isArray(record.visitedPaths) || record.visitedPaths.some((path) => typeof path !== "string")) {
+    throw new Error("invalid_visited_paths");
+  }
+
+  return {
+    providerName: requireString(record, "providerName", "invalid_provider_name"),
+    providerEventReference: requireString(record, "providerEventReference", "invalid_provider_event_reference"),
+    companyName: requireString(record, "companyName", "invalid_website_company_observation"),
+    companyDomain: requireString(record, "companyDomain", "invalid_company_domain"),
+    firstSeenAt: requireString(record, "firstSeenAt", "invalid_first_seen_at"),
+    lastSeenAt: requireString(record, "lastSeenAt", "invalid_last_seen_at"),
+    matchConfidence: requireNumber(record, "matchConfidence", "invalid_match_confidence"),
+    providerMatchVerified: requireBoolean(record, "providerMatchVerified", "invalid_provider_match_verification"),
+    visitedPaths: record.visitedPaths as string[],
+  };
 }
 
 function normalizeInstant(value: string, error: string): string {
@@ -146,30 +219,31 @@ export function evaluateWebsiteIdentificationTrial(
   candidate: WebsiteIdentificationTrialCandidate,
   maxMonthlyPriceMinor: number,
 ): WebsiteIdentificationTrialDecision {
-  const providerName = clean(candidate.providerName, 120);
+  const normalizedCandidate = normalizeTrialCandidateRuntime(candidate);
+  const providerName = clean(normalizedCandidate.providerName, 120);
   if (!providerName) throw new Error("invalid_provider_name");
-  if (!Number.isInteger(maxMonthlyPriceMinor) || maxMonthlyPriceMinor < 0) throw new Error("invalid_budget");
-  if (candidate.monthlyPriceMinor !== null && (!Number.isInteger(candidate.monthlyPriceMinor) || candidate.monthlyPriceMinor < 0)) {
+  if (!Number.isSafeInteger(maxMonthlyPriceMinor) || maxMonthlyPriceMinor < 0) throw new Error("invalid_budget");
+  if (normalizedCandidate.monthlyPriceMinor !== null && (!Number.isSafeInteger(normalizedCandidate.monthlyPriceMinor) || normalizedCandidate.monthlyPriceMinor < 0)) {
     throw new Error("invalid_monthly_price");
   }
-  if (!Number.isInteger(candidate.freeTrialDays) || candidate.freeTrialDays < 0) throw new Error("invalid_trial_days");
+  if (!Number.isSafeInteger(normalizedCandidate.freeTrialDays) || normalizedCandidate.freeTrialDays < 0) throw new Error("invalid_trial_days");
 
-  const withinBudget = candidate.monthlyPriceMinor !== null && candidate.monthlyPriceMinor <= maxMonthlyPriceMinor;
+  const withinBudget = normalizedCandidate.monthlyPriceMinor !== null && normalizedCandidate.monthlyPriceMinor <= maxMonthlyPriceMinor;
   const reasons: string[] = [];
-  if (candidate.freeTrialDays < 7) reasons.push("Trial is shorter than the minimum evaluation window.");
-  if (candidate.creditCardRequiredForTrial) reasons.push("Trial requires payment details.");
-  if (!candidate.apiAvailable) reasons.push("No API is available for a controlled CRM integration test.");
-  if (!candidate.companyLevelIdentification) reasons.push("Provider does not meet the company-level identification boundary.");
-  if (!candidate.privacyDocumentationAvailable || !candidate.dpaAvailable) reasons.push("Privacy/DPA evidence is incomplete.");
+  if (normalizedCandidate.freeTrialDays < 7) reasons.push("Trial is shorter than the minimum evaluation window.");
+  if (normalizedCandidate.creditCardRequiredForTrial) reasons.push("Trial requires payment details.");
+  if (!normalizedCandidate.apiAvailable) reasons.push("No API is available for a controlled CRM integration test.");
+  if (!normalizedCandidate.companyLevelIdentification) reasons.push("Provider does not meet the company-level identification boundary.");
+  if (!normalizedCandidate.privacyDocumentationAvailable || !normalizedCandidate.dpaAvailable) reasons.push("Privacy/DPA evidence is incomplete.");
   if (!withinBudget) reasons.push("Published monthly price is unknown or above the supplied trial budget.");
 
   const eligible =
-    candidate.freeTrialDays >= 7 &&
-    !candidate.creditCardRequiredForTrial &&
-    candidate.apiAvailable &&
-    candidate.companyLevelIdentification &&
-    candidate.privacyDocumentationAvailable &&
-    candidate.dpaAvailable &&
+    normalizedCandidate.freeTrialDays >= 7 &&
+    !normalizedCandidate.creditCardRequiredForTrial &&
+    normalizedCandidate.apiAvailable &&
+    normalizedCandidate.companyLevelIdentification &&
+    normalizedCandidate.privacyDocumentationAvailable &&
+    normalizedCandidate.dpaAvailable &&
     withinBudget;
 
   if (eligible) reasons.push("Candidate is suitable for human review before any tracker installation or paid activation.");
@@ -186,29 +260,31 @@ export function evaluateWebsiteIdentificationTrial(
 }
 
 export function buildWebsiteCompanyObservation(input: WebsiteCompanyObservationInput): WebsiteCompanyObservation {
-  const providerName = clean(input.providerName, 120);
-  const providerEventReference = normalizeProviderEventReference(input.providerEventReference);
-  const companyName = clean(input.companyName, 200);
+  const normalizedInput = normalizeObservationRuntime(input);
+  const providerName = clean(normalizedInput.providerName, 120);
+  const providerEventReference = normalizeProviderEventReference(normalizedInput.providerEventReference);
+  const companyName = clean(normalizedInput.companyName, 200);
   if (!providerName || !companyName) throw new Error("invalid_website_company_observation");
-  if (!Number.isInteger(input.matchConfidence) || input.matchConfidence < 0 || input.matchConfidence > 100) {
+  if (!Number.isInteger(normalizedInput.matchConfidence) || normalizedInput.matchConfidence < 0 || normalizedInput.matchConfidence > 100) {
     throw new Error("invalid_match_confidence");
   }
 
-  const firstSeenAt = normalizeInstant(input.firstSeenAt, "invalid_first_seen_at");
-  const lastSeenAt = normalizeInstant(input.lastSeenAt, "invalid_last_seen_at");
+  const firstSeenAt = normalizeInstant(normalizedInput.firstSeenAt, "invalid_first_seen_at");
+  const lastSeenAt = normalizeInstant(normalizedInput.lastSeenAt, "invalid_last_seen_at");
   if (new Date(lastSeenAt).getTime() < new Date(firstSeenAt).getTime()) throw new Error("last_seen_before_first_seen");
 
-  const visitedPaths = [...new Set(input.visitedPaths.map(sanitizeVisitedPath).filter((path): path is string => path !== null))]
+  const visitedPaths = [...new Set(normalizedInput.visitedPaths.map(sanitizeVisitedPath).filter((path): path is string => path !== null))]
     .slice(0, 20);
 
   return {
-    ...input,
     providerName,
     providerEventReference,
     companyName,
-    companyDomain: normalizeDomain(input.companyDomain),
+    companyDomain: normalizeDomain(normalizedInput.companyDomain),
     firstSeenAt,
     lastSeenAt,
+    matchConfidence: normalizedInput.matchConfidence,
+    providerMatchVerified: normalizedInput.providerMatchVerified,
     visitedPaths,
   };
 }
@@ -216,26 +292,27 @@ export function buildWebsiteCompanyObservation(input: WebsiteCompanyObservationI
 export function mapWebsiteCompanyObservationToIntentSignal(
   observation: WebsiteCompanyObservation,
 ): IntentRadarSignal {
-  const highConfidence = observation.providerMatchVerified && observation.matchConfidence >= 85;
-  const pageContext = observation.visitedPaths.length > 0
-    ? ` Visited paths: ${observation.visitedPaths.join(", ")}.`
+  const normalizedObservation = buildWebsiteCompanyObservation(observation);
+  const highConfidence = normalizedObservation.providerMatchVerified && normalizedObservation.matchConfidence >= 85;
+  const pageContext = normalizedObservation.visitedPaths.length > 0
+    ? ` Visited paths: ${normalizedObservation.visitedPaths.join(", ")}.`
     : "";
 
   return buildIntentRadarSignal({
-    companyName: observation.companyName,
-    companyDomain: observation.companyDomain,
+    companyName: normalizedObservation.companyName,
+    companyDomain: normalizedObservation.companyDomain,
     source: "WEBSITE_IDENTIFICATION",
-    sourceReference: `website-id:${observation.providerName}:${observation.providerEventReference}`,
+    sourceReference: `website-id:${normalizedObservation.providerName}:${normalizedObservation.providerEventReference}`,
     sourceUrl: null,
-    observedAt: observation.lastSeenAt,
-    expiresAt: new Date(new Date(observation.lastSeenAt).getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    observedAt: normalizedObservation.lastSeenAt,
+    expiresAt: new Date(new Date(normalizedObservation.lastSeenAt).getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
     signalFamily: "DIGITAL_INTENT",
     signalType: "COMPANY_IDENTIFIED_ON_FEH_WEBSITE",
-    summary: `${observation.providerName} identified ${observation.companyName} at company level with stated match confidence ${observation.matchConfidence}.${pageContext}`,
-    evidenceBasis: observation.providerMatchVerified ? "VERIFIED_FACT" : "INFERENCE",
-    sourceVerified: observation.providerMatchVerified,
-    confidence: observation.matchConfidence,
-    strength: highConfidence ? "STRONG" : observation.matchConfidence >= 60 ? "MEDIUM" : "WEAK",
+    summary: `${normalizedObservation.providerName} identified ${normalizedObservation.companyName} at company level with stated match confidence ${normalizedObservation.matchConfidence}.${pageContext}`,
+    evidenceBasis: normalizedObservation.providerMatchVerified ? "VERIFIED_FACT" : "INFERENCE",
+    sourceVerified: normalizedObservation.providerMatchVerified,
+    confidence: normalizedObservation.matchConfidence,
+    strength: highConfidence ? "STRONG" : normalizedObservation.matchConfidence >= 60 ? "MEDIUM" : "WEAK",
     provenance: "PROVIDER_ENRICHMENT",
   });
 }

@@ -52,6 +52,48 @@ test("unknown price, payment-details requirement or missing privacy evidence blo
   assert.equal(evaluateWebsiteIdentificationTrial({ ...candidate, dpaAvailable: false }, 5000).status, "BLOCKED");
 });
 
+test("trial evidence must use real booleans, reviewed currency and safe integer economics", () => {
+  for (const forgedCandidate of [
+    { ...candidate, apiAvailable: "true" as never },
+    { ...candidate, companyLevelIdentification: 1 as never },
+    { ...candidate, privacyDocumentationAvailable: "yes" as never },
+    { ...candidate, dpaAvailable: {} as never },
+  ]) {
+    assert.throws(
+      () => evaluateWebsiteIdentificationTrial(forgedCandidate, 5000),
+      /invalid_trial_evidence/,
+    );
+  }
+
+  assert.throws(
+    () => evaluateWebsiteIdentificationTrial({ ...candidate, currency: "BTC" as never }, 5000),
+    /invalid_trial_currency/,
+  );
+  assert.throws(
+    () => evaluateWebsiteIdentificationTrial(candidate, Number.MAX_SAFE_INTEGER + 1),
+    /invalid_budget/,
+  );
+  assert.throws(
+    () => evaluateWebsiteIdentificationTrial({ ...candidate, monthlyPriceMinor: Number.MAX_SAFE_INTEGER + 1 }, 5000),
+    /invalid_monthly_price/,
+  );
+});
+
+test("trial candidate runtime record fields are validated before use", () => {
+  assert.throws(
+    () => evaluateWebsiteIdentificationTrial({ ...candidate, providerName: 123 as unknown as string }, 5000),
+    /invalid_provider_name/,
+  );
+  assert.throws(
+    () => evaluateWebsiteIdentificationTrial({ ...candidate, monthlyPriceMinor: "4900" as unknown as number }, 5000),
+    /invalid_monthly_price/,
+  );
+  assert.throws(
+    () => evaluateWebsiteIdentificationTrial({ ...candidate, freeTrialDays: "14" as unknown as number }, 5000),
+    /invalid_trial_days/,
+  );
+});
+
 test("website observation strips query strings/fragments and ignores absolute external URLs", () => {
   const observation = websiteObservation({
     visitedPaths: [
@@ -115,6 +157,83 @@ test("malformed company domains are rejected before they become company identity
       /invalid_company_domain/,
     );
   }
+});
+
+test("website observation runtime record fields fail closed and extras are stripped", () => {
+  const base = {
+    providerName: "Example Provider",
+    providerEventReference: "event-42",
+    companyName: "Example Manufacturing Ltd",
+    companyDomain: "example-manufacturing.co.uk",
+    firstSeenAt: "2026-09-23T10:00:00Z",
+    lastSeenAt: "2026-09-23T10:10:00Z",
+    matchConfidence: 92,
+    providerMatchVerified: true,
+    visitedPaths: ["/business-energy"],
+  } as const;
+
+  for (const [field, value] of [
+    ["providerName", 123],
+    ["providerEventReference", { value: "event-42" }],
+    ["companyName", ["Example Manufacturing Ltd"]],
+    ["companyDomain", 42],
+    ["firstSeenAt", true],
+    ["lastSeenAt", 20260923],
+    ["matchConfidence", "92"],
+    ["providerMatchVerified", "true"],
+    ["visitedPaths", "/business-energy"],
+    ["visitedPaths", ["/business-energy", 123]],
+  ] as const) {
+    assert.throws(
+      () => buildWebsiteCompanyObservation(
+        { ...base, [field]: value } as unknown as Parameters<typeof buildWebsiteCompanyObservation>[0],
+      ),
+      /invalid_|provider_event/,
+    );
+  }
+
+  const withExtra = buildWebsiteCompanyObservation({
+    ...base,
+    unreviewedProviderField: "discard-me",
+  } as typeof base & { unreviewedProviderField: string });
+  assert.equal("unreviewedProviderField" in withExtra, false);
+});
+
+test("provider verification must be a real boolean before provenance is derived", () => {
+  for (const providerMatchVerified of ["true", 1]) {
+    assert.throws(
+      () => websiteObservation({ providerMatchVerified: providerMatchVerified as never }),
+      /invalid_provider_match_verification/,
+    );
+  }
+
+  const forgedObservation = {
+    ...websiteObservation(),
+    providerMatchVerified: "true" as never,
+  };
+
+  assert.throws(
+    () => mapWebsiteCompanyObservationToIntentSignal(forgedObservation),
+    /invalid_provider_match_verification/,
+  );
+});
+
+test("direct mapper revalidates the full observation instead of trusting typed callers", () => {
+  const canonical = websiteObservation();
+  assert.throws(
+    () => mapWebsiteCompanyObservationToIntentSignal({
+      ...canonical,
+      matchConfidence: "99" as unknown as number,
+    }),
+    /invalid_match_confidence/,
+  );
+  assert.throws(
+    () => mapWebsiteCompanyObservationToIntentSignal({
+      ...canonical,
+      visitedPaths: ["/business-energy", 42] as unknown as string[],
+    }),
+    /invalid_visited_paths/,
+  );
 });
 
 test("strong company identification stays website context and cannot bootstrap Apollo", () => {
