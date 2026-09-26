@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   mapCompaniesHouseFilingToIntentSignal,
+  normalizeCompaniesHouseFilingHistoryPayload,
   planCompaniesHouseFilingCrawl,
   selectCompaniesHouseTriggerSignals,
 } from "./companiesHouseTriggerCrawler.ts";
@@ -35,6 +36,61 @@ test("crawl plan is read-only, credential-free at planning time and does not exe
   assert.equal(plan.endpoint, "https://api.company-information.service.gov.uk/company/12345678/filing-history");
 });
 
+test("runtime payload normalization accepts official filing-history field names only", () => {
+  const filings = normalizeCompaniesHouseFilingHistoryPayload({
+    items: [
+      {
+        transaction_id: "tx-2026-sh01-1",
+        type: "SH01",
+        category: "capital",
+        description: "Statement of capital following an allotment of shares",
+        date: "2026-09-20",
+        ignored_extra_field: "not persisted",
+      },
+    ],
+    total_count: 1,
+    start_index: 0,
+    items_per_page: 25,
+  });
+
+  assert.deepEqual(filings, [strongFiling]);
+  assert.equal(selectCompaniesHouseTriggerSignals(company, filings).length, 1);
+});
+
+test("runtime payload normalization fails closed on non-object/non-array provider shapes", () => {
+  for (const payload of [null, "items", [], { items: "not-an-array" }]) {
+    assert.throws(
+      () => normalizeCompaniesHouseFilingHistoryPayload(payload),
+      /invalid_filing_history_/,
+    );
+  }
+});
+
+test("runtime payload normalization rejects truthy non-string filing evidence", () => {
+  const base = {
+    transaction_id: "tx-2026-sh01-1",
+    type: "SH01",
+    category: "capital",
+    description: "Statement of capital following an allotment of shares",
+    date: "2026-09-20",
+  };
+
+  for (const [field, value] of [
+    ["transaction_id", 123],
+    ["type", true],
+    ["category", { value: "capital" }],
+    ["description", ["allotment"]],
+    ["date", 20260920],
+  ] as const) {
+    assert.throws(
+      () => normalizeCompaniesHouseFilingHistoryPayload({
+        items: [{ ...base, [field]: value }],
+      }),
+      /invalid_filing_/,
+    );
+  }
+});
+
 test("recognized official filing maps to a verified Intent Radar fact", () => {
   const signal = mapCompaniesHouseFilingToIntentSignal(company, strongFiling);
   assert.ok(signal);
@@ -50,6 +106,50 @@ test("recognized official filing maps to a verified Intent Radar fact", () => {
   assert.equal(assessment.apolloEnrichmentAllowed, true);
   assert.equal(assessment.crmWriteAllowed, false);
   assert.equal(assessment.outreachAllowed, false);
+});
+
+test("direct mapper revalidates company identity runtime types", () => {
+  assert.throws(
+    () => mapCompaniesHouseFilingToIntentSignal(
+      { ...company, companyName: 123 as unknown as string },
+      strongFiling,
+    ),
+    /invalid_company_name/,
+  );
+
+  assert.throws(
+    () => mapCompaniesHouseFilingToIntentSignal(
+      { ...company, companyNumber: true as unknown as string },
+      strongFiling,
+    ),
+    /invalid_company_number/,
+  );
+
+  assert.throws(
+    () => mapCompaniesHouseFilingToIntentSignal(
+      { ...company, companyDomain: { value: "example-manufacturing.co.uk" } as unknown as string },
+      strongFiling,
+    ),
+    /invalid_company_domain/,
+  );
+});
+
+test("direct mapper revalidates filing runtime types even when provider normalization is bypassed", () => {
+  for (const [field, value] of [
+    ["transactionId", 123],
+    ["type", true],
+    ["category", { value: "capital" }],
+    ["description", ["allotment"]],
+    ["date", 20260920],
+  ] as const) {
+    assert.throws(
+      () => mapCompaniesHouseFilingToIntentSignal(
+        company,
+        { ...strongFiling, [field]: value } as unknown as typeof strongFiling,
+      ),
+      /invalid_filing_|invalid_transaction_id/,
+    );
+  }
 });
 
 test("unknown filing types are ignored rather than guessed", () => {

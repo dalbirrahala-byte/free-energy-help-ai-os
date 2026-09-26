@@ -38,6 +38,8 @@ type FilingTrigger = Readonly<{
   ttlDays: number;
 }>;
 
+type UnknownRecord = Record<string, unknown>;
+
 const FILING_TRIGGERS: Readonly<Record<string, FilingTrigger>> = {
   NEWINC: {
     signalType: "COMPANY_INCORPORATED",
@@ -146,6 +148,54 @@ function addDays(instant: string, days: number): string {
   return parsed.toISOString();
 }
 
+function asRecord(value: unknown, errorCode: string): UnknownRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(errorCode);
+  }
+  return value as UnknownRecord;
+}
+
+function requireString(record: UnknownRecord, key: string, errorCode: string): string {
+  const value = record[key];
+  if (typeof value !== "string") throw new Error(errorCode);
+  return value;
+}
+
+function optionalNullableString(
+  record: UnknownRecord,
+  key: string,
+  errorCode: string,
+): string | null | undefined {
+  const value = record[key];
+  if (value === undefined || value === null) return value;
+  if (typeof value !== "string") throw new Error(errorCode);
+  return value;
+}
+
+function normalizeCompaniesHouseCompanyIdentity(
+  company: unknown,
+): CompaniesHouseCompanyIdentity {
+  const record = asRecord(company, "invalid_company_identity");
+  return {
+    companyName: requireString(record, "companyName", "invalid_company_name"),
+    companyNumber: requireString(record, "companyNumber", "invalid_company_number"),
+    companyDomain: optionalNullableString(record, "companyDomain", "invalid_company_domain"),
+  };
+}
+
+function normalizeCompaniesHouseFilingItem(
+  filing: unknown,
+): CompaniesHouseFilingItem {
+  const record = asRecord(filing, "invalid_filing_item");
+  return {
+    transactionId: requireString(record, "transactionId", "invalid_filing_transaction_id"),
+    type: requireString(record, "type", "invalid_filing_type"),
+    category: requireString(record, "category", "invalid_filing_category"),
+    description: requireString(record, "description", "invalid_filing_description"),
+    date: requireString(record, "date", "invalid_filing_date"),
+  };
+}
+
 export function planCompaniesHouseFilingCrawl(companyNumber: string): CompaniesHouseCrawlerPlan {
   const normalized = normalizeCompanyNumber(companyNumber);
   return {
@@ -161,24 +211,44 @@ export function planCompaniesHouseFilingCrawl(companyNumber: string): CompaniesH
   };
 }
 
+export function normalizeCompaniesHouseFilingHistoryPayload(
+  payload: unknown,
+): readonly CompaniesHouseFilingItem[] {
+  const root = asRecord(payload, "invalid_filing_history_payload");
+  if (!Array.isArray(root.items)) throw new Error("invalid_filing_history_items");
+
+  return root.items.map((rawItem) => {
+    const item = asRecord(rawItem, "invalid_filing_history_item");
+    return {
+      transactionId: requireString(item, "transaction_id", "invalid_filing_transaction_id"),
+      type: requireString(item, "type", "invalid_filing_type"),
+      category: requireString(item, "category", "invalid_filing_category"),
+      description: requireString(item, "description", "invalid_filing_description"),
+      date: requireString(item, "date", "invalid_filing_date"),
+    };
+  });
+}
+
 export function mapCompaniesHouseFilingToIntentSignal(
   company: CompaniesHouseCompanyIdentity,
   filing: CompaniesHouseFilingItem,
 ): IntentRadarSignal | null {
-  const trigger = FILING_TRIGGERS[filingTypeKey(filing.type)];
+  const normalizedCompany = normalizeCompaniesHouseCompanyIdentity(company);
+  const normalizedFiling = normalizeCompaniesHouseFilingItem(filing);
+  const trigger = FILING_TRIGGERS[filingTypeKey(normalizedFiling.type)];
   if (!trigger) return null;
 
-  const companyNumber = normalizeCompanyNumber(company.companyNumber);
-  const transactionId = normalizeTransactionId(filing.transactionId);
-  const observedAt = normalizeFilingDate(filing.date);
-  const description = cleanToken(filing.description);
-  const category = cleanToken(filing.category);
+  const companyNumber = normalizeCompanyNumber(normalizedCompany.companyNumber);
+  const transactionId = normalizeTransactionId(normalizedFiling.transactionId);
+  const observedAt = normalizeFilingDate(normalizedFiling.date);
+  const description = cleanToken(normalizedFiling.description);
+  const category = cleanToken(normalizedFiling.category);
   if (!description || !category) throw new Error("invalid_filing_metadata");
 
   return buildIntentRadarSignal({
-    companyName: company.companyName,
+    companyName: normalizedCompany.companyName,
     companyNumber,
-    companyDomain: company.companyDomain ?? null,
+    companyDomain: normalizedCompany.companyDomain ?? null,
     source: "COMPANIES_HOUSE",
     sourceReference: `filing:${transactionId}`,
     sourceUrl: `https://find-and-update.company-information.service.gov.uk/company/${encodeURIComponent(companyNumber)}/filing-history`,
@@ -186,7 +256,7 @@ export function mapCompaniesHouseFilingToIntentSignal(
     expiresAt: addDays(observedAt, trigger.ttlDays),
     signalFamily: trigger.signalFamily,
     signalType: trigger.signalType,
-    summary: `Companies House filing ${filing.type}: ${description} (${category}).`,
+    summary: `Companies House filing ${normalizedFiling.type}: ${description} (${category}).`,
     evidenceBasis: "VERIFIED_FACT",
     sourceVerified: true,
     confidence: trigger.confidence,
