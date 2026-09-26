@@ -53,9 +53,61 @@ export type BicsIntentRadarIntegration = Readonly<{
   explanation: string;
 }>;
 
+type UnknownRecord = Record<string, unknown>;
+
 function clean(value: string | null | undefined, max = 500): string | null {
   const cleaned = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, max) : null;
+}
+
+function asRecord(value: unknown, errorCode: string): UnknownRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(errorCode);
+  }
+  return value as UnknownRecord;
+}
+
+function requireString(record: UnknownRecord, key: string, errorCode: string): string {
+  const value = record[key];
+  if (typeof value !== "string") throw new Error(errorCode);
+  return value;
+}
+
+function requireNumber(record: UnknownRecord, key: string, errorCode: string): number {
+  const value = record[key];
+  if (typeof value !== "number") throw new Error(errorCode);
+  return value;
+}
+
+function normalizeMetric(value: unknown): BicsManufacturingMetric {
+  if (
+    typeof value !== "string" ||
+    !BICS_MANUFACTURING_METRICS.includes(value as BicsManufacturingMetric)
+  ) {
+    throw new Error("invalid_bics_metric");
+  }
+  return value as BicsManufacturingMetric;
+}
+
+function normalizeObservationRuntime(
+  input: unknown,
+): BicsManufacturingObservationInput {
+  const record = asRecord(input, "invalid_bics_observation");
+  if (record.industry !== "MANUFACTURING") throw new Error("invalid_bics_industry");
+  if (record.officialStatisticsInDevelopment !== true) {
+    throw new Error("invalid_bics_statistics_status");
+  }
+
+  return {
+    wave: requireNumber(record, "wave", "invalid_bics_wave"),
+    releaseDate: requireString(record, "releaseDate", "invalid_bics_release_date"),
+    surveyPeriodLabel: requireString(record, "surveyPeriodLabel", "invalid_bics_period"),
+    industry: "MANUFACTURING",
+    metric: normalizeMetric(record.metric),
+    percentage: requireNumber(record, "percentage", "invalid_bics_percentage"),
+    sourceUrl: requireString(record, "sourceUrl", "invalid_bics_source_url"),
+    officialStatisticsInDevelopment: true,
+  };
 }
 
 function normalizeDate(value: string): string {
@@ -86,10 +138,8 @@ function normalizeSourceUrl(value: string): string {
   return url.toString();
 }
 
-export function buildBicsManufacturingObservation(
-  input: BicsManufacturingObservationInput,
-): BicsManufacturingObservation {
-  if (!Number.isInteger(input.wave) || input.wave <= 0) throw new Error("invalid_bics_wave");
+function validateObservationFields(input: BicsManufacturingObservationInput): string {
+  if (!Number.isSafeInteger(input.wave) || input.wave <= 0) throw new Error("invalid_bics_wave");
   if (input.industry !== "MANUFACTURING") throw new Error("invalid_bics_industry");
   if (input.officialStatisticsInDevelopment !== true) throw new Error("invalid_bics_statistics_status");
   if (!BICS_MANUFACTURING_METRICS.includes(input.metric)) throw new Error("invalid_bics_metric");
@@ -98,12 +148,44 @@ export function buildBicsManufacturingObservation(
   }
   const surveyPeriodLabel = clean(input.surveyPeriodLabel, 160);
   if (!surveyPeriodLabel) throw new Error("invalid_bics_period");
+  return surveyPeriodLabel;
+}
+
+export function buildBicsManufacturingObservation(
+  input: BicsManufacturingObservationInput,
+): BicsManufacturingObservation {
+  const normalizedInput = normalizeObservationRuntime(input);
+  const surveyPeriodLabel = validateObservationFields(normalizedInput);
 
   return {
-    ...input,
-    releaseDate: normalizeDate(input.releaseDate),
+    wave: normalizedInput.wave,
+    releaseDate: normalizeDate(normalizedInput.releaseDate),
     surveyPeriodLabel,
-    sourceUrl: normalizeSourceUrl(input.sourceUrl),
+    industry: "MANUFACTURING",
+    metric: normalizedInput.metric,
+    percentage: normalizedInput.percentage,
+    sourceUrl: normalizeSourceUrl(normalizedInput.sourceUrl),
+    officialStatisticsInDevelopment: true,
+  };
+}
+
+function revalidateBicsManufacturingObservation(
+  input: BicsManufacturingObservation,
+): BicsManufacturingObservation {
+  const normalizedInput = normalizeObservationRuntime(input);
+  const surveyPeriodLabel = validateObservationFields(normalizedInput);
+  const releaseMatch = /^(\d{4}-\d{2}-\d{2})T00:00:00\.000Z$/.exec(normalizedInput.releaseDate);
+  if (!releaseMatch) throw new Error("invalid_bics_release_date");
+
+  return {
+    wave: normalizedInput.wave,
+    releaseDate: normalizeDate(releaseMatch[1]),
+    surveyPeriodLabel,
+    industry: "MANUFACTURING",
+    metric: normalizedInput.metric,
+    percentage: normalizedInput.percentage,
+    sourceUrl: normalizeSourceUrl(normalizedInput.sourceUrl),
+    officialStatisticsInDevelopment: true,
   };
 }
 
@@ -119,10 +201,12 @@ function latestByMetric(
 export function buildBicsManufacturingContext(
   observations: readonly BicsManufacturingObservation[],
 ): BicsManufacturingContext | null {
+  if (!Array.isArray(observations)) throw new Error("invalid_bics_observations");
   if (observations.length === 0) return null;
 
+  const validatedObservations = observations.map(revalidateBicsManufacturingObservation);
   const deduped = [...new Map(
-    observations.map((item) => [`${item.wave}:${item.metric}:${item.surveyPeriodLabel}`, item]),
+    validatedObservations.map((item) => [`${item.wave}:${item.metric}:${item.surveyPeriodLabel}`, item]),
   ).values()];
 
   const latestRelease = [...deduped].sort((a, b) => b.releaseDate.localeCompare(a.releaseDate))[0];
@@ -167,29 +251,58 @@ export function buildBicsManufacturingContext(
   };
 }
 
+function contextMatchesRebuild(
+  context: BicsManufacturingContext,
+  rebuilt: BicsManufacturingContext,
+): boolean {
+  return context.industry === rebuilt.industry &&
+    context.latestReleaseDate === rebuilt.latestReleaseDate &&
+    context.latestWave === rebuilt.latestWave &&
+    context.energyPressureScore === rebuilt.energyPressureScore &&
+    context.opportunityContext === rebuilt.opportunityContext &&
+    context.companyFact === false &&
+    context.sourceVerifiedAtIndustryLevel === true &&
+    context.apolloEnrichmentAllowed === false &&
+    context.crmWriteAllowed === false &&
+    context.outreachAllowed === false;
+}
+
 export function integrateBicsWithIntentRadar(
   snapshot: IntentRadarSnapshot,
   context: BicsManufacturingContext,
 ): BicsIntentRadarIntegration {
   const strongVerifiedCompanySignalPresent = snapshot.strongVerifiedSignals > 0;
-  const reviewPriorityLift = !strongVerifiedCompanySignalPresent
+
+  let rebuiltContext: BicsManufacturingContext | null = null;
+  try {
+    rebuiltContext = buildBicsManufacturingContext(context.observations);
+  } catch {
+    rebuiltContext = null;
+  }
+  const canonicalContext = rebuiltContext !== null && contextMatchesRebuild(context, rebuiltContext)
+    ? rebuiltContext
+    : null;
+  const opportunityContext = canonicalContext?.opportunityContext ?? "NORMAL";
+  const reviewPriorityLift = !strongVerifiedCompanySignalPresent || canonicalContext === null
     ? 0
-    : context.opportunityContext === "HIGH"
+    : opportunityContext === "HIGH"
       ? 15
-      : context.opportunityContext === "ELEVATED"
+      : opportunityContext === "ELEVATED"
         ? 8
         : 0;
 
   return {
     companyName: snapshot.companyName,
-    opportunityContext: context.opportunityContext,
+    opportunityContext,
     reviewPriorityLift,
     strongVerifiedCompanySignalPresent,
-    apolloEnrichmentAllowed: strongVerifiedCompanySignalPresent && snapshot.apolloEnrichmentAllowed,
+    apolloEnrichmentAllowed: canonicalContext !== null && strongVerifiedCompanySignalPresent && snapshot.apolloEnrichmentAllowed,
     crmWriteAllowed: false,
     outreachAllowed: false,
-    explanation: strongVerifiedCompanySignalPresent
-      ? "BICS is aggregate manufacturing context only; it may raise human review priority but does not create or strengthen a company fact."
-      : "BICS is aggregate manufacturing context only and cannot create a company-level opportunity without an independent verified company signal.",
+    explanation: canonicalContext === null
+      ? "BICS context failed runtime provenance reconstruction and cannot affect company review priority or Apollo readiness."
+      : strongVerifiedCompanySignalPresent
+        ? "BICS is aggregate manufacturing context only; it may raise human review priority but does not create or strengthen a company fact."
+        : "BICS is aggregate manufacturing context only and cannot create a company-level opportunity without an independent verified company signal.",
   };
 }
