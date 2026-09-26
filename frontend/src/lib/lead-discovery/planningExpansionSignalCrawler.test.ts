@@ -56,6 +56,70 @@ test("authoritative exact-applicant expansion can become a strong verified revie
   assert.equal(assessment.outreachAllowed, false);
 });
 
+test("runtime enum lookalikes fail closed instead of becoming address-match inference", () => {
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(company, {
+      ...localAuthorityApplication,
+      matchBasis: "CLAIMED_MATCH" as never,
+    }),
+    /invalid_planning_match_basis/,
+  );
+
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(company, {
+      ...localAuthorityApplication,
+      sourceTier: "TRUSTED_LOCAL_AUTHORITY" as never,
+    }),
+    /invalid_planning_source_tier/,
+  );
+});
+
+test("runtime record fields fail closed instead of throwing through string methods", () => {
+  for (const [field, value] of [
+    ["applicationReference", 123],
+    ["description", { value: "new factory" }],
+    ["status", true],
+    ["receivedAt", ["2026-09-20T09:00:00Z"]],
+    ["sourceUrl", 999],
+    ["applicantName", { value: "Example Manufacturing Ltd" }],
+    ["siteAddress", ["1 Industrial Way"]],
+  ] as const) {
+    assert.throws(
+      () => mapPlanningApplicationToIntentSignal(
+        company,
+        { ...localAuthorityApplication, [field]: value } as unknown as typeof localAuthorityApplication,
+      ),
+      /invalid_planning_/,
+    );
+  }
+});
+
+test("runtime company identity fields are revalidated at the mapper boundary", () => {
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(
+      { ...company, companyName: 123 as unknown as string },
+      localAuthorityApplication,
+    ),
+    /invalid_planning_company_name/,
+  );
+
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(
+      { ...company, companyNumber: true as unknown as string },
+      localAuthorityApplication,
+    ),
+    /invalid_planning_company_number/,
+  );
+
+  assert.throws(
+    () => mapPlanningApplicationToIntentSignal(
+      { ...company, companyDomain: { value: "example-manufacturing.co.uk" } as unknown as string },
+      localAuthorityApplication,
+    ),
+    /invalid_planning_company_domain/,
+  );
+});
+
 test("caller-claimed local-authority tier cannot verify an arbitrary web source", () => {
   const signal = mapPlanningApplicationToIntentSignal(company, {
     ...localAuthorityApplication,
@@ -167,4 +231,5 @@ test("selector deduplicates planning records", () => {
 test("invalid offsets fail closed", () => {
   assert.throws(() => planPlanningApplicationCrawl(-1), /invalid_offset/);
   assert.throws(() => planPlanningApplicationCrawl(1.5), /invalid_offset/);
+  assert.throws(() => planPlanningApplicationCrawl(Number.MAX_SAFE_INTEGER + 1), /invalid_offset/);
 });
