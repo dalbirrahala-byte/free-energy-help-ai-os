@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches:
+      - main
       - audit/factory-041-provenance-invariants
 
 permissions:
