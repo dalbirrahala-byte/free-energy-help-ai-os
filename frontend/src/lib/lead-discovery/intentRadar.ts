@@ -1,4 +1,7 @@
-import type { Factory044SignalFamily } from "./factory044Discovery.ts";
+import {
+  FACTORY_044_SIGNAL_FAMILIES,
+  type Factory044SignalFamily,
+} from "./factory044Discovery.ts";
 
 export const INTENT_RADAR_SOURCES = [
   "COMPANIES_HOUSE",
@@ -91,6 +94,9 @@ const APOLLO_TRIGGER_SOURCES: ReadonlySet<IntentRadarSource> = new Set([
   "ONLINE_DIRECT",
 ]);
 
+const INTENT_RADAR_EVIDENCE_BASES: readonly IntentRadarEvidenceBasis[] = ["VERIFIED_FACT", "INFERENCE"];
+const INTENT_RADAR_STRENGTHS: readonly IntentRadarSignalStrength[] = ["STRONG", "MEDIUM", "WEAK"];
+
 function cleanText(value: string | null | undefined, maxLength = 240): string | null {
   const cleaned = value?.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, maxLength) : null;
@@ -169,14 +175,25 @@ function canonical(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9._:-]/g, "");
 }
 
+function validateRuntimeEnums(input: IntentRadarSignalInput): void {
+  if (!INTENT_RADAR_SOURCES.includes(input.source)) throw new Error("invalid_signal_source");
+  if (!FACTORY_044_SIGNAL_FAMILIES.includes(input.signalFamily)) throw new Error("invalid_signal_family");
+  if (!INTENT_RADAR_EVIDENCE_BASES.includes(input.evidenceBasis)) throw new Error("invalid_evidence_basis");
+  if (!INTENT_RADAR_STRENGTHS.includes(input.strength)) throw new Error("invalid_signal_strength");
+  if (!INTENT_RADAR_PROVENANCE.includes(input.provenance)) throw new Error("invalid_signal_provenance");
+  if (typeof input.sourceVerified !== "boolean") throw new Error("invalid_source_verification");
+}
+
 export function buildIntentRadarSignal(input: IntentRadarSignalInput): IntentRadarSignal {
+  validateRuntimeEnums(input);
+
   const companyName = cleanText(input.companyName, 200);
   const sourceReference = cleanText(input.sourceReference, 300);
   const signalType = cleanText(input.signalType, 120);
   const summary = cleanText(input.summary, 1000);
   if (!companyName || !sourceReference || !signalType || !summary) throw new Error("invalid_signal_text");
 
-  if (!Number.isInteger(input.confidence) || input.confidence < 0 || input.confidence > 100) {
+  if (!Number.isSafeInteger(input.confidence) || input.confidence < 0 || input.confidence > 100) {
     throw new Error("invalid_confidence");
   }
   if (input.evidenceBasis === "VERIFIED_FACT" && !input.sourceVerified) {
@@ -218,27 +235,32 @@ export function buildIntentRadarSignal(input: IntentRadarSignalInput): IntentRad
   };
 }
 
+function revalidateIntentRadarSignal(signal: IntentRadarSignal): IntentRadarSignal {
+  return buildIntentRadarSignal(signal);
+}
+
 export function assessIntentRadarSignal(
   signal: IntentRadarSignal,
   asOf: string,
 ): IntentRadarSignalAssessment {
+  const canonicalSignal = revalidateIntentRadarSignal(signal);
   const asOfInstant = normalizeInstant(asOf, "invalid_as_of");
-  const expired = signal.expiresAt !== null && new Date(signal.expiresAt).getTime() <= new Date(asOfInstant).getTime();
-  const companyIdentityReady = Boolean(signal.companyNumber || signal.companyDomain);
+  const expired = canonicalSignal.expiresAt !== null && new Date(canonicalSignal.expiresAt).getTime() <= new Date(asOfInstant).getTime();
+  const companyIdentityReady = Boolean(canonicalSignal.companyNumber || canonicalSignal.companyDomain);
   const strongVerifiedTrigger =
     !expired &&
-    signal.evidenceBasis === "VERIFIED_FACT" &&
-    signal.sourceVerified &&
-    signal.strength === "STRONG" &&
-    signal.confidence >= 80 &&
-    APOLLO_TRIGGER_SOURCES.has(signal.source);
+    canonicalSignal.evidenceBasis === "VERIFIED_FACT" &&
+    canonicalSignal.sourceVerified &&
+    canonicalSignal.strength === "STRONG" &&
+    canonicalSignal.confidence >= 80 &&
+    APOLLO_TRIGGER_SOURCES.has(canonicalSignal.source);
 
   const reasons: string[] = [];
   if (expired) reasons.push("Signal is expired.");
-  if (signal.evidenceBasis === "INFERENCE") reasons.push("Inference cannot be promoted as a verified fact.");
-  if (!signal.sourceVerified) reasons.push("Source is not verified.");
-  if (signal.strength !== "STRONG" || signal.confidence < 80) reasons.push("Signal is below the strong verified threshold.");
-  if (!APOLLO_TRIGGER_SOURCES.has(signal.source)) reasons.push("Source may inform identity/context but cannot independently trigger Apollo enrichment.");
+  if (canonicalSignal.evidenceBasis === "INFERENCE") reasons.push("Inference cannot be promoted as a verified fact.");
+  if (!canonicalSignal.sourceVerified) reasons.push("Source is not verified.");
+  if (canonicalSignal.strength !== "STRONG" || canonicalSignal.confidence < 80) reasons.push("Signal is below the strong verified threshold.");
+  if (!APOLLO_TRIGGER_SOURCES.has(canonicalSignal.source)) reasons.push("Source may inform identity/context but cannot independently trigger Apollo enrichment.");
   if (!companyIdentityReady) reasons.push("A durable company number or domain is required before provider enrichment.");
   if (strongVerifiedTrigger && companyIdentityReady) reasons.push("Strong verified signal is eligible for enrichment review only.");
   reasons.push("Intent Radar never grants CRM write or outbound contact permission.");
@@ -260,7 +282,8 @@ export function buildIntentRadarSnapshot(
 ): IntentRadarSnapshot | null {
   if (signals.length === 0) return null;
 
-  const deduped = [...new Map(signals.map((signal) => [signal.idempotencyKey, signal])).values()];
+  const canonicalSignals = signals.map(revalidateIntentRadarSignal);
+  const deduped = [...new Map(canonicalSignals.map((signal) => [signal.idempotencyKey, signal])).values()];
   const identities = new Set(deduped.map((signal) => signal.companyNumber ?? signal.companyDomain ?? canonical(signal.companyName)));
   if (identities.size !== 1) throw new Error("mixed_company_identity");
 
