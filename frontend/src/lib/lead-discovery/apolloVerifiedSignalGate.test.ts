@@ -6,7 +6,7 @@ import { buildIntentRadarSignal, buildIntentRadarSnapshot } from "./intentRadar.
 
 const asOf = "2026-09-23T20:00:00Z";
 
-function snapshotFor(source: "COMPANIES_HOUSE" | "WEBSITE_IDENTIFICATION" | "BICS_MANUFACTURING", verified = true) {
+function snapshotFor(source: "PLANNING" | "COMPANIES_HOUSE" | "WEBSITE_IDENTIFICATION" | "BICS_MANUFACTURING", verified = true) {
   const signal = buildIntentRadarSignal({
     companyName: "Example Manufacturing Ltd",
     companyNumber: "12345678",
