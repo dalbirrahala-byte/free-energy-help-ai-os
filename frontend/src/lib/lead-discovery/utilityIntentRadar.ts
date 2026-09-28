@@ -47,7 +47,7 @@ const LOCKS = Object.freeze({
 type RecordValue = Record<string, unknown>;
 // Node-only offline boundary: reject proxies before any reflective operation can run traps.
 // Read descriptors, never properties, then classify only the deeply frozen owned copy.
-function snapshot(value: unknown): unknown {
+export function snapshotUtilityResearchData(value: unknown): unknown {
   const ancestors = new Set<object>();
   let nodes = 0;
   let characters = 0;
@@ -112,7 +112,7 @@ function instant(value: unknown): string {
   if (!Number.isFinite(date.getTime()) || date.toISOString().replace(".000Z", "Z") !== raw.replace(".000Z", "Z")) throw new Error("invalid_research_date");
   return date.toISOString();
 }
-function publicUrl(value: unknown): string {
+export function validateUtilityPublicSourceUrl(value: unknown): string {
   const raw = text(value);
   // Intentionally conservative: query/fragment policies need source-specific review.
   // Reject, never strip components or silently substitute a different evidence URL.
@@ -149,7 +149,7 @@ function contactability(value: unknown) {
  * Restricted/unreviewed sources are excluded before their evidence enters a research record.
  */
 export function assessUtilityIntentResearch(input: unknown, reviewInstant: string, priorResearchKeys: readonly string[] = []) {
-  const owned = record(snapshot({ input, reviewInstant, priorResearchKeys }));
+  const owned = record(snapshotUtilityResearchData({ input, reviewInstant, priorResearchKeys }));
   const asOf = instant(owned.reviewInstant);
   const raw = record(owned.input);
   const priorKeys = owned.priorResearchKeys;
@@ -164,7 +164,7 @@ export function assessUtilityIntentResearch(input: unknown, reviewInstant: strin
   }
   const sourceReviewReference = text(access.reviewReference);
   const source = record(raw.signal);
-  const sourceUrl = publicUrl(source.sourceUrl);
+  const sourceUrl = validateUtilityPublicSourceUrl(source.sourceUrl);
   const hostname = new URL(sourceUrl).hostname;
   const hostAdapter = Object.entries(UTILITY_SOURCE_ADAPTERS).find(([, candidate]) =>
     (candidate.hosts as readonly string[]).includes(hostname))?.[0];
@@ -220,7 +220,12 @@ export function assessUtilityIntentResearch(input: unknown, reviewInstant: strin
   // not make a repeated source record appear new. Keep the existing radar key too.
   const sourceRecordKey = JSON.stringify(["utility-source-record-v1", hostname, signal.source, signal.sourceReference]);
   const sourceUrlKey = JSON.stringify(["utility-source-url-v1", new URL(sourceUrl).href]);
-  const deduplicationKeys = Object.freeze([evidenceKey, sourceRecordKey, sourceUrlKey, signal.idempotencyKey]);
+  // CH filing-list pages and template descriptions are shared by distinct filings.
+  // Their stable transaction reference, not the listing URL or template, is identity.
+  const filingListing = raw.adapter === "COMPANIES_HOUSE" && /^filing:[A-Za-z0-9_-]+$/.test(signal.sourceReference) &&
+    /^\/company\/[A-Z0-9]{8}\/filing-history$/.test(new URL(sourceUrl).pathname);
+  const deduplicationKeys = Object.freeze(filingListing ? [sourceRecordKey, signal.idempotencyKey]
+    : [evidenceKey, sourceRecordKey, sourceUrlKey, signal.idempotencyKey]);
   const scores = Object.freeze({
     intent_score: expired ? 0 : Math.min(12, UTILITY_INTENT_WEIGHTS[interpretation.kind]),
     freshness_score: freshness,
