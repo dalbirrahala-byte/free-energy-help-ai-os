@@ -87,7 +87,6 @@ export type IntentRadarSnapshot = Readonly<{
 }>;
 
 const APOLLO_TRIGGER_SOURCES: ReadonlySet<IntentRadarSource> = new Set([
-  "COMPANIES_HOUSE",
   "PLANNING",
   "INTRODUCER",
   "TENDER_CONTRACT",
@@ -168,6 +167,9 @@ function normalizeOptionalUrl(value: string | null | undefined): string | null {
     throw new Error("invalid_source_url");
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("invalid_source_url");
+  if (parsed.username || parsed.password) throw new Error("invalid_source_url");
+  parsed.search = "";
+  parsed.hash = "";
   return parsed.toString();
 }
 
@@ -221,16 +223,22 @@ export function buildIntentRadarSignal(input: IntentRadarSignalInput): IntentRad
   ].join(":");
 
   return {
-    ...input,
     companyName,
     companyNumber,
     companyDomain,
+    source: input.source,
     sourceReference,
     sourceUrl,
     observedAt,
     expiresAt,
+    signalFamily: input.signalFamily,
     signalType,
     summary,
+    evidenceBasis: input.evidenceBasis,
+    sourceVerified: input.sourceVerified,
+    confidence: input.confidence,
+    strength: input.strength,
+    provenance: input.provenance,
     idempotencyKey,
   };
 }
@@ -280,6 +288,7 @@ export function buildIntentRadarSnapshot(
   signals: readonly IntentRadarSignal[],
   asOf: string,
 ): IntentRadarSnapshot | null {
+  if (!Array.isArray(signals)) throw new Error("invalid_signal_collection");
   if (signals.length === 0) return null;
 
   const canonicalSignals = signals.map(revalidateIntentRadarSignal);
