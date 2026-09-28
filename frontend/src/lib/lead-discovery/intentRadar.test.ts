@@ -30,15 +30,43 @@ function companiesHouseSignal() {
   });
 }
 
-test("strong verified official signal is eligible for Apollo enrichment review only", () => {
+test("Companies House evidence is verified context but cannot independently trigger Apollo enrichment", () => {
   const signal = companiesHouseSignal();
   const assessment = assessIntentRadarSignal(signal, asOf);
 
+  assert.equal(assessment.status, "REVIEW_ONLY");
+  assert.equal(assessment.strongVerifiedTrigger, false);
+  assert.equal(assessment.apolloEnrichmentAllowed, false);
+  assert.equal(assessment.crmWriteAllowed, false);
+  assert.equal(assessment.outreachAllowed, false);
+  assert.match(signal.idempotencyKey, /^intent-radar:companies_house:12345678:/);
+});
+
+test("strong verified planning evidence can reach enrichment review while execution remains outside Intent Radar", () => {
+  const signal = buildIntentRadarSignal({
+    companyName: "Example Manufacturing Ltd",
+    companyNumber: "12345678",
+    companyDomain: "example-manufacturing.co.uk",
+    source: "PLANNING",
+    sourceReference: "planning:24/00123/FUL",
+    sourceUrl: "https://planning.derby.gov.uk/application/24/00123/FUL",
+    observedAt: "2026-09-22T12:00:00Z",
+    expiresAt: "2026-10-22T12:00:00Z",
+    signalFamily: "PROPERTY_DEVELOPMENT",
+    signalType: "FACTORY_EXTENSION_APPROVED",
+    summary: "Verified planning evidence indicates a material site expansion.",
+    evidenceBasis: "VERIFIED_FACT",
+    sourceVerified: true,
+    confidence: 95,
+    strength: "STRONG",
+    provenance: "PUBLIC_OFFICIAL",
+  });
+
+  const assessment = assessIntentRadarSignal(signal, asOf);
   assert.equal(assessment.status, "STRONG_VERIFIED_SIGNAL");
   assert.equal(assessment.apolloEnrichmentAllowed, true);
   assert.equal(assessment.crmWriteAllowed, false);
   assert.equal(assessment.outreachAllowed, false);
-  assert.match(signal.idempotencyKey, /^intent-radar:companies_house:12345678:/);
 });
 
 test("inference cannot be mislabeled as source verified", () => {
@@ -204,8 +232,8 @@ test("snapshot preserves verified facts versus inference, deduplicates evidence 
   assert.equal(snapshot.totalSignals, 2);
   assert.equal(snapshot.verifiedFacts, 1);
   assert.equal(snapshot.inferences, 1);
-  assert.equal(snapshot.strongVerifiedSignals, 1);
-  assert.equal(snapshot.apolloEnrichmentAllowed, true);
+  assert.equal(snapshot.strongVerifiedSignals, 0);
+  assert.equal(snapshot.apolloEnrichmentAllowed, false);
   assert.equal(snapshot.crmWriteAllowed, false);
   assert.equal(snapshot.outreachAllowed, false);
   assert.equal(snapshot.promotionAllowed, false);
@@ -222,4 +250,42 @@ test("mixed company identities are rejected instead of being combined", () => {
   });
 
   assert.throws(() => buildIntentRadarSnapshot([first, second], asOf), /mixed_company_identity/);
+});
+
+test("source URLs discard query and fragment data and reject embedded credentials", () => {
+  const sanitized = buildIntentRadarSignal({
+    ...companiesHouseSignal(),
+    sourceReference: "filing:url-sanitization",
+    sourceUrl: "https://find-and-update.company-information.service.gov.uk/company/12345678/filing-history?utm_source=test#section",
+  });
+  assert.equal(
+    sanitized.sourceUrl,
+    "https://find-and-update.company-information.service.gov.uk/company/12345678/filing-history",
+  );
+
+  assert.throws(
+    () => buildIntentRadarSignal({
+      ...companiesHouseSignal(),
+      sourceReference: "filing:url-credentials",
+      sourceUrl: "https://user:secret@example.com/evidence",
+    }),
+    /invalid_source_url/,
+  );
+});
+
+test("unknown runtime fields are discarded instead of surviving canonicalization", () => {
+  const signal = buildIntentRadarSignal({
+    ...companiesHouseSignal(),
+    sourceReference: "filing:unknown-field",
+    injectedCapability: true,
+  } as Parameters<typeof buildIntentRadarSignal>[0] & { injectedCapability: boolean });
+
+  assert.equal("injectedCapability" in signal, false);
+});
+
+test("snapshot rejects non-array runtime inputs before reading collection properties", () => {
+  assert.throws(
+    () => buildIntentRadarSnapshot({ length: 0 } as unknown as Parameters<typeof buildIntentRadarSnapshot>[0], asOf),
+    /invalid_signal_collection/,
+  );
 });
