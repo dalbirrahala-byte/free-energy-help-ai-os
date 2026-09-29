@@ -103,9 +103,12 @@ test("recognized official filing maps to a verified Intent Radar fact", () => {
   assert.equal(signal.observedAt, "2026-09-20T00:00:00.000Z");
 
   const assessment = assessIntentRadarSignal(signal, "2026-09-23T20:00:00Z");
-  assert.equal(assessment.apolloEnrichmentAllowed, true);
+  assert.equal(assessment.status, "REVIEW_ONLY");
+  assert.equal(assessment.strongVerifiedTrigger, false);
+  assert.equal(assessment.apolloEnrichmentAllowed, false);
   assert.equal(assessment.crmWriteAllowed, false);
   assert.equal(assessment.outreachAllowed, false);
+  assert.ok(assessment.reasons.some((reason) => reason.includes("cannot independently trigger Apollo enrichment")));
 });
 
 test("direct mapper revalidates company identity runtime types", () => {
