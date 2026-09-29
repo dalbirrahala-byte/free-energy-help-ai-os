@@ -32,8 +32,21 @@ function snapshotFor(source: "PLANNING" | "COMPANIES_HOUSE" | "WEBSITE_IDENTIFIC
   return snapshot;
 }
 
-test("strong verified Companies House signal becomes enrichment-review eligible with every execution capability still off", () => {
+test("strong verified Companies House signal remains context-only and cannot independently unlock Apollo review", () => {
   const plan = planApolloEnrichmentFromIntentRadar(snapshotFor("COMPANIES_HOUSE"), asOf);
+
+  assert.equal(plan.status, "BLOCKED");
+  assert.equal(plan.strongVerifiedSignals, 0);
+  assert.equal(plan.enrichmentExecutionAllowed, false);
+  assert.equal(plan.creditsSpendAllowed, false);
+  assert.equal(plan.crmWriteAllowed, false);
+  assert.equal(plan.sequenceEnrollmentAllowed, false);
+  assert.equal(plan.emailSendAllowed, false);
+  assert.equal(plan.whatsappSendAllowed, false);
+});
+
+test("strong verified planning signal can reach human enrichment review while every execution capability stays off", () => {
+  const plan = planApolloEnrichmentFromIntentRadar(snapshotFor("PLANNING"), asOf);
 
   assert.equal(plan.status, "READY_FOR_HUMAN_ENRICHMENT_REVIEW");
   assert.equal(plan.strongVerifiedSignals, 1);
