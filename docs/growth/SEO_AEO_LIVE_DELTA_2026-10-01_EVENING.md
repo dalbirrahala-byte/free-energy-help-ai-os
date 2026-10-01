@@ -2,10 +2,11 @@
 
 Status: research / preview only. No production change authorised.
 
-## Verified live-state changes
-- The live business-energy contract renewal page now uses the real FEH telephone number 01332 605506 and presents a restrained five-step renewal-review flow.
-- The earlier lower-page 01332 000000 renewal CTA is no longer present in the current indexed page.
+## Verified live-state — corrected 1 October 2026
+- A fresh direct crawl of the live business-energy contract renewal page still shows mixed telephone data: 01332 605506 appears in several CTAs/footer locations, but the lower "Book Your Free Contract Renewal Review" block still shows 01332 000000 and the phone input placeholder also shows 01332 000000.
+- The live renewal copy still says an expired contract can become an "out-of-contract (deemed) rate" and also makes broad timing/notice claims. These must remain separate in the preview correction.
 - Ofgem's current business switching guidance distinguishes rolling/evergreen, out-of-contract and deemed-rate arrangements. Keep those concepts distinct in future copy.
+- This correction supersedes the earlier assumption in this file that the lower placeholder had already disappeared.
 
 ## Remaining factual corrections
 1. /what-is-an-mpan still opens by calling an MPAN a unique 21-digit reference. Tighten this to distinguish the 13-digit MPAN Core from the wider traditional Supply Number presentation.
