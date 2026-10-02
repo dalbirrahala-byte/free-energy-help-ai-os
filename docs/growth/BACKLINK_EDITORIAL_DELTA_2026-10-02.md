@@ -18,12 +18,19 @@ Date: 2 October 2026
 - Exact next action: verify the current unpaid editorial/contributor route before preparing a pitch. Do not contact until that route is verified.
 - Reject if: only sponsored or paid-link placement is available.
 
+### TheBusinessDesk.com East Midlands — QUALIFIED EARNED-EDITORIAL ROUTE
+- Evidence: TheBusinessDesk.com's current contact information lists a dedicated East Midlands editorial contact separately from its commercial/sales contact.
+- FEH target page: evidence-controlled Quantum Lab page after final QA; later, corrected factual MPAN/MPRN, renewal or change-of-tenancy guidance where the story is genuinely newsworthy.
+- Exact next action: prepare a short factual East Midlands editorial pitch and HOLD for human review. Do not ask for a backlink.
+- Link policy: any link must be editorially chosen; paid promotional products are not counted as earned backlinks.
+- Reject if: placement requires payment, sponsored content, a Business Profile, keyword-anchor negotiation or a guaranteed follow link.
+
 ## Rejected / not counted as earned backlink opportunities
 
 ### TheBusinessDesk paid promotion route — REJECT AS BACKLINK TACTIC
 - Evidence: the current 'Promote Your Business' route is an advertising offer.
-- Decision: do not count paid advertising as earned editorial or buy it for a follow link.
-- Exact next action: none unless an independent editorial contact route is separately verified later.
+- Decision: do not count paid advertising, sponsored Viewpoint content or Business Profiles as earned editorial or buy them for a follow link.
+- Exact next action: none for backlink acquisition.
 
 ### East Midlands Business Link — HOLD / ROUTE NOT YET VERIFIED
 - Evidence: active regional business publication, but this review did not verify a clear current unpaid submission route.
