@@ -34,7 +34,7 @@ type NewTaskPageProps = {
 };
 
 export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
-  const { lead_id: prefillLeadId, customer_id: prefillCustomerId, title: prefillTitle } = await searchParams;
+  const { lead_id: prefillLeadId, customer_id: prefillCustomerId, title: prefillTitle } = await searchParams;\n  const isPriorityCall = prefillTitle === "Call now — priority contact";\n  const now = new Date();\n  const londonDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);\n  const londonTimeParts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now);\n  const hour = Number(londonTimeParts.find((part) => part.type === "hour")?.value ?? "09");\n  const minute = Number(londonTimeParts.find((part) => part.type === "minute")?.value ?? "00");\n  const roundedMinutes = Math.ceil((hour * 60 + minute + 30) / 15) * 15;\n  const suggestedTime = `${String(Math.min(Math.floor(roundedMinutes / 60), 23)).padStart(2, "0")}:${String(roundedMinutes % 60).padStart(2, "0")}`;\n  const cancelHref = prefillLeadId ? `/leads/${prefillLeadId}` : prefillCustomerId ? `/customers/${prefillCustomerId}` : "/tasks";
 
   const supabase = await createClient();
 
