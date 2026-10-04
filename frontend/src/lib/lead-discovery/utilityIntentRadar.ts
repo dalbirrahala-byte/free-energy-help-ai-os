@@ -9,9 +9,9 @@ export const UTILITY_SOURCE_ADAPTERS = Object.freeze({
   LOCAL_AUTHORITY_PLANNING: { source: "PLANNING", hosts: [] },
   CONTRACTS_FINDER: { source: "TENDER_CONTRACT", hosts: ["www.contractsfinder.service.gov.uk", "contractsfinder.service.gov.uk"] },
   FIND_A_TENDER: { source: "TENDER_CONTRACT", hosts: ["www.find-tender.service.gov.uk", "find-tender.service.gov.uk"] },
-  COMPANY_NEWSROOM: { source: "ONLINE_DIRECT", hosts: [] },
-  COMMERCIAL_PROPERTY: { source: "ONLINE_DIRECT", hosts: [] },
-  TRADE_LOCAL_PRESS: { source: "ONLINE_DIRECT", hosts: [] },
+  COMPANY_NEWSROOM: { source: "PUBLIC_WEB_SIGNAL", hosts: [] },
+  COMMERCIAL_PROPERTY: { source: "PUBLIC_WEB_SIGNAL", hosts: [] },
+  TRADE_LOCAL_PRESS: { source: "PUBLIC_WEB_SIGNAL", hosts: [] },
 } as const);
 for (const adapter of Object.values(UTILITY_SOURCE_ADAPTERS)) {
   Object.freeze(adapter.hosts);
@@ -175,8 +175,8 @@ export function assessUtilityIntentResearch(input: unknown, reviewInstant: strin
   const sourceTier = hostAdapter === "PLANNING_DATA" ? "PLANNING_AGGREGATE"
     : hostAdapter ? "PUBLIC_OFFICIAL_HOST" : hostname.endsWith(".gov.uk") ? "GOVERNMENT_HOST_UNVERIFIED" : "PUBLIC_WEB";
   if (source.source !== adapter.source) throw new Error("source_adapter_mismatch");
-  const official = adapter.source !== "ONLINE_DIRECT";
-  if (source.provenance !== (official ? "PUBLIC_OFFICIAL" : "PUBLIC_WEB")) throw new Error("invalid_public_provenance");
+  const publicWeb = adapter.source === "PUBLIC_WEB_SIGNAL";
+  if (source.provenance !== (publicWeb ? "PUBLIC_WEB" : "PUBLIC_OFFICIAL")) throw new Error("invalid_public_provenance");
   // Explicit projection prevents forged capability fields surviving the existing builder's spread.
   const submittedSignal = buildIntentRadarSignal({
     companyName: text(source.companyName, 200), companyNumber: source.companyNumber == null ? null : text(source.companyNumber, 16),

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { assessUtilityIntentResearch, UTILITY_INTENT_WEIGHTS, UTILITY_SOURCE_ADAPTERS } from "./utilityIntentRadar.ts";
 import { mapCompaniesHouseFilingToIntentSignal } from "./companiesHouseTriggerCrawler.ts";
+import { assessIntentRadarSignal } from "./intentRadar.ts";
 
 const asOf = "2026-09-28T12:00:00Z";
 function fixture() {
@@ -10,7 +11,7 @@ function fixture() {
     access: { publiclyAvailable: true, termsPermitted: true, robotsPermitted: true, rateLimitsRespected: true,
       requiresLogin: false, requiresCaptcha: false, accessCircumvention: false, publisherReviewed: true, reviewReference: "synthetic-source-review-1" },
     signal: { companyName: "Synthetic Energy Works Ltd", companyNumber: "12345678", companyDomain: "example.com",
-      source: "ONLINE_DIRECT", sourceReference: "synthetic-announcement-1", sourceUrl: "https://example.com/news/prices",
+      source: "PUBLIC_WEB_SIGNAL", sourceReference: "synthetic-announcement-1", sourceUrl: "https://example.com/news/prices",
       observedAt: "2026-09-28T10:00:00Z", expiresAt: null,
       signalFamily: "PROCUREMENT", signalType: "ENERGY_PRICE_REQUEST", summary: "The company says it is seeking business energy prices.",
       evidenceBasis: "VERIFIED_FACT", sourceVerified: true, confidence: 95, strength: "STRONG", provenance: "PUBLIC_WEB" },
@@ -62,7 +63,7 @@ test("all eight priority signals have bounded deterministic weights", () => {
 test("all source adapters use the existing radar vocabulary and reject host spoofing", () => {
   for (const [name, adapter] of Object.entries(UTILITY_SOURCE_ADAPTERS)) {
     const input = fixture(); input.adapter = name; input.signal.source = adapter.source;
-    input.signal.provenance = adapter.source === "ONLINE_DIRECT" ? "PUBLIC_WEB" : "PUBLIC_OFFICIAL";
+    input.signal.provenance = adapter.source === "PUBLIC_WEB_SIGNAL" ? "PUBLIC_WEB" : "PUBLIC_OFFICIAL";
     input.signal.sourceUrl = `https://${adapter.hosts[0] ?? (name === "LOCAL_AUTHORITY_PLANNING" ? "planning.example.gov.uk" : "example.com")}/record`;
     input.interpretation.basis = "INFERENCE";
     assert.equal(assessed(input).adapter, name);
@@ -125,6 +126,29 @@ test("inference stays inference and never inherits a fact's intent strength", ()
   assert.equal(result.scores.evidence_score, 3);
 });
 
+test("public-web signals stay review-only even when submitted STRONG, verified and confidence 100", () => {
+  const input = fixture();
+  Object.assign(input.signal, { evidenceBasis: "VERIFIED_FACT", sourceVerified: true, confidence: 100, strength: "STRONG" });
+  input.interpretation.basis = "VERIFIED_FACT";
+  const result = assessed(input);
+  assert.equal(result.signal.source, "PUBLIC_WEB_SIGNAL");
+  assert.equal(result.signal.provenance, "PUBLIC_WEB");
+  assert.equal(result.signal.evidenceBasis, "INFERENCE");
+  assert.equal(result.signal.sourceVerified, false);
+  assert.equal(result.interpretation.basis, "INFERENCE");
+  assert.equal(result.apolloEnrichmentAllowed, false);
+  assert.equal(result.creditsSpendAllowed, false);
+  assert.equal(result.sequenceEnrollmentAllowed, false);
+  assert.equal(result.crmWriteAllowed, false);
+  assert.equal(result.outreachAllowed, false);
+  const boundary = assessIntentRadarSignal(result.signal, asOf);
+  assert.equal(boundary.status, "REVIEW_ONLY");
+  assert.equal(boundary.strongVerifiedTrigger, false);
+  assert.equal(boundary.apolloEnrichmentAllowed, false);
+  assert.equal(boundary.crmWriteAllowed, false);
+  assert.equal(boundary.outreachAllowed, false);
+});
+
 test("existing Companies House mapper integrates without treating registered address as tenancy", () => {
   const mapped = mapCompaniesHouseFilingToIntentSignal({ companyName: "Synthetic Energy Works Ltd", companyNumber: "12345678" },
     { transactionId: "synthetic-1", type: "AD01", category: "address", description: "Registered office address changed", date: "2026-09-27" });
@@ -173,7 +197,7 @@ test("planning aggregate hosts cannot be laundered through any stronger or publi
   for (const hostname of ["planning.data.gov.uk", "www.planning.data.gov.uk", "WWW.PLANNING.DATA.GOV.UK"]) {
     for (const [name, adapter] of Object.entries(UTILITY_SOURCE_ADAPTERS)) {
       const input = fixture(); input.adapter = name; input.signal.source = adapter.source;
-      input.signal.provenance = adapter.source === "ONLINE_DIRECT" ? "PUBLIC_WEB" : "PUBLIC_OFFICIAL";
+      input.signal.provenance = adapter.source === "PUBLIC_WEB_SIGNAL" ? "PUBLIC_WEB" : "PUBLIC_OFFICIAL";
       input.signal.sourceUrl = `https://${hostname}/entity/1`;
       if (name === "PLANNING_DATA") {
         assert.equal(assessed(input).sourceTier, "PLANNING_AGGREGATE");
