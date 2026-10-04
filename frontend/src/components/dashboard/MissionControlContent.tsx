@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AiControlCentreSection } from "./AiControlCentreSection";
+import { GrowthControlSection } from "./GrowthControlSection";
 import { SectionCard } from "./SectionCard";
 import { StatCard } from "./StatCard";
 import type { MissionControlData } from "@/lib/dashboard/types";
@@ -20,6 +21,8 @@ export function MissionControlContent({ data }: MissionControlContentProps) {
         <StatCard title="Tasks Due Today" value={data.kpis.tasksDueToday} />
         <StatCard title="Renewals Due" value={data.kpis.renewalsDue} hint="Within 90 days" />
       </div>
+
+      <GrowthControlSection data={data} />
 
       <PriorityActionsSection data={data} />
 
