@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { AiControlCentreSection } from "./AiControlCentreSection";
+import { AiControlCentreSection } from "./AiControlCentreSection";\nimport { MissionBriefing } from "./MissionBriefing";
 import { SectionCard } from "./SectionCard";
 import { StatCard } from "./StatCard";
 import type { MissionControlData } from "@/lib/dashboard/types";
