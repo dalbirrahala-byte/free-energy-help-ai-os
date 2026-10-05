@@ -37,6 +37,7 @@ import {
   ResponseConfidencePanel,
   RiskCentrePanel,
 } from "./AiAssistantPanels";
+import { VoiceIdentityPanel } from "./VoiceIdentityPanel";
 
 const INITIAL: AiFilterState = {
   query: "",
@@ -65,6 +66,8 @@ export function AiSalesAssistantDashboard() {
         <p className="font-semibold">AI Sales Assistant — UI &amp; architecture preview</p>
         <p className="mt-1">{DEMO_AI_LABEL}</p>
       </div>
+
+      <VoiceIdentityPanel />
 
       <AiDailyBriefingPanel items={getDailyBriefing()} />
 
