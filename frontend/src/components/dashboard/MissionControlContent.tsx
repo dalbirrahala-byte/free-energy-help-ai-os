@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { AiControlCentreSection } from "./AiControlCentreSection";\nimport { MissionBriefing } from "./MissionBriefing";
+import { AiControlCentreSection } from "./AiControlCentreSection";
+import { MissionBriefing } from "./MissionBriefing";
 import { SectionCard } from "./SectionCard";
 import { StatCard } from "./StatCard";
 import type { MissionControlData } from "@/lib/dashboard/types";
@@ -11,6 +12,15 @@ type MissionControlContentProps = {
 };
 
 export function MissionControlContent({ data }: MissionControlContentProps) {
+  const overdueCount = data.priorityActions.find((action) => action.id === "overdue-tasks")?.count ?? 0;
+  const followUpCount = data.priorityActions.find((action) => action.id === "follow-up-leads")?.count ?? 0;
+  const renewalCount = data.priorityActions.find((action) => action.id === "renewals-due")?.count ?? 0;
+  const singleOverdueLeadHref =
+    overdueCount === 1 && data.overdueTasks.length === 1 && data.overdueTasks[0]?.leadId
+      ? `/leads/${data.overdueTasks[0].leadId}`
+      : null;
+  const priorityHref = singleOverdueLeadHref ?? data.priorityActions[0]?.href ?? "/action-queue";
+
   return (
     <div className="space-y-8">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
@@ -20,6 +30,13 @@ export function MissionControlContent({ data }: MissionControlContentProps) {
         <StatCard title="Tasks Due Today" value={data.kpis.tasksDueToday} />
         <StatCard title="Renewals Due" value={data.kpis.renewalsDue} hint="Within 90 days" />
       </div>
+
+      <MissionBriefing
+        overdueCount={overdueCount}
+        followUpCount={followUpCount}
+        renewalCount={renewalCount}
+        priorityHref={priorityHref}
+      />
 
       <PriorityActionsSection data={data} />
 
