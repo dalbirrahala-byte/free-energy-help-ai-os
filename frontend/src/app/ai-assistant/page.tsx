@@ -6,7 +6,7 @@ export default function AiAssistantPage() {
     <AppShell
       activeHref="/ai-assistant"
       title="AI Sales Assistant"
-      subtitle="Briefings, prompts, and sales intelligence preview (demonstration)"
+      subtitle="Briefings, sales intelligence and the approved FEH corporate voice profile"
       headerContext="AI Assistant"
     >
       <AiSalesAssistantDashboard />
