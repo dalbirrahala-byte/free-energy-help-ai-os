@@ -38,6 +38,7 @@ import {
   RiskCentrePanel,
 } from "./AiAssistantPanels";
 import { VoiceIdentityPanel } from "./VoiceIdentityPanel";
+import { WhatsAppVoiceControlPanel } from "./WhatsAppVoiceControlPanel";
 
 const INITIAL: AiFilterState = {
   query: "",
@@ -68,6 +69,8 @@ export function AiSalesAssistantDashboard() {
       </div>
 
       <VoiceIdentityPanel />
+
+      <WhatsAppVoiceControlPanel />
 
       <AiDailyBriefingPanel items={getDailyBriefing()} />
 
