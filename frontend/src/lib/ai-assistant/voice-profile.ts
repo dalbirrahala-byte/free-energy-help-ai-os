@@ -1,19 +1,29 @@
 export const FEH_ASSISTANT_VOICE_PROFILE = {
-  provider: "HeyGen",
-  label: "FEH Corporate Assistant Voice",
-  voiceId: "eb2f4e47e05e4ddcbd7fefd6ed805a82",
+  provider: "PolyAI",
+  providerProduct: "Agent Studio",
+  label: "FEH Business Energy Assistant",
+  selectedVoiceName: "Harry",
+  selectedVoiceStyle: "Steady and calm British voice",
   locale: "en-GB",
-  speed: 0.95,
-  pitch: 0,
-  volume: 1,
-  referenceVideo: {
-    id: "5c6234f5f2d54d83f1b96ccbb092399a",
-    title: "Free Energy Help - Corporate Introduction Final",
-    durationSeconds: 43.1804,
-  },
-  runtimeStatus: "Profile configured — live CRM synthesis not connected",
+  providerSelectionStatus: "Selected after successful FEH test call",
+  connectionStatus: "Not configured",
+  runtimeStatus:
+    "PolyAI selected — CRM integration contract configured; live provider connection not yet enabled",
+  openingGreeting:
+    "Hello, thank you for calling Free Energy Help. How can I help you today?",
   disclosure:
-    "Hello, you’re speaking with the Free Energy Help AI assistant. How can I help today?",
+    "You’re speaking with the Free Energy Help virtual assistant. I can help with your business energy enquiry and arrange an adviser where needed.",
+  transferNumber: "01332 605506",
+  officeHours: {
+    timezone: "Europe/London",
+    mondayToFriday: "08:30-18:00",
+    saturday: "09:00-13:00",
+    sunday: "Closed",
+  },
+  callbackPolicy: {
+    duringOpeningHours: "Same-day adviser callback",
+    outOfHours: "Next working day adviser callback",
+  },
 } as const;
 
 export type FehAssistantVoiceProfile = typeof FEH_ASSISTANT_VOICE_PROFILE;
