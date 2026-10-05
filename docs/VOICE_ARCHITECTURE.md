@@ -91,3 +91,28 @@ Every adapter reports its own health using the same four-state vocabulary as the
 ## 3. How this constrains provider selection
 
 Because naturalness is release-blocking and the transparency rule is non-negotiable, provider selection (`docs/VOICE_PROVIDER_SCORECARD.md`) cannot be decided from vendor marketing demos. It requires blind testing against the criteria above, across synthetic scripts, real browser calls, real UK telephone calls, deliberately noisy conditions, a UK accent panel, and human blind rating — see `docs/VOICE_TEST_PLAN.md` for the full staged protocol. No provider is selected or connected at this stage.
+
+
+## 4. Selected provider — PolyAI (5 October 2026)
+
+Following the FEH interactive test, **PolyAI Agent Studio is the selected voice provider for the next CRM integration phase**. The decision is based on the successful FEH business-energy test call and the user's preference for a calmer, more natural UK conversational experience.
+
+Selection does **not** mean production connectivity is live. The CRM must continue to report the provider as **Not configured** until all of the following are evidenced:
+
+1. production credentials or signed webhook details are supplied through the approved secret-management path;
+2. inbound PolyAI events can be authenticated;
+3. conversation summaries and callback details persist through the authenticated CRM tool gateway;
+4. live transfer to 01332 605506 is verified during opening hours;
+5. the FEH Voice Quality Gate passes for real UK telephone calls.
+
+The first CRM contract maps a PolyAI conversation to:
+- provider conversation ID;
+- caller telephone (when supplied);
+- contact and business name;
+- enquiry type;
+- summary and transcript reference;
+- callback request and number;
+- transfer request/outcome;
+- a CRM activity with lead source `voice` and provider activity type `polyai_voice_call`.
+
+No provider execution, CRM write, autonomous callback, or live transfer capability is granted by the selection itself.
