@@ -1,21 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateVerifiedLookup, normalizeUkTelephone } from "./evaluateVerifiedLookup.ts";
+import {
+  evaluateVerifiedLookup,
+  normalizeUkTelephone,
+  type VerifiedLookupInput,
+} from "./evaluateVerifiedLookup.ts";
 
 const now = "2026-09-29T06:00:00Z";
-function fixture() {
+function fixture(): VerifiedLookupInput {
   return {
     requestId: "lookup-001",
     email: "owner@example.co.uk",
     telephone: "07700 900123",
     postcode: "DE1 2AB",
-    relationship: "BUSINESS_OWNER_DIRECTOR" as const,
-    emailVerification: { state: "VERIFIED" as const, verifiedValue: "owner@example.co.uk", verifiedAt: "2026-09-29T05:55:00Z" },
-    phoneVerification: { state: "VERIFIED" as const, verifiedValue: "+447700900123", verifiedAt: "2026-09-29T05:56:00Z" },
+    relationship: "BUSINESS_OWNER_DIRECTOR",
+    emailVerification: { state: "VERIFIED", verifiedValue: "owner@example.co.uk", verifiedAt: "2026-09-29T05:55:00Z" },
+    phoneVerification: { state: "VERIFIED", verifiedValue: "+447700900123", verifiedAt: "2026-09-29T05:56:00Z" },
     authorityDeclared: true,
     botCheckPassed: true,
     rateLimitPassed: true,
-    riskFlags: [] as string[],
+    riskFlags: [],
     asOf: now,
   };
 }
