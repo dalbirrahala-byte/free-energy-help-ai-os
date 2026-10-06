@@ -44,17 +44,19 @@ test("OTP is six digits, stored only as a digest, and verifies once", () => {
 });
 
 test("five wrong guesses lock the challenge", () => {
-  let { challenge } = issueOtpChallenge({
+  const issued = issueOtpChallenge({
     requestId: "lookup-002",
     channel: "EMAIL",
     destination: "owner@example.co.uk",
     now,
     secret,
   });
+  let challenge = issued.challenge;
+  const wrongCode = issued.code === "000000" ? "000001" : "000000";
   for (let i = 0; i < 5; i++) {
     const result = verifyOtpChallenge({
       challenge,
-      code: "000000",
+      code: wrongCode,
       destination: "owner@example.co.uk",
       now: "2026-10-06T18:01:00Z",
       secret,
