@@ -35,6 +35,30 @@ type NewTaskPageProps = {
 
 export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
   const { lead_id: prefillLeadId, customer_id: prefillCustomerId, title: prefillTitle } = await searchParams;
+  const isPriorityCall = prefillTitle === "Call now — priority contact";
+  const now = new Date();
+  const londonDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const londonTimeParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const hour = Number(londonTimeParts.find((part) => part.type === "hour")?.value ?? "09");
+  const minute = Number(londonTimeParts.find((part) => part.type === "minute")?.value ?? "00");
+  const roundedMinutes = Math.ceil((hour * 60 + minute + 30) / 15) * 15;
+  const suggestedMinutes = Math.min(roundedMinutes, 23 * 60 + 45);
+  const suggestedTime = `${String(Math.floor(suggestedMinutes / 60)).padStart(2, "0")}${":"}${String(suggestedMinutes % 60).padStart(2, "0")}`;
+  const cancelHref = prefillLeadId
+    ? `/leads/${prefillLeadId}`
+    : prefillCustomerId
+      ? `/customers/${prefillCustomerId}`
+      : "/tasks";
 
   const supabase = await createClient();
 
@@ -155,12 +179,20 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-4xl">
-        <Link
-          href="/tasks"
-          className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"
-        >
-          ← Back to Tasks
-        </Link>
+        <div className="flex flex-wrap gap-4">
+          <Link
+            href="/tasks"
+            className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"
+          >
+            ← Back to Tasks
+          </Link>
+          <Link
+            href="/"
+            className="text-sm font-semibold text-slate-600 hover:text-slate-800"
+          >
+            Back to Mission Control
+          </Link>
+        </div>
 
         <div className="mb-8 mt-4">
           <h1 className="text-3xl font-bold text-slate-900">
@@ -281,7 +313,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
               <select
                 id="priority"
                 name="priority"
-                defaultValue="Medium"
+                defaultValue={isPriorityCall ? "High" : "Medium"}
                 className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               >
                 <option>Low</option>
@@ -303,6 +335,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
                 id="due_date"
                 name="due_date"
                 type="date"
+                defaultValue={isPriorityCall ? londonDate : undefined}
                 className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
             </div>
@@ -319,6 +352,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
                 id="due_time"
                 name="due_time"
                 type="time"
+                defaultValue={isPriorityCall ? suggestedTime : undefined}
                 className="w-full rounded-xl border border-slate-300 px-4 py-3 text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
               />
             </div>
@@ -363,7 +397,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
 
           <div className="mt-8 flex justify-end gap-3 border-t border-slate-200 pt-6">
             <Link
-              href="/tasks"
+              href={cancelHref}
               className="rounded-xl border border-slate-300 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50"
             >
               Cancel
