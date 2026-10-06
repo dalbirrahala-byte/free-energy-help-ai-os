@@ -33,6 +33,6 @@ Before any Lab page, press release, pitch, social post or investor material uses
 
 ## Current IBM terminology note
 
-IBM Quantum Compute client 0.50.0 release notes dated 24 September 2026 state that `EstimatorV2` and `SamplerV2` are deprecated in favour of newer client-side `Estimator` and `Sampler` implementations. This affects reproducibility wording for future repeats, not the facts retained from the completed hardware job.
+IBM Quantum Compute client 0.50.0 release notes dated 24 September 2026 state that the legacy server-side `EstimatorV2` and `SamplerV2` implementations are deprecated in favour of newer client-side `Estimator` and `Sampler` implementations of the same V2 primitive interfaces/API. This affects reproducibility wording for future repeats, not the facts retained from the completed hardware job.
 
 Reference: https://quantum.cloud.ibm.com/docs/en/api/qiskit-ibm-runtime/release-notes
