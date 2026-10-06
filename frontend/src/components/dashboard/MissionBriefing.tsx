@@ -26,12 +26,15 @@ export function MissionBriefing({
   const [speechAvailable, setSpeechAvailable] = useState(false);
 
   useEffect(() => {
-    setGreeting(greetingForHour(new Date().getHours()));
-    setSpeechAvailable(
-      typeof window !== "undefined" &&
+    const timer = window.setTimeout(() => {
+      setGreeting(greetingForHour(new Date().getHours()));
+      setSpeechAvailable(
         "speechSynthesis" in window &&
-        typeof SpeechSynthesisUtterance !== "undefined",
-    );
+          typeof SpeechSynthesisUtterance !== "undefined",
+      );
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   const briefing = useMemo(() => {
