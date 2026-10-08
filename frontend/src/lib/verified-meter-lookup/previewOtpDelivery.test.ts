@@ -19,16 +19,30 @@ function withEnv(values: Record<string, string | undefined>, fn: () => void) {
   }
 }
 
-test("echo mode works only when providers are absent and preview echo is explicit", () => {
+test("preview defaults to echo mode when providers are absent", () => {
   withEnv({
     VERCEL_ENV: "preview",
     RESEND_API_KEY: undefined,
     OTP_EMAIL_FROM: undefined,
-    OTP_PREVIEW_ECHO_CODE: "true",
+    OTP_PREVIEW_ECHO_CODE: undefined,
   }, () => {
     assert.equal(
       evaluatePreviewDeliveryPolicy({ channel: "EMAIL", destination: "test@example.com" }),
       "echo",
+    );
+  });
+});
+
+test("echo can be explicitly disabled", () => {
+  withEnv({
+    VERCEL_ENV: "preview",
+    RESEND_API_KEY: undefined,
+    OTP_EMAIL_FROM: undefined,
+    OTP_PREVIEW_ECHO_CODE: "false",
+  }, () => {
+    assert.throws(
+      () => evaluatePreviewDeliveryPolicy({ channel: "EMAIL", destination: "test@example.com" }),
+      /otp_provider_not_configured/,
     );
   });
 });
