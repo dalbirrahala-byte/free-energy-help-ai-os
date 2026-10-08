@@ -10,6 +10,7 @@ import {
 } from "@/lib/verified-meter-lookup/otpChallenge";
 import {
   clearPreviewChallenges,
+  getOrCreatePreviewSecret,
   loadPreviewChallenge,
   savePreviewChallenge,
 } from "@/lib/verified-meter-lookup/previewChallengeStore";
@@ -46,12 +47,6 @@ function ensurePreview(): void {
   if (process.env.VERCEL_ENV === "production") {
     throw new Error("preview_lookup_disabled_in_production");
   }
-}
-
-function otpSecret(): string {
-  const value = process.env.OTP_HMAC_SECRET;
-  if (!value || value.length < 32) throw new Error("otp_secret_not_configured");
-  return value;
 }
 
 function field(formData: FormData, name: string): string {
@@ -114,7 +109,7 @@ export async function runPreviewOtpAction(
 
     try {
       const now = new Date().toISOString();
-      const secret = otpSecret();
+      const secret = await getOrCreatePreviewSecret();
       const email = issueOtpChallenge({
         requestId: request.requestId,
         channel: "EMAIL",
@@ -185,7 +180,7 @@ export async function runPreviewOtpAction(
 
     try {
       const now = new Date().toISOString();
-      const secret = otpSecret();
+      const secret = await getOrCreatePreviewSecret();
       const emailResult = verifyOtpChallenge({
         challenge: emailChallenge,
         code: field(formData, "emailCode"),
