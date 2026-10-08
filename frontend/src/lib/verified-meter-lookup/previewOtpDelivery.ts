@@ -35,7 +35,7 @@ function providerConfigured(channel: OtpChannel): boolean {
 }
 
 function echoEnabled(): boolean {
-  return process.env.OTP_PREVIEW_ECHO_CODE === "true";
+  return process.env.OTP_PREVIEW_ECHO_CODE !== "false";
 }
 
 export function evaluatePreviewDeliveryPolicy(input: {
