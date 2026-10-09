@@ -107,7 +107,7 @@ export function reconstructAnchorConsumption(reads: readonly MeterRead[]): Reado
       periods.push({meterSerial, openingReadId:opening.id, closingReadId:closing.id, consumption:closing.value-opening.value});
     }
   }
-  return Object.freeze(periods.map(Object.freeze));
+  return Object.freeze(periods.map((period) => Object.freeze({ ...period })));
 }
 
 export function validateBillHistory(input: {
