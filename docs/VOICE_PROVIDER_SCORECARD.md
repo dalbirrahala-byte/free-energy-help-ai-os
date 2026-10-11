@@ -19,11 +19,32 @@ At least these five, representing genuinely different architectural approaches �
 |---|---|
 | ElevenLabs / ElevenAgents | End-to-end conversational voice platform |
 | Retell AI | End-to-end conversational voice platform |
+| Telnyx Voice AI | Carrier-integrated voice-agent platform |
 | OpenAI real-time voice | Single-vendor integrated LLM+speech |
 | Vapi | End-to-end conversational voice platform |
 | Modular Deepgram/Cartesia-based architecture | Build-it-ourselves: separate STT + LLM + TTS behind our own adapters |
 
 The modular option is architecturally important to test even if it scores lower on convenience — it's the only candidate that fully matches the "no vendor lock-in" adapter design in `docs/VOICE_ARCHITECTURE.md` §2, so its quality bar matters even if it's not the first choice.
+
+## Verified vendor snapshot — 4 October 2026
+
+These are **vendor-published facts for planning only**. They are not FEH test results and do not change any score above.
+
+| Candidate | Published planning facts checked on 4 Oct 2026 |
+|---|---|
+| Retell AI | Pay-as-you-go voice agents published at $0.07–$0.31/min depending on stack; platform includes transcripts, simulation testing, webhooks/API access, fallback support and opt-out recording/transcription controls. |
+| Telnyx Voice AI | Voice engine published at $0.05/min plus LLM tokens and carrier telephony; includes orchestration, STT/TTS, interruption handling, tools and knowledge retrieval. Telnyx also publishes separate low-level SIP, recording and media-streaming rates. |
+| Vapi | At 1,000 min/month, published calculator shows $50 hosting plus pass-through transcriber/model/voice costs; Core support package is $29/month and higher tiers publish SLA/support options. |
+| OpenAI realtime voice | Realtime/Live supports WebRTC, WebSocket and SIP. Direct SIP flows support inbound acceptance, outbound calling (when enabled), transfer via SIP REFER and hang-up controls. Model usage is billed separately from telephony. |
+
+### FEH pilot order
+
+1. **Retell AI** — quickest end-to-end baseline to establish call quality and workflow fit.
+2. **Telnyx Voice AI** — cost/reliability comparison using carrier-integrated infrastructure.
+3. **OpenAI Realtime + SIP** — direct-control comparison for natural speech, tool use and transfer behaviour.
+4. **Vapi** — modular orchestration comparison where provider interchangeability is the main advantage.
+
+No provider is selected by this ordering. It only defines the order in which FEH should build identical test calls so the blind scorecard can be populated with our own evidence.
 
 ## Scoring structure
 
@@ -69,6 +90,7 @@ Weights above are a **proposed starting point for your review** — not locked i
 |---|---|---|---|---|
 | ElevenLabs / ElevenAgents | Not tested | — | — | — |
 | Retell AI | Not tested | — | — | — |
+| Telnyx Voice AI | Not tested | — | — | — |
 | OpenAI real-time voice | Not tested | — | — | — |
 | Vapi | Not tested | — | — | — |
 | Modular Deepgram/Cartesia | Not tested | — | — | — |

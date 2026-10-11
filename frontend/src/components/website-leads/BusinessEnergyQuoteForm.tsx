@@ -1,11 +1,12 @@
 "use client";
 
 import { Zap } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { submitQuoteEnquiry } from "@/app/business-energy-quote/actions";
 import type { AcquisitionOrigin } from "@/lib/website-leads/classifyAcquisitionOrigin";
 import { ENERGY_SUPPLY_OPTIONS, RENEWAL_TIMING_OPTIONS } from "@/lib/website-leads/constants";
+import { readAcceptedHealthCheckResult, trackGoogleAdsHealthCheckConversion } from "@/lib/website-leads/googleAdsHealthCheckConversion";
 import { conversionAfterIngestion, emitHealthCheckConversion } from "@/lib/website-leads/healthCheckConversion";
 import { buildRevenueCaptureAttribution } from "@/lib/website-leads/revenueCapture";
 import type { WebsiteLeadFormInput } from "@/lib/website-leads/types";
@@ -50,6 +51,7 @@ export function BusinessEnergyQuoteForm({
   const [form, setForm] = useState<WebsiteLeadFormInput>(INITIAL_FORM);
   const [submitted, setSubmitted] = useState(false);
   const [pending, setPending] = useState(false);
+  const submissionInFlight = useRef(false);
   const [errors, setErrors] = useState<ReturnType<typeof validateWebsiteLeadForm>>({});
 
   function updateField<K extends keyof WebsiteLeadFormInput>(
@@ -67,7 +69,7 @@ export function BusinessEnergyQuoteForm({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
 
-    if (pending) {
+    if (submissionInFlight.current) {
       return;
     }
 
@@ -77,11 +79,12 @@ export function BusinessEnergyQuoteForm({
       return;
     }
 
+    submissionInFlight.current = true;
     setPending(true);
 
     // The authoritative record lives in Supabase, submitted only through
-    // the approved public.ingest_public_lead(...) function (Factory 024
-    // Phase 2B) via this Server Action — the browser never talks to the
+    // the approved public.ingest_health_check_lead(...) function via this
+    // Server Action — the browser never talks to the
     // database directly, and a failed submission is never shown as a
     // successful one.
     const payload = new FormData();
@@ -103,32 +106,36 @@ export function BusinessEnergyQuoteForm({
     if (campaign) payload.set("campaign", campaign);
     if (acquisitionOrigin) payload.set("acquisition_origin", acquisitionOrigin);
 
+    let acceptedSubmission = false;
     try {
       const result = await submitQuoteEnquiry(payload);
-
-      if (!result.success) {
-        setErrors(result.errors);
+      const accepted = readAcceptedHealthCheckResult(result);
+      if (!accepted) {
+        setErrors(result?.success === false ? result.errors : { form: "We could not save your enquiry. Please try again." });
         return;
       }
 
-      // This local, provider-neutral signal occurs only after the server
-      // confirms persistence. It contains no contact or enquiry-text data.
-      const conversion = conversionAfterIngestion(result, buildRevenueCaptureAttribution({
-        campaign,
-        utmSource,
-        utmMedium,
-        utmCampaign,
-        utmTerm,
-        utmContent,
-        acquisitionOrigin,
-      }));
-      if (conversion) emitHealthCheckConversion(conversion);
+      acceptedSubmission = true;
       setSubmitted(true);
       setForm(INITIAL_FORM);
       setErrors({});
+
+      // The server result is the boundary, not a DOM event, click or success render.
+      // All tracking is best-effort and cannot turn accepted ingestion into failure.
+      try {
+        trackGoogleAdsHealthCheckConversion(accepted);
+        const conversion = conversionAfterIngestion(accepted, buildRevenueCaptureAttribution({
+          campaign, utmSource, utmMedium, utmCampaign, utmTerm, utmContent, acquisitionOrigin,
+        }));
+        if (conversion) emitHealthCheckConversion(conversion);
+      } catch {
+        // Preserve the accepted enquiry even if existing local analytics fails.
+      }
     } catch {
       setErrors({ form: "We could not save your enquiry. Please try again." });
     } finally {
+      // Keep success latched until the user explicitly starts another enquiry.
+      if (!acceptedSubmission) submissionInFlight.current = false;
       setPending(false);
     }
   }
@@ -145,7 +152,7 @@ export function BusinessEnergyQuoteForm({
         </p>
         <button
           type="button"
-          onClick={() => setSubmitted(false)}
+          onClick={() => { submissionInFlight.current = false; setSubmitted(false); }}
           className="mt-6 text-sm font-semibold text-emerald-700 underline"
         >
           Submit another enquiry
