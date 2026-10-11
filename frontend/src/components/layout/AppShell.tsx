@@ -33,7 +33,7 @@ import { LogoutButton } from "./LogoutButton";
 // src/app). Neither is part of the Version 1.0 commercial workflow; see
 // docs/PRODUCT_BACKLOG.md for their Post-Launch status.
 const navigation = [
-  { name: "Dashboard", icon: LayoutDashboard, href: "/" },
+  { name: "Mission Control", icon: LayoutDashboard, href: "/" },
   { name: "AI Operations", icon: Bot, href: "/ai-operations" },
   { name: "AI Sales Assistant", icon: Sparkles, href: "/ai-assistant" },
   { name: "Renewals", icon: RefreshCw, href: "/renewals" },
@@ -143,9 +143,20 @@ export function AppShell({
               </div>
             </div>
 
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-semibold">Operations</p>
-              <p className="text-xs text-slate-500">{headerContext}</p>
+            <div className="hidden items-center gap-3 sm:flex">
+              <div className="text-right">
+                <p className="text-sm font-semibold">Operations</p>
+                <p className="text-xs text-slate-500">{headerContext}</p>
+              </div>
+
+              <Link
+                href="/"
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+                aria-label="Go to Mission Control"
+              >
+                <LayoutDashboard size={17} />
+                Mission Control
+              </Link>
             </div>
           </header>
 
