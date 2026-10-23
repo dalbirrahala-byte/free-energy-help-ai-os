@@ -4,7 +4,7 @@ import { test } from "node:test";
 import {
   issueOtpChallenge,
   verifyOtpChallenge,
-} from "@/lib/verified-meter-lookup/otpChallenge";
+} from "../verified-meter-lookup/otpChallenge.ts";
 import { reviewVerifiedLeadOtp } from "./verifiedLeadOtpReview.ts";
 
 const secret = "synthetic-review-only-secret-000000000000000000";
