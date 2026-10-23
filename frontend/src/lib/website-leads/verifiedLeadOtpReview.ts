@@ -10,7 +10,7 @@
 import {
   validateOtpReceipt,
   type OtpVerificationReceipt,
-} from "@/lib/verified-meter-lookup/otpChallenge";
+} from "../verified-meter-lookup/otpChallenge.ts";
 
 export type VerifiedLeadOtpReviewInput = Readonly<{
   receipt: OtpVerificationReceipt | null;
