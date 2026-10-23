@@ -45,7 +45,7 @@ test("valid bound SMS receipt verifies the mobile without enabling execution", (
 
   assert.equal(result.status, "VERIFIED");
   assert.equal(result.mobileVerification, "VERIFIED");
-  assert.equal(result.crmHotLeadEligible, true);
+  assert.equal(result.qualificationEligible, true);
   assert.equal(result.executionAllowed, false);
 });
 
@@ -60,7 +60,7 @@ test("missing receipt fails closed", () => {
 
   assert.equal(result.status, "HOLD");
   assert.equal(result.mobileVerification, "UNVERIFIED");
-  assert.equal(result.crmHotLeadEligible, false);
+  assert.equal(result.qualificationEligible, false);
 });
 
 test("receipt cannot be replayed for a different telephone", () => {
@@ -86,7 +86,7 @@ test("expired receipt fails closed", () => {
   });
 
   assert.equal(result.status, "HOLD");
-  assert.equal(result.crmHotLeadEligible, false);
+  assert.equal(result.qualificationEligible, false);
 });
 
 test("receipt is bound to the Health Check request id", () => {
