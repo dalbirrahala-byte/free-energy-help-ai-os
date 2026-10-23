@@ -23,7 +23,7 @@ export type VerifiedLeadOtpReviewInput = Readonly<{
 export type VerifiedLeadOtpReview = Readonly<{
   status: "VERIFIED" | "HOLD";
   mobileVerification: "VERIFIED" | "UNVERIFIED";
-  crmHotLeadEligible: boolean;
+  qualificationEligible: boolean;
   executionAllowed: false;
   reason: "verified_receipt" | "missing_receipt" | "invalid_or_expired_receipt";
 }>;
@@ -35,7 +35,7 @@ export function reviewVerifiedLeadOtp(
     return Object.freeze({
       status: "HOLD",
       mobileVerification: "UNVERIFIED",
-      crmHotLeadEligible: false,
+      qualificationEligible: false,
       executionAllowed: false,
       reason: "missing_receipt",
     });
@@ -54,7 +54,7 @@ export function reviewVerifiedLeadOtp(
     return Object.freeze({
       status: "HOLD",
       mobileVerification: "UNVERIFIED",
-      crmHotLeadEligible: false,
+      qualificationEligible: false,
       executionAllowed: false,
       reason: "invalid_or_expired_receipt",
     });
@@ -63,7 +63,7 @@ export function reviewVerifiedLeadOtp(
   return Object.freeze({
     status: "VERIFIED",
     mobileVerification: "VERIFIED",
-    crmHotLeadEligible: true,
+    qualificationEligible: true,
     executionAllowed: false,
     reason: "verified_receipt",
   });
