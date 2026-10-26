@@ -9,7 +9,8 @@ permissions:
 
 concurrency:
   group: feh-loop-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Never interrupt an approved migration run when another manual run is queued.
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   independent-verifier:
@@ -76,3 +77,59 @@ jobs:
             echo "- Maker code is not accepted as proof; this job is the independent verifier."
             echo "- Production actions remain separate human approval gates."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  staging-install:
+    name: Approved staging baseline and synthetic database tests
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'dalbirrahala-byte/free-energy-help-ai-os' &&
+      github.ref == 'refs/heads/ops/staging-61-execution-20261026'
+    needs: independent-verifier
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: feh-crm-staging-61
+    concurrency:
+      group: feh-staging-vredwhyphrhsudggrsen
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the exact workflow revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require the revision reviewed in the protected environment
+        env:
+          REVIEWED_SHA: ${{ vars.STAGING_EXECUTION_SHA }}
+        run: |
+          test -n "$REVIEWED_SHA"
+          test "$GITHUB_SHA" = "$REVIEWED_SHA"
+
+      - name: Set up Node.js for the pinned Supabase CLI
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+
+      - name: Install execution tools before exposing staging credentials
+        run: |
+          npm ci --prefix docs/staging/execution-tools --no-audit --no-fund
+          test "$(docs/staging/execution-tools/node_modules/.bin/supabase --version)" = "2.122.0"
+
+      - name: Test execution guards without credentials
+        run: python -m unittest discover -s docs/staging -p 'test_execution.py' -v
+
+      - name: Prepare the immutable reviewed migration set
+        run: python docs/staging/staging_execution.py prepare
+
+      - name: Install staging baseline and execute rollback-only synthetic tests
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.FEH_STAGING_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.FEH_STAGING_DB_PASSWORD }}
+        run: python docs/staging/staging_execution.py execute
+
+      - name: Record sanitized execution evidence
+        if: always()
+        run: python docs/staging/staging_execution.py summary
