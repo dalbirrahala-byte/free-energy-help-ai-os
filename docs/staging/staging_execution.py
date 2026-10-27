@@ -6,7 +6,9 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
+import urllib.parse
 import sys
 import urllib.error
 import urllib.request
@@ -50,8 +52,8 @@ def clean(text):
     return re.sub(r"postgres(?:ql)?://[^\s]+", "[REDACTED_DATABASE_URL]", text)
 
 
-def run(args):
-    result = subprocess.run(args, cwd=ROOT, text=True, capture_output=True, timeout=1200)
+def run(args, env=None):
+    result = subprocess.run(args, cwd=ROOT, text=True, capture_output=True, timeout=1200, env=env)
     # Only reviewed SQL/CLI output; never debug logs or secret-bearing command lines.
     print(clean(result.stdout + result.stderr), end="")
     require(result.returncode == 0, "Command failed (exit %s); stop, do not reset or repair" % result.returncode)
@@ -87,7 +89,7 @@ def prepare():
 
 def api(path, body=None):
     # Fixed Supabase origin and fixed staging project; no arbitrary URLs or redirects.
-    require(path == "" or path == "/database/query", "API path not allowlisted")
+    require(path in ("", "/database/query", "/config/database/pooler"), "API path not allowlisted")
     token = os.environ.get("SUPABASE_ACCESS_TOKEN", "")
     require(bool(token), "FEH_STAGING_ACCESS_TOKEN missing")
     request = urllib.request.Request(
@@ -113,6 +115,55 @@ def query(sql, read_only=True):
     result = api("/database/query", {"query": sql, "read_only": read_only})
     require(isinstance(result, list), "Unexpected SQL response; no assumption of success")
     return result
+
+
+def pooler_connection():
+    configs = api("/config/database/pooler")
+    require(isinstance(configs, list) and configs, "Pooler config unavailable")
+    candidates = []
+    for config in configs:
+        if not isinstance(config, dict) or config.get("database_type") not in (None, "PRIMARY"):
+            continue
+        raw = config.get("connection_string") or config.get("connectionString")
+        if not isinstance(raw, str) or not raw:
+            continue
+        try:
+            parsed = urllib.parse.urlsplit(raw.replace("[YOUR-PASSWORD]", "placeholder"))
+            host = parsed.hostname
+            port = parsed.port
+        except ValueError:
+            continue
+        user = urllib.parse.unquote(parsed.username or "")
+        database = urllib.parse.unquote(parsed.path.lstrip("/")) or "postgres"
+        query_params = urllib.parse.parse_qs(parsed.query)
+        modern = user == f"postgres.{TARGET}"
+        legacy = user == "postgres" and f"reference={TARGET}" in query_params.get("options", [])
+        if (parsed.scheme in ("postgres", "postgresql") and host and
+                host.endswith(".pooler.supabase.com") and port in (5432, 6543) and
+                database == "postgres" and (modern or legacy)):
+            candidates.append({"host": host, "port": port, "user": user, "database": database})
+    require(candidates, "No staging pooler connection matched reviewed project")
+    candidates.sort(key=lambda item: item["port"] != 5432)
+    return candidates[0]
+
+
+def run_synthetic_tests():
+    require(shutil.which("psql"), "psql client unavailable on runner")
+    password = os.environ.get("SUPABASE_DB_PASSWORD", "")
+    require(bool(password), "FEH_STAGING_DB_PASSWORD missing")
+    connection = pooler_connection()
+    env = os.environ.copy()
+    env.update({"PGPASSWORD": password, "PGSSLMODE": "require", "PGCONNECT_TIMEOUT": "20"})
+    output = run([
+        "psql", "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--quiet",
+        "--tuples-only", "--no-align",
+        "--host", connection["host"], "--port", str(connection["port"]),
+        "--username", connection["user"], "--dbname", connection["database"],
+        "--file", str(HERE / "synthetic_database_tests.sql"),
+    ], env=env)
+    require("passed|20" in [line.strip() for line in output.splitlines()],
+            "Synthetic test result not confirmed")
+    return [{"synthetic_tests": "passed", "assertions": 20}]
 
 
 def verify_project(project):
@@ -206,7 +257,7 @@ def execute():
         evidence["status"] = "testing"
         evidence["synthetic_tests"] = "attempt started; result and rollback not yet confirmed"
         save()
-        result = query((HERE / "synthetic_database_tests.sql").read_text(), read_only=False)
+        result = run_synthetic_tests()
         require(result == [{"synthetic_tests": "passed", "assertions": 20}], "Synthetic test result not confirmed")
         evidence["synthetic_tests"] = "20 assertions returned passed; cleanup verification pending"
         evidence["data_after_tests"] = empty_business_data()

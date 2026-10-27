@@ -64,6 +64,34 @@ class SafetyTests(unittest.TestCase):
                     runner.api(path)
             opener.assert_not_called()
 
+    def test_pooler_connection_prefers_session_and_rejects_wrong_project(self):
+        valid = [
+            {"database_type": "PRIMARY", "connection_string":
+             f"postgres://postgres.{runner.TARGET}:[YOUR-PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"},
+            {"database_type": "PRIMARY", "connection_string":
+             f"postgres://postgres.{runner.TARGET}:[YOUR-PASSWORD]@aws-1-eu-central-1.pooler.supabase.com:5432/postgres"},
+        ]
+        with patch.object(runner, "api", return_value=valid):
+            self.assertEqual(runner.pooler_connection()["port"], 5432)
+        wrong = [{"database_type": "PRIMARY", "connection_string":
+                  "postgres://postgres.otherproject:[YOUR-PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"}]
+        with patch.object(runner, "api", return_value=wrong), self.assertRaisesRegex(RuntimeError, "No staging pooler"):
+            runner.pooler_connection()
+
+    def test_direct_synthetic_tests_keep_password_out_of_args(self):
+        connection = {"host": "pooler.example.supabase.com", "port": 5432,
+                      "user": f"postgres.{runner.TARGET}", "database": "postgres"}
+        with patch.dict(os.environ, {"SUPABASE_DB_PASSWORD": "synthetic-password"}, clear=True), \
+             patch.object(runner.shutil, "which", return_value="/usr/bin/psql"), \
+             patch.object(runner, "pooler_connection", return_value=connection), \
+             patch.object(runner, "run", return_value="passed|20\n") as command:
+            self.assertEqual(runner.run_synthetic_tests(), [{"synthetic_tests": "passed", "assertions": 20}])
+            args = command.call_args.args[0]
+            env = command.call_args.kwargs["env"]
+            self.assertNotIn("synthetic-password", " ".join(args))
+            self.assertEqual(env["PGPASSWORD"], "synthetic-password")
+            self.assertEqual(env["PGSSLMODE"], "require")
+
     def test_empty_business_data_required(self):
         with patch.object(runner,'query',return_value=[{'leads':1,'auth_users':0}]):
             with self.assertRaises(RuntimeError):
@@ -131,6 +159,26 @@ class SafetyTests(unittest.TestCase):
             cli.assert_called_once()
             self.assertEqual(cli.call_args.args[0][-1],'--dry-run')
             self.assertEqual(json.loads(runner.evidence_path().read_text())['installed_this_run'],[])
+
+    def test_complete_history_skips_migration_apply_and_runs_direct_tests(self):
+        expected = [{'version':str(i),'name':f'm{i}'} for i in range(61)]
+        installed = dict(public_tables=26,public_functions=20,auth_users=0,storage_objects=0)
+        with tempfile.TemporaryDirectory() as d, patch.dict(os.environ, {
+            **self.valid_env(),'RUNNER_TEMP':d,'SUPABASE_DB_PASSWORD':'synthetic-only'
+        },clear=True), patch.object(runner,'validate_files',return_value=expected), \
+            patch.object(runner,'verify_project'), patch.object(runner,'api'), \
+            patch.object(runner,'history',side_effect=[expected,expected,expected]), \
+            patch.object(runner,'snapshot',return_value=installed), \
+            patch.object(runner,'empty_business_data',return_value={}), \
+            patch.object(runner,'run_synthetic_tests',
+                         return_value=[{'synthetic_tests':'passed','assertions':20}]) as synthetic, \
+            patch.object(runner,'run') as cli:
+            runner.execute()
+            cli.assert_not_called()
+            synthetic.assert_called_once()
+            evidence=json.loads(runner.evidence_path().read_text())
+            self.assertEqual(evidence['installed_this_run'],[])
+            self.assertEqual(evidence['status'],'passed')
 
 if __name__ == '__main__':
     unittest.main()
