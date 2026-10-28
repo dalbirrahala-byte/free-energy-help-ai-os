@@ -23,6 +23,21 @@ The original 61 migrations, the pinned manifest and production configurations ar
 
 The SQL proposal is outside the Supabase migrations folder to prevent accidental inclusion in the existing migration workflow. Its exact 26-table preflight is intended to fail closed if the schema changes.
 
+## Local validation profiles
+
+- `approved-staging-61` remains the validator's default; it requires the
+  exact 61 reviewed staging version/name pairs.
+- `local-source-63` is an explicitly selected development-only diagnostic
+  for the existing Docker database. It checks the **complete set of 63**
+  source migration filenames, including both excluded dispatch migrations
+  and the pre-alias Health Check source version.
+- The held-back dispatch migrations change the
+  `prepare_execution_dispatch` result from scalar text into a structured
+  envelope. Proposed T19 now checks fail-closed behavior for either shape.
+- Even 20/20 passing against the local 63 source is **not** evidence that
+  the approved cloud 61-migration staging environment passes. Test both
+  separately before seeking any deployment approval.
+
 ## Important unresolved issues
 
 - The future-table default privileges for supabase_admin are broad. The draft only addresses those owned by postgres; supabase_admin requires separate authorization and review.
