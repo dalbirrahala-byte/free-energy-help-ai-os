@@ -180,10 +180,32 @@ end $$;
 reset role;
 
 set local role execution_dispatch_worker;
-do $$ begin
+do $ declare v_return_type text; v_status text; v_envelope jsonb; begin
   -- 19: missing authorization fails closed and cannot create a dispatch.
-  if public.prepare_execution_dispatch(-1,-1) is distinct from 'blocked' then raise exception 'T19 dispatch fail-closed'; end if;
-end $$;
+  -- The 61-version staging baseline returns text; the two excluded local
+  -- source migrations replace it with a TABLE(...) result. Demand 'blocked'
+  -- in either contract and no non-null dispatch envelope for TABLE(...).
+  select pg_get_function_result(
+    'public.prepare_execution_dispatch(bigint,bigint)'::regprocedure)
+    into strict v_return_type;
+  if v_return_type = 'text' then
+    execute 'select public.prepare_execution_dispatch(-1,-1)'
+      into strict v_status;
+    if v_status is distinct from 'blocked'
+    then raise exception 'T19 dispatch fail-closed'; end if;
+  elsif v_return_type like 'TABLE(%' then
+    execute 'select to_jsonb(p) from public.prepare_execution_dispatch(-1,-1) p'
+      into strict v_envelope;
+    if v_envelope->>'preparation_status' is distinct from 'blocked'
+       or exists (
+         select 1 from jsonb_each(v_envelope) j
+         where j.key <> 'preparation_status' and j.value <> 'null'::jsonb
+       )
+    then raise exception 'T19 prepared envelope not fail-closed'; end if;
+  else
+    raise exception 'T19 unexpected dispatch function return type: %',v_return_type;
+  end if;
+end $;
 reset role;
 
 set local role anon;
