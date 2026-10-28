@@ -7,6 +7,7 @@ No Supabase URLs, credentials, network APIs, or production connections.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,8 @@ CONTAINER = "supabase_db_feh-staging-role-fix"
 ROOT = Path(__file__).resolve().parents[2]
 DRAFT = ROOT / "docs/security/20261028_REVIEW_ONLY_public_privilege_hardening.sql"
 TESTS = ROOT / "docs/staging/synthetic_database_tests.sql"
+MIGRATIONS = ROOT / "supabase/migrations"
+STAGING_MANIFEST = ROOT / "docs/staging/staging_61_manifest.csv"
 
 
 class ValidationFailure(RuntimeError):
@@ -137,6 +140,52 @@ def baseline() -> dict[str, object]:
     return result
 
 
+def exact_migration_history(profile: str) -> list[tuple[str, str]]:
+    """Read expected versions from reviewed files, never from the database."""
+    if profile == "approved-staging-61":
+        with STAGING_MANIFEST.open(newline="", encoding="utf-8") as stream:
+            rows = list(csv.DictReader(stream))
+        require(len(rows) == 61, "The 61-row reviewed manifest has changed")
+        history = [(str(row["production_version"]), str(row["name"])) for row in rows]
+        require(history == sorted(history), "Reviewed staging manifest is not ordered")
+    elif profile == "local-source-63":
+        files = sorted(MIGRATIONS.glob("*.sql"))
+        require(len(files) == 63, "Expected exactly 63 pinned source SQL files")
+        history = []
+        for file in files:
+            parts = file.stem.split("_", 1)
+            require(len(parts) == 2 and re.fullmatch(r"\d{14}", parts[0]) is not None,
+                    "Unexpected migration filename: " + file.name)
+            history.append((parts[0], parts[1]))
+        required = {
+            ("20260826100000", "authoritative_prepared_envelope_checkpoint"),
+            ("20260828120000", "prepared_dispatch_destination_binding"),
+            ("20260831120000", "health_check_crm_persistence"),
+        }
+        require(required.issubset(set(history)),
+                "Source-63 baseline is missing reviewed local-only migration versions")
+        require(not any(version == "20260901124827" for version, _ in history),
+                "Source-63 baseline unexpectedly includes production Health Check alias")
+    else:
+        raise ValidationFailure("Unexpected migration profile")
+
+    require(len(history) == len(set(history)), "Duplicate migration version/name")
+    require(len({version for version, _ in history}) == len(history),
+            "Duplicate migration version")
+    return history
+
+
+def actual_migration_history() -> list[tuple[str, str]]:
+    sql = """select coalesce(json_agg(json_build_array(version::text,name::text)
+      order by version), '[]'::json)::text
+      from supabase_migrations.schema_migrations;"""
+    try:
+        rows = json.loads(docker_psql(sql))
+        return [(str(row[0]), str(row[1])) for row in rows]
+    except (ValueError, IndexError, TypeError) as exc:
+        raise ValidationFailure("Cannot parse local migration history") from exc
+
+
 def fingerprint() -> str:
     sql = """with state as (
       select 'table:'||c.oid::text as k,
@@ -164,6 +213,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--static-only", action="store_true",
                         help="Validate file layout only (no Docker connection)")
+    parser.add_argument("--profile", choices=("approved-staging-61", "local-source-63"),
+                        default="approved-staging-61",
+                        help="Exact reviewed migration history; source-63 is LOCAL DIAGNOSTIC ONLY")
     args = parser.parse_args()
     sql = build_rollback_test()
     print("PASS: T01–T20 labels, rollback-only test assembly and guards")
@@ -178,13 +230,26 @@ def main() -> int:
             "Expected non-superuser postgres on PostgreSQL 17")
     require(before['public_tables'] == 26 and before['rls_tables'] == 26,
             "Expected 26 RLS-enabled public tables")
-    require(before['migrations'] == 61, "Expected exactly 61 historical migrations")
+    expected = exact_migration_history(args.profile)
+    actual = actual_migration_history()
+    require(before['migrations'] == len(expected), 
+            f"Expected {len(expected)} migrations for {args.profile}, "
+            f"found {before['migrations']}")
+    require(actual == expected,
+            f"Local migration history differs from exact {args.profile} allowlist; "
+            f"extra={sorted(set(actual)-set(expected))[:5]}, "
+            f"missing={sorted(set(expected)-set(actual))[:5]}")
     names = ('leads', 'tasks', 'activities', 'audit_log', 'user_roles',
              'auth_users', 'customers', 'customer_sites')
     require(all(before[name] == 0 for name in names),
             "Local test database has nonempty business or Auth tables; REFUSE test")
     old_grants = fingerprint()
-    print("PASS: dedicated Docker database, 61 migrations, empty fixtures and RLS baseline")
+    print(f"PASS: dedicated Docker database, exact {len(expected)} migrations "
+          "and empty RLS baseline")
+    if args.profile == "local-source-63":
+        print("NOTE: This 63-migration development database is NOT equivalent "
+              "to approved cloud staging's 61 migrations. Results are only "
+              "a local diagnostic, never staging approval.")
 
     print("Running rollback-only local SQL checks ...")
     issue = None
