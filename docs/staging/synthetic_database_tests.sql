@@ -1,4 +1,7 @@
 -- Synthetic database tests only. No provider calls, emails, passwords or live identities.
+-- REVIEW BRANCH: new privilege regression checks require a separately approved
+-- hardening migration. Do not rerun the original exact-61 staging workflow with
+-- these requirements until a new, approved staging test plan exists.
 -- All fixtures roll back. PostgreSQL identity sequences may advance (not rolled back).
 begin;
 set local statement_timeout = '45s';
@@ -11,6 +14,14 @@ do $$ begin
      or exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
       where n.nspname='public' and c.relkind='r' and not c.relrowsecurity)
   then raise exception 'T01 tables/RLS'; end if;
+  -- RLS does not apply to TRUNCATE. Both exposed API roles must lack this
+  -- destructive privilege on every public table, including control tables.
+  if exists (
+    select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='public' and c.relkind in ('r','p')
+      and (has_table_privilege('anon',c.oid,'TRUNCATE')
+        or has_table_privilege('authenticated',c.oid,'TRUNCATE'))
+  ) then raise exception 'T01 unsafe TRUNCATE grants'; end if;
   -- 02: no usable credential or elevated worker identity is provisioned.
   if not exists(select 1 from pg_roles where rolname='execution_dispatch_worker'
       and not rolcanlogin and not rolbypassrls and not rolsuper)
@@ -75,9 +86,18 @@ do $$ begin
 end $$;
 
 set local role anon;
-do $$ begin
-  -- 13: anonymous direct table reads expose no leads.
-  if (select count(*) from public.leads) <> 0 then raise exception 'T13 anonymous read'; end if;
+do $ declare visible_leads bigint; begin
+  -- 13: anonymous direct table reads expose no leads. Permission denial
+  -- is stronger than a zero-row RLS result; both are secure outcomes.
+  -- Direct table SELECT grants on these private tables are forbidden.
+  if has_table_privilege('anon','public.leads','SELECT')
+     or has_table_privilege('anon','public.user_roles','SELECT')
+  then raise exception 'T13 excessive anonymous SELECT grant'; end if;
+  begin
+    select count(*) into visible_leads from public.leads;
+    if visible_leads <> 0 then raise exception 'T13 anonymous read'; end if;
+  exception when insufficient_privilege then null;
+  end;
   -- 14: anonymous direct inserts are rejected.
   begin
     insert into public.leads(company_name) values ('Forbidden synthetic anon');
