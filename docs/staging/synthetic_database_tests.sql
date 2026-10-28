@@ -7,6 +7,37 @@ begin;
 set local statement_timeout = '45s';
 set local lock_timeout = '5s';
 
+-- REVIEW-ONLY TEST-RUNNER DESIGN. The cloud postgres session currently has
+-- ADMIN membership in these two dormant NOLOGIN roles but SET=FALSE.
+-- Inside this rollback transaction it may grant itself SET permission
+-- without changing permanent membership or embedding superuser credentials.
+-- Requires independent local verification AND separate cloud-stage approval.
+do $feh_test_runner$
+begin
+  if session_user <> 'postgres' or current_user <> 'postgres' then
+    raise exception 'FEH synthetic runner: postgres session required';
+  end if;
+  if pg_has_role(session_user,'external_lead_ingestor','SET')
+     or pg_has_role(session_user,'execution_dispatch_worker','SET') then
+    raise exception 'FEH synthetic runner: unexpected persistent SET membership';
+  end if;
+  if not exists (
+    select 1 from pg_auth_members m
+    where m.roleid = 'external_lead_ingestor'::regrole
+      and m.member = 'postgres'::regrole and m.admin_option
+  ) or not exists (
+    select 1 from pg_auth_members m
+    where m.roleid = 'execution_dispatch_worker'::regrole
+      and m.member = 'postgres'::regrole and m.admin_option
+  ) then
+    raise exception 'FEH synthetic runner: reviewed ADMIN membership missing';
+  end if;
+end
+$feh_test_runner$;
+
+grant external_lead_ingestor to postgres with inherit false, set true;
+grant execution_dispatch_worker to postgres with inherit false, set true;
+
 do $$ begin
   -- 01: expected tables and RLS, including security-control tables.
   if (select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
@@ -172,4 +203,16 @@ do $$ declare a jsonb; d jsonb; begin
 end $$;
 reset role;
 rollback;
+
+-- PostgreSQL role memberships are transactional. Prove the temporary
+-- SET memberships did not survive the fixture rollback before reporting PASS.
+do $feh_membership_cleanup$
+begin
+  if pg_has_role(session_user,'external_lead_ingestor','SET')
+     or pg_has_role(session_user,'execution_dispatch_worker','SET') then
+    raise exception 'FEH synthetic runner: temporary membership persisted';
+  end if;
+end
+$feh_membership_cleanup$;
+
 select 'passed'::text as synthetic_tests, 20 as assertions;
