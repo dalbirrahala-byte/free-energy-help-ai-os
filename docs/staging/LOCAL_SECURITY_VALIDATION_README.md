@@ -19,6 +19,34 @@ synthetic SQL by itself against cloud staging. The runner assembles both
 review files into **one local transaction** and substitutes a final ROLLBACK
 for the draft's COMMIT. It checks T01–T20 and the role membership cleanup.
 
+## Existing 63-migration Docker development database
+
+The dedicated local Docker database was confirmed to have **63** migration
+records, including the two intentionally held-back dispatch migrations and
+the original `20260831120000` Health Check version. The approved cloud
+staging plan has 61 different migration records. **Do not adjust the
+61-version gate or pretend they are equivalent.**
+
+To run an *explicit local-63 diagnostic* only, update the review worktree:
+
+```powershell
+git fetch origin
+git -C C:\Projects\feh-security-review switch --detach origin/review/feh-privileges-synthetic-tests-20261028
+python C:\Projects\feh-security-review\docs\staging\validate_local_permissions.py --profile local-source-63
+```
+
+This checks the **exact 63 migration version/name pairs** against the 63
+source migration filenames in the review branch, before any SQL starts.
+For comparison, the normal `--profile approved-staging-61` (the default)
+checks the 61-row reviewed staging manifest and will properly reject this
+63-version Docker project. T19 detects whether the installed
+`prepare_execution_dispatch` function returns scalar text or a TABLE
+envelope, and fails closed on either contract.
+
+**Even a successful local-63 result is not a staging-parity test or
+production approval.** A separate exact-61 test environment, cloud staging
+evidence, and separate approvals are still required.
+
 ## Safety restrictions
 
 - Uses **Docker exec** into only the named local Supabase DB container.
@@ -41,9 +69,11 @@ existing 61 migration files and manifest remain untouched.
 
 ## How to interpret the output
 
-**PASS** means the local Docker instance reported all 20 assertions passed
-and the privilege/data-count snapshots matched. It does not constitute
-production sign-off or verify all application access paths.
+**PASS** means the selected local migration profile matched exactly,
+the local Docker instance reported all 20 assertions passed and the
+privilege/data-count snapshots matched. A source-63 PASS is a diagnostic
+only; neither profile constitutes production sign-off or verifies all
+application access paths.
 
 **STOP** means the test or safety preflight failed. Stop, send the full
 terminal output for review, and **do not rerun** or change database grants
