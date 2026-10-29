@@ -1,4 +1,5 @@
 import type { ServiceStatusInfo } from "@/lib/ai-control-centre/types";
+import type { EnquiryInboxItem } from "./enquiryInbox";
 
 export type TableAvailability = {
   leads: boolean;
@@ -104,6 +105,9 @@ export type MissionControlData = {
   overdueTasks: DashboardTask[];
   upcomingTasks: DashboardTask[];
   followUpLeads: FollowUpLead[];
+  enquiryInbox: EnquiryInboxItem[];
+  enquiryInboxCount: number;
+  enquiryInboxAvailable: boolean;
   renewals: RenewalRow[];
   recentLeads: RecentLead[];
   recentCustomers: RecentCustomer[];
