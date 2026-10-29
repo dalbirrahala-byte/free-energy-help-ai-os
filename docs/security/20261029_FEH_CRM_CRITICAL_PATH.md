@@ -11,9 +11,9 @@ cloud SQL changes or data sharing.
   verified by its local test runner.
 - **PASS (read-only):** the cloud staging database's 61 ordered migration
   versions/names match the reviewed GitHub CSV manifest exactly.
-- **PENDING:** run 20/20 assertions against an **isolated local exact-61**
-  baseline; script prepared under
-  `docs/staging/prepare_exact61_local.py`.
+- **PASS (local, 29 October):** 20/20 assertions against an **isolated
+  exact-61** baseline, with matching pre/post rollback permission
+  fingerprints and row counts. This is not a cloud staging test.
 - **SECURITY REMEDIATION REQUIRED:** prior read-only cloud checks found
   17 of 26 public tables with TRUNCATE grants to externally accessible
   `anon`/`authenticated` database roles. The proposal is only a
@@ -25,11 +25,10 @@ cloud SQL changes or data sharing.
 
 ## Gate 1 — Prove the permissions repair on exact-61, then stage it
 
-**Next technical action:** local exact-61 rollback-only test in its own
-Docker project. Keep the existing 63 database unchanged.
-
-After local PASS, review a *new forward-only staging migration* and
-function/privilege impact. Test authenticated staff roles, anonymous
+**Next technical action:** review a *new forward-only staging migration*
+and function/privilege impact. The separate exact-61 Docker test and
+its 20 assertions have now passed without modifying the original
+63-migration test database. Test authenticated staff roles, anonymous
 website intake functions, RLS restrictions, audit logging and role-based
 writes. Confirm no synthetic records or temporary role membership remain.
 Do not change the original 61 migration files.
@@ -84,7 +83,7 @@ not for routine read-only diagnostics or review-only coding.
 
 ## Immediate blocked item
 
-Complete the exact-61 **local** test, then return with a staging
-approval request specifying exactly what SQL, which target, expected
-impact, rollback/recovery and evidence are proposed. No cloud changes
+Prepare a **cloud staging-only** deployment approval request specifying
+exactly what SQL, which target, expected impact, rollback/recovery and
+evidence are proposed. This is a new, separate approval gate. No cloud changes
 are implicit in this plan.
