@@ -194,7 +194,7 @@ def fingerprint() -> str:
       where n.nspname='public' and c.relkind in ('r','p')
       union all
       select 'defaults:'||d.defaclrole::text||':'||d.defaclnamespace::text||
-        ':'||d.defaclobjtype as k,coalesce(d.defaclacl::text,'<null>') as v
+        ':'||d.defaclobjtype::text as k,coalesce(d.defaclacl::text,'<null>') as v
       from pg_default_acl d where d.defaclnamespace='public'::regnamespace
       union all
       select 'membership:'||m.roleid::text||':'||m.member::text||':'||m.grantor::text,
