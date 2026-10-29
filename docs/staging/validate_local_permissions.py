@@ -49,6 +49,23 @@ def build_rollback_test() -> str:
             "Scoped runner guard missing")
     numbers = [int(x) for x in re.findall(r"(?m)^[ \t]*--[ \t]*(0[1-9]|1[0-9]|20):", tests)]
     require(numbers == list(range(1, 21)), "Expected exactly T01–T20 in order")
+
+    # A previous text edit accidentally collapsed PostgreSQL '$$' into '$'.
+    # Refuse SQL execution unless every PL/pgSQL DO has a well-formed,
+    # matching dollar-quote delimiter (including the named DO blocks).
+    do_lines = re.findall(r"(?im)^[ \\t]*do[ \\t]+([^\\r\\n]+)$", tests)
+    open_tags = []
+    for do_line in do_lines:
+        match = re.match(r"^(\\$[A-Za-z_0-9]*\\$)(?:[ \\t]|$)", do_line)
+        require(match is not None, "Malformed SQL DO dollar-quote opener: " + do_line)
+        open_tags.append(match.group(1))
+    end_tags = re.findall(
+        r"(?im)^[ \\t]*end(?:[ \\t]|\\r?\\n)+(\\$[A-Za-z_0-9]*\\$);[ \\t]*$",
+        tests
+    )
+    require(len(open_tags) == 10 and open_tags == end_tags,
+            f"SQL DO dollar-quote mismatch: {len(open_tags)} opens, "
+            f"{len(end_tags)} closes")
     require("grant external_lead_ingestor to postgres with inherit false, set true;" in tests,
             "Temporary ingestor role grant changed")
     require("grant execution_dispatch_worker to postgres with inherit false, set true;" in tests,
