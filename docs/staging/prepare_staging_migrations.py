@@ -53,7 +53,10 @@ def main() -> None:
 
     repo = args.repo.expanduser().resolve(strict=True)
     out = args.output.expanduser().resolve()
-    if git(repo, "rev-parse", "--show-toplevel") != str(repo):
+    # Git for Windows may print C:/Projects/... while pathlib prints
+    # C:\\Projects\\... . Compare normalized paths, not raw separators.
+    reported_root = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
+    if reported_root != repo:
         stop("repo argument must be the checkout root")
     if git(repo, "rev-parse", "HEAD") != PIN:
         stop("source checkout HEAD is not the audited source commit")
