@@ -117,7 +117,7 @@ do $$ begin
 end $$;
 
 set local role anon;
-do $ declare visible_leads bigint; begin
+do $$ declare visible_leads bigint; begin
   -- 13: anonymous direct table reads expose no leads. Permission denial
   -- is stronger than a zero-row RLS result; both are secure outcomes.
   -- Direct table SELECT grants on these private tables are forbidden.
@@ -180,7 +180,7 @@ end $$;
 reset role;
 
 set local role execution_dispatch_worker;
-do $ declare v_return_type text; v_status text; v_envelope jsonb; begin
+do $$ declare v_return_type text; v_status text; v_envelope jsonb; begin
   -- 19: missing authorization fails closed and cannot create a dispatch.
   -- The 61-version staging baseline returns text; the two excluded local
   -- source migrations replace it with a TABLE(...) result. Demand 'blocked'
@@ -205,7 +205,7 @@ do $ declare v_return_type text; v_status text; v_envelope jsonb; begin
   else
     raise exception 'T19 unexpected dispatch function return type: %',v_return_type;
   end if;
-end $;
+end $$;
 reset role;
 
 set local role anon;
