@@ -76,7 +76,31 @@ New review-only scripts provide a separate local exact-61 test environment:
 - `docs/staging/EXACT61_LOCAL_VALIDATION.md` explains the single Windows
   command and failure safeguards.
 
-**The exact-61 local database test has not yet been executed.**
+**Exact-61 local validation: PASS, 29 October 2026 (user-provided PowerShell screenshot).**
+
+Runner:
+`python C:\\Projects\\feh-security-review\\docs\\staging\\prepare_exact61_local.py --start-and-test`
+
+Observed evidence:
+
+```text
+PASS: pinned clean source migration worktree
+PASS: exact 61 migration SHA256 files and isolated config
+PASS: T01–T20 labels, rollback-only test assembly and guards
+PASS: dedicated Docker database, exact 61 migrations and empty RLS baseline
+PASS: local table counts, role membership and ACLs match pre-test state
+PASS: all 20 synthetic assertions reported success after rollback
+PASS: isolated exact-61 local diagnostic complete
+Cloud staging and production have not been contacted.
+```
+
+Interpretation: the proposed privilege changes and all 20 synthetic assertions
+passed inside a single transaction in the separate exact-61 **local**
+database. The runner's row-count and permission fingerprints matched after
+ROLLBACK. PostgreSQL identity sequences can still advance. This **does not**
+verify full CRM app workflows, independently prove all records or sequence
+state, or authorize cloud staging/production deployment.
+
 A test PASS in either local profile does not constitute cloud staging
 authorization. No PR merge or cloud staging/production DDL is authorized.
 
