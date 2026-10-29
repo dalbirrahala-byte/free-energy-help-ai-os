@@ -53,17 +53,24 @@ def build_rollback_test() -> str:
     # A previous text edit accidentally collapsed PostgreSQL '$$' into '$'.
     # Refuse SQL execution unless every PL/pgSQL DO has a well-formed,
     # matching dollar-quote delimiter (including the named DO blocks).
-    do_lines = re.findall(r"(?im)^[ \\t]*do[ \\t]+([^\\r\\n]+)$", tests)
-    open_tags = []
-    for do_line in do_lines:
-        match = re.match(r"^(\\$[A-Za-z_0-9]*\\$)(?:[ \\t]|$)", do_line)
-        require(match is not None, "Malformed SQL DO dollar-quote opener: " + do_line)
-        open_tags.append(match.group(1))
-    end_tags = re.findall(
-        r"(?im)^[ \\t]*end(?:[ \\t]|\\r?\\n)+(\\$[A-Za-z_0-9]*\\$);[ \\t]*$",
-        tests
-    )
-    require(len(open_tags) == 10 and open_tags == end_tags,
+    lines = [line.strip() for line in tests.splitlines()]
+    do_lines = [line for line in lines if line.lower().startswith("do ")]
+    open_tags = [line.split(maxsplit=2)[1] for line in do_lines]
+    require(len(open_tags) == 10 and
+            all(tag.startswith("$") and tag.endswith("$") and len(tag) >= 2
+                for tag in open_tags),
+            "Malformed SQL DO dollar-quote opener")
+    end_tags = []
+    for index, line in enumerate(lines):
+        if line.startswith("end "):
+            value = line[4:].strip()
+        elif line == "end" and index + 1 < len(lines):
+            value = lines[index + 1]
+        else:
+            continue
+        if value.startswith("$") and value.endswith("$;"):
+            end_tags.append(value[:-1])
+    require(open_tags == end_tags,
             f"SQL DO dollar-quote mismatch: {len(open_tags)} opens, "
             f"{len(end_tags)} closes")
     require("grant external_lead_ingestor to postgres with inherit false, set true;" in tests,
