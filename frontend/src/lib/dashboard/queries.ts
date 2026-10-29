@@ -15,6 +15,7 @@ import { getOrchestratorFeatureFlagState } from "@/lib/ai-workforce/featureFlags
 
 import { loadFactoryOpsInfo } from "./factory-meta";
 import { buildEngineReadiness, buildPriorityActions } from "./priorityActions";
+import { buildEnquiryInbox, type EnquiryInboxInput } from "./enquiryInbox";
 import type { ActivityFeedItem, DashboardTask, MissionControlData, PipelineStage, TableAvailability } from "./types";
 
 const NOT_CONFIGURED = "Not configured";
@@ -126,32 +127,58 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
 
   let pipeline: PipelineStage[] = [];
   let pipelineConfigured = false;
+  let enquiryInbox: MissionControlData["enquiryInbox"] = [];
+  let enquiryInboxCount = 0;
+  let enquiryInboxAvailable = false;
 
   if (leadsTable.ok) {
-    const { data: leadRows } = await supabase
-      .from("leads")
-      .select("status");
+    // Page through the existing CRM lead table, rather than silently accepting
+    // Supabase's default 1,000-row limit and displaying incomplete counts.
+    // Stop at 10,000 records: an incomplete query must not look like zero work.
+    const batchSize = 1000;
+    const maximumRows = 10000;
+    const allLeads: EnquiryInboxInput[] = [];
+    let complete = false;
+    for (let offset = 0; offset <= maximumRows; offset += batchSize) {
+      const { data, error } = await supabase
+        .from("leads")
+        .select("id, company_name, created_at, status, lead_source, lead_owner, next_action, follow_up_required, follow_up_date")
+        .order("id", { ascending: true })
+        .range(offset, offset + batchSize - 1);
 
-    const counts = new Map<string, number>();
-
-    for (const status of PIPELINE_STATUSES) {
-      counts.set(status, 0);
+      if (error || !data) break;
+      if (offset === maximumRows) {
+        // More than 10,000 records: refuse to report a misleading count.
+        complete = data.length === 0;
+        break;
+      }
+      allLeads.push(...(data as EnquiryInboxInput[]));
+      if (data.length < batchSize) {
+        complete = true;
+        break;
+      }
     }
 
-    for (const row of leadRows ?? []) {
-      const key = row.status || "New";
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+    if (complete) {
+      const counts = new Map<string, number>();
+      for (const status of PIPELINE_STATUSES) counts.set(status, 0);
+      for (const row of allLeads) {
+        const key = row.status || "New";
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      const max = Math.max(...Array.from(counts.values()), 1);
+      pipeline = Array.from(counts.entries()).map(([status, count]) => ({
+        status,
+        count,
+        widthPercent: count === 0 ? 0 : Math.round((count / max) * 100),
+      }));
+      pipelineConfigured = true;
+
+      const inbox = buildEnquiryInbox(allLeads, todayKey);
+      enquiryInbox = [...inbox.items];
+      enquiryInboxCount = inbox.count;
+      enquiryInboxAvailable = true;
     }
-
-    const max = Math.max(...Array.from(counts.values()), 1);
-
-    pipeline = Array.from(counts.entries()).map(([status, count]) => ({
-      status,
-      count,
-      widthPercent: count === 0 ? 0 : Math.round((count / max) * 100),
-    }));
-
-    pipelineConfigured = true;
   }
 
   const todaysTasks: DashboardTask[] = [];
@@ -410,6 +437,9 @@ export async function loadMissionControlData(): Promise<MissionControlData> {
     overdueTasks,
     upcomingTasks,
     followUpLeads,
+    enquiryInbox,
+    enquiryInboxCount,
+    enquiryInboxAvailable,
     renewals,
     recentLeads,
     recentCustomers,
