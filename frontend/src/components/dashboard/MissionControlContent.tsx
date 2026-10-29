@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { AiControlCentreSection } from "./AiControlCentreSection";
 import { MissionBriefing } from "./MissionBriefing";
+import { EnquiryInboxSection } from "./EnquiryInboxSection";
 import { SectionCard } from "./SectionCard";
 import { StatCard } from "./StatCard";
 import type { MissionControlData } from "@/lib/dashboard/types";
@@ -36,6 +37,12 @@ export function MissionControlContent({ data }: MissionControlContentProps) {
         followUpCount={followUpCount}
         renewalCount={renewalCount}
         priorityHref={priorityHref}
+      />
+
+      <EnquiryInboxSection
+        items={data.enquiryInbox}
+        total={data.enquiryInboxCount}
+        available={data.enquiryInboxAvailable}
       />
 
       <PriorityActionsSection data={data} />
