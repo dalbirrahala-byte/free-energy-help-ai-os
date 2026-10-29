@@ -58,6 +58,28 @@ NOTE: PostgreSQL identity sequences may advance despite ROLLBACK.
 
 Interpretation: **PASS (local 63-migration diagnostic only)**. The runner's count and ACL/role-membership comparisons matched their starting values after ROLLBACK. Its output does **not** prove sequence values were restored, application-level end-to-end behavior, parity with the cloud staging 61-version baseline, or that the proposed hardening can safely be deployed. Keep the review-only status until independent staging-61 validation and security review.
 
+## Staging-baseline preparation — 29 October 2026
+
+A read-only comparison of Supabase cloud staging's current
+`supabase_migrations.schema_migrations` and the reviewed CSV manifest
+confirmed **61/61 exact ordered version and name matches**. This is
+schema-history evidence only; no migration was applied or privilege changed.
+
+New review-only scripts provide a separate local exact-61 test environment:
+
+- `docs/staging/prepare_exact61_local.py` verifies and prepares 61 pinned
+  migration files, uses a new local Docker project and unique ports, and
+  optionally invokes the rollback-only 20-assertion validator.
+- `docs/staging/validate_local_permissions.py` now binds the
+  `approved-staging-61` and `local-source-63` profiles to **different**
+  explicitly named local database containers.
+- `docs/staging/EXACT61_LOCAL_VALIDATION.md` explains the single Windows
+  command and failure safeguards.
+
+**The exact-61 local database test has not yet been executed.**
+A test PASS in either local profile does not constitute cloud staging
+authorization. No PR merge or cloud staging/production DDL is authorized.
+
 ## Important unresolved issues
 
 - The future-table default privileges for supabase_admin are broad. The draft only addresses those owned by postgres; supabase_admin requires separate authorization and review.
