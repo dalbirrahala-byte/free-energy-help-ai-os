@@ -15,7 +15,10 @@ import re
 import subprocess
 import sys
 
-CONTAINER = "supabase_db_feh-staging-role-fix"
+LOCAL_CONTAINERS = {
+    "approved-staging-61": "supabase_db_feh-staging-61-local",
+    "local-source-63": "supabase_db_feh-staging-role-fix",
+}
 ROOT = Path(__file__).resolve().parents[2]
 DRAFT = ROOT / "docs/security/20261028_REVIEW_ONLY_public_privilege_hardening.sql"
 TESTS = ROOT / "docs/staging/synthetic_database_tests.sql"
@@ -112,8 +115,8 @@ def command(args: list[str], *, input_text: str | None = None,
         raise ValidationFailure("Local command timed out; verify rollback") from exc
 
 
-def docker_psql(sql: str, *, timeout: int = 45) -> str:
-    call = command(["docker", "exec", "-i", CONTAINER,
+def docker_psql(sql: str, *, container: str, timeout: int = 45) -> str:
+    call = command(["docker", "exec", "-i", container,
                     "psql", "-X", "-v", "ON_ERROR_STOP=1", "-q", "-t", "-A",
                     "-U", "postgres", "-d", "postgres"],
                    input_text=sql, timeout=timeout)
@@ -123,7 +126,7 @@ def docker_psql(sql: str, *, timeout: int = 45) -> str:
     return call.stdout.strip()
 
 
-def check_docker_target() -> None:
+def check_docker_target(container: str) -> None:
     context = command(["docker", "context", "show"], timeout=15)
     require(context.returncode == 0, "Docker Desktop is unavailable")
     require(context.stdout.strip() in ("default", "desktop-linux"),
@@ -132,12 +135,12 @@ def check_docker_target() -> None:
     require(not host or host.startswith("npipe:") or host.startswith("unix:"),
             "Remote DOCKER_HOST is not allowed")
     info = command(["docker", "inspect", "--format", "{{.Name}}|{{.State.Running}}",
-                    CONTAINER], timeout=15)
-    require(info.returncode == 0 and info.stdout.strip() == "/" + CONTAINER + "|true",
-            f"Expected running dedicated local container {CONTAINER}")
+                    container], timeout=15)
+    require(info.returncode == 0 and info.stdout.strip() == "/" + container + "|true",
+            f"Expected running dedicated local container {container}")
 
 
-def baseline() -> dict[str, object]:
+def baseline(container: str) -> dict[str, object]:
     sql = """select json_build_object(
       'database', current_database(), 'user', session_user,
       'superuser', current_setting('is_superuser'),
@@ -158,7 +161,7 @@ def baseline() -> dict[str, object]:
       'customer_sites', (select count(*) from public.customer_sites)
     )::text;"""
     try:
-        result = json.loads(docker_psql(sql))
+        result = json.loads(docker_psql(sql, container=container))
     except ValueError as exc:
         raise ValidationFailure("Cannot parse local baseline metadata") from exc
     return result
@@ -199,18 +202,18 @@ def exact_migration_history(profile: str) -> list[tuple[str, str]]:
     return history
 
 
-def actual_migration_history() -> list[tuple[str, str]]:
+def actual_migration_history(container: str) -> list[tuple[str, str]]:
     sql = """select coalesce(json_agg(json_build_array(version::text,name::text)
       order by version), '[]'::json)::text
       from supabase_migrations.schema_migrations;"""
     try:
-        rows = json.loads(docker_psql(sql))
+        rows = json.loads(docker_psql(sql, container=container))
         return [(str(row[0]), str(row[1])) for row in rows]
     except (ValueError, IndexError, TypeError) as exc:
         raise ValidationFailure("Cannot parse local migration history") from exc
 
 
-def fingerprint() -> str:
+def fingerprint(container: str) -> str:
     sql = """with state as (
       select 'table:'||c.oid::text as k,
         coalesce(c.relacl::text,'<null>')||':'||c.relrowsecurity::text as v
@@ -227,7 +230,7 @@ def fingerprint() -> str:
       where m.roleid in ('external_lead_ingestor'::regrole,
                          'execution_dispatch_worker'::regrole)
     ) select md5(coalesce(string_agg(k||'='||v,E'\\n' order by k),'')) from state;"""
-    result = docker_psql(sql)
+    result = docker_psql(sql, container=container)
     require(re.fullmatch(r"[a-f0-9]{32}", result) is not None,
             "Invalid privilege fingerprint")
     return result
@@ -246,8 +249,9 @@ def main() -> int:
     if args.static_only:
         return 0
 
-    check_docker_target()
-    before = baseline()
+    container = LOCAL_CONTAINERS[args.profile]
+    check_docker_target(container)
+    before = baseline(container)
     require(before['database'] == 'postgres' and before['user'] == 'postgres',
             "Unexpected database identity")
     require(before['superuser'] == 'off' and 170000 <= before['postgres_version'] < 180000,
@@ -255,7 +259,7 @@ def main() -> int:
     require(before['public_tables'] == 26 and before['rls_tables'] == 26,
             "Expected 26 RLS-enabled public tables")
     expected = exact_migration_history(args.profile)
-    actual = actual_migration_history()
+    actual = actual_migration_history(container)
     require(before['migrations'] == len(expected), 
             f"Expected {len(expected)} migrations for {args.profile}, "
             f"found {before['migrations']}")
@@ -267,7 +271,7 @@ def main() -> int:
              'auth_users', 'customers', 'customer_sites')
     require(all(before[name] == 0 for name in names),
             "Local test database has nonempty business or Auth tables; REFUSE test")
-    old_grants = fingerprint()
+    old_grants = fingerprint(container)
     print(f"PASS: dedicated Docker database, exact {len(expected)} migrations "
           "and empty RLS baseline")
     if args.profile == "local-source-63":
@@ -278,7 +282,7 @@ def main() -> int:
     print("Running rollback-only local SQL checks ...")
     issue = None
     try:
-        result = docker_psql(sql, timeout=150)
+        result = docker_psql(sql, container=container, timeout=150)
         require('passed|20' in result.splitlines(),
                 "T01–T20 success marker absent")
     except ValidationFailure as exc:
@@ -286,8 +290,8 @@ def main() -> int:
 
     # Post-state checked even if the SQL fails. ON_ERROR_STOP ensures an
     # aborted psql session closes, rolling back its uncommitted transaction.
-    after = baseline()
-    new_grants = fingerprint()
+    after = baseline(container)
+    new_grants = fingerprint(container)
     require(after == before and old_grants == new_grants,
             "FAIL: local data counts or privileges differ from the baseline")
     print("PASS: local table counts, role membership and ACLs match pre-test state")
