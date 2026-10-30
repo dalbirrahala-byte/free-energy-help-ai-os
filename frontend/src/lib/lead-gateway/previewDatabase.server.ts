@@ -1,5 +1,6 @@
 import 'server-only';
 import postgres from 'postgres';
+import {SUPABASE_DATABASE_CA} from './supabaseCa.server.ts';
 
 export const ACK_STAGING_PROJECT = 'vredwhyphrhsudggrsen';
 type Kind = 'ingestor' | 'worker';
@@ -9,7 +10,7 @@ type Transaction = { unsafe(query: string, args?: Value[]): PromiseLike<Row[]> }
 type Pool = { begin<T>(work: (tx: Transaction) => Promise<T>): Promise<T>; end(): Promise<void> };
 type Configuration = Readonly<{
   host: string; port: number; database: string; username: string; password: string;
-  ssl: { rejectUnauthorized: true }; prepare: false; max: 1; connect_timeout: 10;
+  ssl: { rejectUnauthorized: true; ca: string; servername: string }; prepare: false; max: 1; connect_timeout: 10;
   idle_timeout: 10; max_lifetime: 60; debug: false; onnotice: () => void;
 }>;
 type Definition = { kind: Kind; keys: readonly string[]; types: readonly string[]; rows: boolean };
@@ -51,7 +52,7 @@ export function readPreviewDatabaseConfiguration(kind: Kind, environment: Readon
         (direct ? url.port !== '5432' : url.port !== '6543') ||
         !/^[\x21-\x7e]{32,256}$/.test(password)) return null;
     return Object.freeze({host: url.hostname, port: Number(url.port), database: 'postgres', username, password,
-      ssl: {rejectUnauthorized: true as const}, prepare: false as const, max: 1 as const,
+      ssl: {rejectUnauthorized: true as const, ca: SUPABASE_DATABASE_CA, servername: url.hostname}, prepare: false as const, max: 1 as const,
       connect_timeout: 10 as const, idle_timeout: 10 as const, max_lifetime: 60 as const,
       debug: false as const, onnotice: () => undefined});
   } catch { return null; }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {registerHooks} from 'node:module';
+import {X509Certificate} from 'node:crypto';
 const hook=registerHooks({resolve(s,c,next){return s==='server-only'?{url:'data:text/javascript,export{}',shortCircuit:true}:next(s,c);}});
 const {createPreviewAcknowledgementDatabase,readPreviewDatabaseConfiguration}=await import('./previewDatabase.server.ts');
 hook.deregister();
@@ -82,4 +83,14 @@ test('readiness exposes only a closed diagnostic vocabulary',async()=>{
  const identity=harness('worker',{identity:{login:'postgres'}});await identity.client.verifyConnection();
  assert.equal(identity.client.verificationFailure(),'IDENTITY_MISMATCH');
  assert.ok(!JSON.stringify([h.client.verificationFailure(),identity.client.verificationFailure()]).includes(password));
+});
+test('staging trusts the official CA while retaining full hostname verification',()=>{
+ const config=readPreviewDatabaseConfiguration('worker',env());
+ assert.equal(config.ssl.rejectUnauthorized,true);
+ assert.equal(config.ssl.servername,config.host);
+ const cert=new X509Certificate(config.ssl.ca);
+ assert.equal(cert.ca,true);
+ assert.equal(cert.fingerprint256,'80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA');
+ assert.ok(Date.parse(cert.validTo)>Date.now());
+ assert.equal(Object.hasOwn(config.ssl,'checkServerIdentity'),false);
 });
