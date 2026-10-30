@@ -1,4 +1,5 @@
 import { normalizeOtpDestination, type OtpChannel } from "./otpChallenge.ts";
+import { classifyTelnyxSmsResult, type TelnyxSmsRequest } from "../execution-dispatch/telnyxSmsResult.ts";
 
 export type PreviewOtpDeliveryResult = Readonly<{
   channel: OtpChannel;
@@ -77,23 +78,40 @@ async function sendEmail(to: string, code: string): Promise<string | null> {
   return typeof body?.id === "string" ? body.id : null;
 }
 
-async function sendSms(to: string, code: string): Promise<string | null> {
-  const response = await fetch("https://api.telnyx.com/v2/messages", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.TELNYX_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: process.env.TELNYX_MESSAGING_FROM,
-      to,
-      text: `Free Energy Help verification code: ${code}. It expires shortly. If you did not request it, ignore this message.`,
-    }),
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error("otp_sms_delivery_failed");
-  const body = (await response.json().catch(() => null)) as { data?: { id?: unknown } } | null;
-  return typeof body?.data?.id === "string" ? body.data.id : null;
+async function sendSms(to: string, code: string): Promise<string> {
+  const from = process.env.TELNYX_MESSAGING_FROM;
+  if (!from || !/^\+447[1-57-9]\d{8}$/.test(from) || !/^\+447[1-57-9]\d{8}$/.test(to) || from === to) {
+    throw new Error("invalid_preview_sms_address");
+  }
+  const request: TelnyxSmsRequest = {
+    from,
+    to,
+    text: `Free Energy Help verification code: ${code}. It expires shortly. If you did not request it, ignore this message.`,
+    type: "SMS",
+  };
+  try {
+    const response = await fetch("https://api.telnyx.com/v2/messages", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.TELNYX_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    });
+    const result = classifyTelnyxSmsResult({
+      outcome: "response",
+      httpStatus: response.status,
+      body: await response.json().catch(() => null),
+    }, request);
+    if (result.status === "success" && result.providerReference) return result.providerReference;
+  } catch {
+    // A timeout or thrown fetch may follow provider acceptance. Do not retry
+    // or expose raw errors (which can contain request data) to the browser.
+  }
+  throw new Error("otp_sms_submission_indeterminate_check_telnyx_before_retry");
 }
 
 export async function deliverPreviewOtp(input: {
@@ -101,6 +119,8 @@ export async function deliverPreviewOtp(input: {
   destination: string;
   code: string;
 }): Promise<PreviewOtpDeliveryResult> {
+  previewOnly();
+  if (!/^\d{6}$/.test(input.code)) throw new Error("invalid_otp_code");
   const normalized = normalizeOtpDestination(input.channel, input.destination);
   if (!normalized) throw new Error("invalid_otp_destination");
   const mode = evaluatePreviewDeliveryPolicy({ channel: input.channel, destination: normalized });
