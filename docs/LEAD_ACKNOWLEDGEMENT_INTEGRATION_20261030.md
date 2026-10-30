@@ -1,89 +1,75 @@
-# Automatic lead acknowledgement integration — 30 October 2026
+# Lead acknowledgement staging integration — 30 October 2026
 
-**PASS for the implemented, locally tested intake/reservation/worker composition. BLOCKED for live activation.** Nothing in this increment sends a customer SMS, starts advertising, changes production, or turns the earlier OTP test into a production service.
+**Local implementation: PASS. Real enquiry-to-handset proof: NOT COMPLETE.**
 
-This is the next increment after the owner-controlled staging OTP receipt and two-code verification passed. The temporary OTP deployment was subsequently deleted with owner approval. Those results are recorded in PR #115; this document supersedes the unfinished lead-reservation portion of the earlier Telnyx report.
+The owner approved configuring the restricted staging connection, finishing Meta/Google intake, and proving one acknowledgement without duplicates. This report describes the current increment. Earlier states and OTP evidence remain in PR #115 and Git history. No production change, merge, advertising activation or acknowledgement SMS has occurred.
 
 ## Implemented behaviour
 
-- Verify the raw Meta webhook signature and configured page/form scope before reading Graph lead details. Require the Graph response to match the lead ID, form ID and creation time. Extract only the supported contact fields; ambiguous duplicates and malformed receipts fail closed.
-- Save the CRM lead and one acknowledgement reservation in the same PostgreSQL transaction using the existing `ingest_external_lead` function. Marketing consent stays `unknown`. A replay cannot add another reservation or backfill historical leads.
-- Claim the reservation once through a dedicated worker RPC. It requires an existing, current Factory 041 authorization, exact template approval with an evidence reference, eligible destination commitment, linked organisation/contact, the same UK mobile supplied with the lead, an approved Telnyx adapter, clear suppression and clear emergency state. Leads older than 24 hours cannot be claimed.
-- Reuse the existing consumption, preparation, immediate pre-call checkpoint and finalization sequence. The destination and fixed message come from reviewed database/code bindings, never caller-provided message text or permission booleans.
-- A crash or uncertain provider response after claim is held for reconciliation. The reservation is never automatically reset or resent. Provider acceptance does not prove handset delivery.
+Meta and native Google Ads lead forms enter one durable acknowledgement queue. Raw Meta HMAC and the configured Page/form are checked before Graph retrieval. The bounded Graph response must match the lead reference. Google checks its private webhook key, exact form/campaign, test marker and one allowed test phone; int64 IDs retain their exact digits. Unknown Google fields are ignored, ambiguous duplicate contact fields rejected. Both handlers accept only the configured test phone in staging, keep marketing consent unknown, and never authorize or send SMS.
 
-The reservation is automatic when the authenticated intake composition is invoked. **It does not automatically create contact/organisation matches, compliance decisions, human approvals, execution authorizations or adapter grants.** Those are separate existing authority boundaries. There is no new public route, Graph transport, dedicated database runtime credentials, scheduler or delivery/inbound-STOP webhook. The follow-up below adds a disabled Preview Telnyx HTTP transport; it is not connected to a route or worker invocation.
+The database atomically saves the lead, reservation and audit. Unique provider/lead identity prevents a replay adding another reservation or backfilling old leads. The worker claims once and reuses the existing Factory 041 consume/prepare/immediate-check/finalize sequence. It requires persisted contact linkage, current compliance and authorization, exact-template approval/evidence, an approved adapter, suppression clearance and emergency clearance. Timeout, crash and ambiguous provider results never trigger a blind resend. Provider acceptance does not establish handset delivery.
 
-Fixed message:
+The existing Telnyx transport fixes the sender, recipient and exact message, permits one POST with a bounded response/timeout, and is disabled unless the exact staging Preview and separate sending flag agree. It remains unconnected to any sending route or scheduler.
 
 > Free Energy Help: Thank you for your enquiry. Dalbir will call you about it from 01332 605506 during business hours.
 
-The sender supplied by the owner remains the Telnyx mobile ending 1020. Dalbir explicitly confirmed on 30 October 2026: **“customers see 01332 605506”**. This is owner confirmation of the callback caller ID, not a new outgoing-call test. The existing fixed template already matches. This confirmation alone does not create customer permission or sending authority.
+The owner confirmed 01332 605506 as the number customers see. The Telnyx sender ends 1020; the owner test recipient ends 7373. That confirmation is not evidence of customer marketing consent.
 
-## Staging and account findings
+## Restricted runtime connection
 
-Staging is `vredwhyphrhsudggrsen`; production is excluded from migration work. Metadata inspection found no Meta webhook/Graph credentials or dedicated ingestion/worker runtime credentials in Vercel. There are no approved provider adapters in staging. The dedicated worker role remains NOLOGIN and without table access.
+Staging is `vredwhyphrhsudggrsen`. Production is excluded. PostgreSQL 17.11 grants the administrative `postgres` role membership with SET FALSE, explaining the earlier 42501 test failure. Those memberships are unchanged.
 
-Staging still has the older text-returning preparation function and one-argument pre-call function. Apply these reviewed repository migrations in order before the new reservation migration:
+Two new dedicated logins have NOINHERIT, no superuser/create-role/create-database/replication/BYPASSRLS, and a connection limit of two. Each may SET only its respective capability role, with ADMIN FALSE and INHERIT FALSE:
 
-1. `20260826100000_authoritative_prepared_envelope_checkpoint.sql`
-2. `20260828120000_prepared_dispatch_destination_binding.sql`
-3. `20261030130256_meta_lead_acknowledgement_queue.sql`
+| Login | Capability |
+| --- | --- |
+| feh_ack_preview_ingestor | external_lead_ingestor |
+| feh_ack_preview_worker | execution_dispatch_worker |
 
-The initial migration request and the follow-up after caller-ID confirmation returned **confirmation expired**, not success. Fresh catalogue read-back still shows the text-returning preparation function and one-argument pre-call function. **No migration in this increment was applied.** The two existing function definitions and ACLs match the captured recovery snapshot; staging has zero approved adapters and zero dispatch attempts, and the worker is still NOLOGIN. Do not silently repair migration history: compare the Supabase-assigned versions and source migrations during the approved staging run.
+Neither login nor capability has raw acknowledgement-table access. Runtime code accepts only the exact verified staging Supavisor host/port or staging direct host, the matching login and database, verified TLS, no prepared statements and one pooled connection. Every RPC starts a transaction, binds the capability locally, verifies database/session/role identity and rejects elevated or raw-table access. RPC names, types and argument keys are a closed allowlist; values are parameters. Generic errors discard credentials and SQL details. The read-only readiness probe exposes only two booleans.
 
-Meta registration and app creation are now complete following the owner's explicit app/terms approval and secure password re-entry. **Free Energy Help CRM Leads**, app `1121337167194437`, is unpublished under Free Energy Help portfolio `1384515823534756`. Page `100693684801233` and form `1788543365401126` (**FEH | UK Business Energy Review | 2 Questions | Oct 2026**) were verified read-only. The form promises contact about the enquiry within one working day; no SMS-specific opt-in appeared in the preview. No lead was submitted. Existing Zapier and Metricool connections were left intact. Page webhook callback/token fields remain blank, `leadgen` unsubscribed, and the new app is not associated with the Page. No Page token was generated.
+Random credentials were generated privately, installed as SCRAM verifiers and saved as Vercel sensitive variables only for Preview branch `work/telnyx-otp-lead-sms-20261030`. They expire at 2026-11-06 23:59:59 UTC. No password or verifier is in this repository or migration source. Database support is enabled on that branch; Meta intake, Google intake and SMS sending flags are explicitly false. Secret values were not displayed. Deployed connection verification is recorded separately in PR #115 after publication.
 
-## Preview HTTP transport follow-up
+## Applied staging migrations
 
-The owner-confirmed caller number remains unchanged in `feh-callback-ack-v1`. The new `telnyxAcknowledgementHttpTransport.server.ts` uses Next's `server-only` boundary and only constructs a transport when all of these trusted server settings agree:
+| Version | Name | Recorded source MD5 |
+| --- | --- | --- |
+| 20260826100000 | authoritative_prepared_envelope_checkpoint | c06e82d2869308ec7d914b4473d99790 |
+| 20260828120000 | prepared_dispatch_destination_binding | 4c4fc76a2176f249906717647fcb8820 |
+| 20261030130256 | meta_lead_acknowledgement_queue | f174e23d7d062ff3278397ae3fca5d36 |
+| 20261030191817 | lead_ack_preview_runtime_identities | f7c564be8badbf869e39d43a30c69ae9 |
+| 20261030192825 | google_lead_acknowledgement_intake | d6cebdd8c1bd424cdbfebbe11dbc696f |
 
-- `VERCEL_ENV=preview` and separate `FEH_ACK_PREVIEW_ENABLED=true`.
-- Exact staging URL `https://vredwhyphrhsudggrsen.supabase.co`.
-- Existing FEH Telnyx sender `+447427851020`, a nonempty private `TELNYX_API_KEY`, and one E.164 UK mobile in `FEH_ACK_PREVIEW_ALLOWED_PHONE`.
-- Every request must match that sender, the one configured test recipient, SMS channel and the exact fixed acknowledgement copy. OTP flags cannot enable this transport.
+The last two were applied this increment and independently read back. Local filenames use Supabase's actual recorded versions. Google extends the existing provider constraint and ingestion mapping, adds a restricted atomic intake RPC, and extends the existing claim's source/action binding without removing any approval check. Before replacement the prior function definitions/ACLs were captured. The Google RPC is executable only by postgres and the ingestor; anon, authenticated, service_role and worker are denied. Queue RLS remains enabled. Queue rows and attempts were zero at verification.
 
-No values were provisioned for the new flags; the capability remains disabled. The saved Telnyx key's presence was checked through metadata only; its value was not read or used. Production and unknown environments return no transport.
+Advisory categories and counts were unchanged after DDL. The queue intentionally has no public RLS policies or table grants. Existing function search-path, public legacy RPC and Auth password-protection warnings remain outside this change. See [RLS](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), [function search paths](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable) and [password protection](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection).
 
-Architecture review: the transport is a final provider connector, never an authorization writer or direct public handler. It must be injected into the existing claim/consume/prepare/immediate-check/finalize worker after persisted authority has been established. Future runtime wiring must independently bind its restricted database client to staging; a configured public URL alone is not proof of that client's identity. The transport makes one POST to the fixed Telnyx endpoint, rejects redirects, bounds the timeout to 10 seconds and response body to 64 KiB, and retains only validated provider message metadata. Errors, malformed responses and timeouts remain indeterminate; no retry or claim reset is introduced. A provider accepted/sent status still is not handset-delivery proof.
+## External account state and remaining work
 
-The implementation follows the installed Next server-only guide and [Telnyx's Send a message API](https://developers.telnyx.com/api-reference/messages/send-a-message). Unit tests replace only the Next server-only marker in Node's isolated test process and inject fake fetch responses; they do not call Telnyx or load real credentials.
+Meta app `1121337167194437` exists, unpublished, under portfolio `1384515823534756`. Page `100693684801233` and form `1788543365401126` were verified. The form promises contact about the enquiry within one working day; no SMS-specific opt-in was shown. Existing Zapier/Metricool connections are unchanged. Page metadata access, Page token/app-secret configuration, leadgen subscription and callback verification remain outstanding. No token was generated or retrieved this increment.
 
-### Follow-up Completion Evidence Block
+Google native-form support is implemented, but the actual intended Google form/campaign has not been identified. Website Google traffic uses a separate existing website intake; it is not silently relabelled or connected by this native-form implementation.
 
-- **Scope:** record owner-confirmed caller ID; construct a disabled staging-only Telnyx HTTP connector; retry the previously approved staging prerequisite update and verify it did not run after the connector confirmation expired.
-- **Created:** `frontend/src/lib/execution-dispatch/telnyxAcknowledgementHttpTransport.server.ts` and `frontend/src/lib/execution-dispatch/telnyxAcknowledgementHttpTransport.test.mjs`.
-- **Modified:** `frontend/package.json` adds the new transport tests to the focused acknowledgement command; this report corrects the completed Meta/callback steps and records current limitations. **Deleted:** none. No dependency change.
-- **Tests:** full execution-dispatch suite — **579 passed, 0 failed**, including **40 new transport tests** covering environment/recipient/template isolation, redirects, malformed and oversized bodies, redaction and uncertain outcomes without retry.
-- **Typecheck:** exit 0. **Targeted ESLint:** exit 0. **Production build:** exit 0; existing middleware deprecation and Node module-type/npm configuration warnings remain. Exact publication evidence is recorded in PR #115 after completion.
-- **Git/publication:** same review branch and draft PR #115; no merge. Exact local/remote SHAs, final status and Preview result are recorded in the PR after publication.
-- **Database/deployment:** no remote migration applied; no new runtime configuration or activation; production unchanged. No test acknowledgement SMS sent.
-- **External systems:** Supabase catalogue/advisory reads and expired migration confirmation; GitHub PR evidence update and review-branch publication. No Meta or Telnyx account mutation in this follow-up.
-- **Credentials/customer data:** no secret values accessed; no real customer data read or sent. All new transport tests use a reserved fictional recipient and synthetic token.
-- **Remaining gates:** Supabase connector confirmation for reviewed staging migrations; Meta access/Graph/webhook connection; restricted database identities and attributable contact/approval policy; delivery/STOP reconciliation; one owner-controlled end-to-end lead test; reviewed migration checkpoint before merge. Google intake needs separate implementation/verification before its launch can be declared ready.
+Vercel Preview authentication is retained. Real provider callbacks require a reviewed reachable webhook endpoint; no deployment protection exception or long-lived bypass was introduced. The connection readiness endpoint bypasses CRM session login only in exact staging and returns no records/secrets; Vercel protection remains in force.
 
-## Review and recovery
+A persisted approval/contact-linkage writer, worker invocation, authenticated delivery/STOP reconciliation and an owner-controlled real enquiry/replay test remain. The tested fixture supplies synthetic authority solely inside isolated PostgreSQL; it must never be presented as real customer authorization. No live acknowledgement has been sent.
 
-- The existing Factory 041 CI checkpoint deliberately rejects any migration change against its accepted baseline. This new migration needs explicit architecture review and a separately reviewed checkpoint update before merge. This patch does not disable or rebaseline that control.
-- Before applying, retain the current two function definitions and ACLs and verify the expected signatures and inactive worker posture. The new RPC/table introduces no login, role membership, provider credential or automatic approval.
-- Recovery for the existing prerequisite functions is restoration of the captured definitions and exact ACLs. Recovery for the new capability starts by revoking its two RPC grants. Preserve the acknowledgement table and claim history after any real attempt; do not drop or reset it to permit resending.
-- Existing staging advisory findings predate this change, including mutable function search paths and password-protection settings. No broad security cleanup is included. See [function search-path guidance](https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable) and [password protection guidance](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection). The new functions set an empty search path and the new table deliberately has RLS with no public policies or table grants.
+Factory 041 CI intentionally rejects migration/security changes outside its accepted checkpoint. The earlier remote build passed tests/typecheck/lint and failed this drift check. It is unchanged and needs reviewed acceptance before merge; local passing tests do not authorize weakening it.
 
 ## Completion Evidence Block
 
-- **Scope:** authenticated intake composition, atomic one-lead reservation, one-attempt claim, fixed-template worker composition and isolated PostgreSQL integration tests.
-- **Created:** `frontend/src/lib/lead-gateway/ingestMetaLeadAcknowledgement.server.ts`; its `.test.ts`; `frontend/src/lib/execution-dispatch/executeLeadAcknowledgement.ts`; `frontend/src/lib/execution-dispatch/leadAcknowledgement.database.test.mjs`; `supabase/migrations/20261030130256_meta_lead_acknowledgement_queue.sql`; this report.
-- **Modified:** `frontend/package.json` and `frontend/package-lock.json`. Added exact dev-only `@electric-sql/pglite@0.5.13`; preserved unrelated lockfile platform metadata. The existing execution-dispatch script now includes the database tests.
-- **Deleted:** none.
-- **Focused validation:** `npm run test:lead-acknowledgement` — **225 passed, 0 failed**. Includes 14 new intake tests and 18 new database tests. The database tests apply every repository migration, exercise the real SQL functions under the restricted roles, roll back a failed audit, reject duplicate/backfilled leads, block changed destinations and absent approval evidence, enforce STOP arriving after claim, and finalize ambiguous outcomes without retry.
-- **Regression:** final `npm run test:execution-dispatch` — **539 passed, 0 failed**; `npm run test:factory-041` — **177 passed, 0 failed**. Suites overlap; do not add their counts as unique tests.
-- **Typecheck:** `npm run typecheck` — exit 0.
-- **Lint:** targeted ESLint — exit 0. Full `npm run lint:ci` — 0 errors, 52 existing warnings in other files.
-- **Build:** `npm run build` — exit 0; 38 pages generated. Existing middleware-to-proxy deprecation, Node module-type and npm proxy-configuration notices remain.
-- **Limits:** PGlite is a real PostgreSQL engine with one connection. It tests persisted behaviour and overlapping worker calls but is not proof of multi-session database lock races. All transports and records in these tests are synthetic; no provider delivery is established.
-- **Git:** review branch `work/telnyx-otp-lead-sms-20261030`, draft PR #115. Exact publication SHA, final clean-tree check, remote checks and Preview status are recorded in the PR after publication; no merge is authorised by a passing local test.
-- **Migration/deployment:** migration not applied (connector confirmation expired; catalogue read-back unchanged). No production release. A Git push may create a normal Preview, but the new composition remains unconnected and inactive.
-- **External systems:** read-only Vercel environment metadata, Supabase schema/roles/advisories/log counts, Meta developer registration page; GitHub review-branch publication. The attempted Supabase migration was not executed.
-- **Credentials accessed in this increment:** no secret values read, printed, provisioned or rotated.
-- **Production/customer data:** no production mutation, real customer ingestion, acknowledgement SMS or advertising activation. Test phone numbers use reserved synthetic ranges.
-- **Remaining risks/gate:** Meta registration, app creation, form inspection and owner confirmation of callback caller ID are complete (see follow-up above). Apply the staging migrations through the required connector confirmation; provision restricted runtime identities; implement the attributable approval policy and verified contact linkage; wire authenticated HTTP intake and worker execution; add authenticated delivery/STOP reconciliation; test one owner-controlled enquiry and replay before any live release.
+- **Scope:** restricted Preview PostgreSQL adapter and identities; signed Meta/Graph intake; Google test lead-form intake; shared durable queue; read-only readiness probe; staging configuration.
+- **Created:** `frontend/src/lib/lead-gateway/{boundedBody.server.ts,googleIngress.server.ts,metaGraph.server.ts,metaIngress.server.ts,previewDatabase.server.ts,previewDatabase.test.mjs,previewIntakePath.ts,providerIngress.test.mjs}`; `frontend/src/app/api/lead-intake/{meta,google,readiness}/route.ts`; the two new migrations listed above.
+- **Modified:** `frontend/package.json`, `frontend/package-lock.json`, `frontend/src/lib/execution-dispatch/{checkpointThreeDispatchBoundary.ts,executeLeadAcknowledgement.ts,leadAcknowledgement.database.test.mjs}`, `frontend/src/lib/lead-gateway/ingestMetaLeadAcknowledgement.server.ts`, `frontend/src/middleware.ts`, this report. **Deleted:** none.
+- **Dependency:** exact runtime `postgres@4.0.0`; lockfile preserves unrelated platform metadata.
+- **Tests:** final combined lead-gateway, execution-dispatch, identity, suppression, compliance, outreach and execution-authorization run: **936 passed, 0 failed, 0 skipped**. Includes 20 isolated PostgreSQL integration tests and 77 adapter/provider-handler tests; these counts overlap the total.
+- **Typecheck:** PASS, exit 0. **Targeted ESLint:** PASS, exit 0. **Production build:** PASS, exit 0; three new dynamic API routes included, 38 static pages generated. Existing middleware/module-type/npm configuration notices remain.
+- **Limitations:** PGlite tests persisted SQL with one connection, not independent network sessions. Mock transports establish no Telnyx delivery. Real restricted connection and handset proof require deployed verification.
+- **Git/publication:** review branch and draft PR #115; exact commit, expected-head publication, final status and Preview verification are recorded in the PR after publication. No merge or force push.
+- **Database/deployment:** two new staging migrations applied and checksums/ACLs verified; private staging-only connection settings provisioned; provider/sending flags false. No production deployment/configuration change.
+- **External systems:** Supabase schema/role/configuration and advisor reads; Vercel branch variables; GitHub review-branch publication. No new Meta/Google subscription or Telnyx send.
+- **Credentials accessed:** new runtime credentials generated and transferred privately; existing provider/admin passwords not retrieved. No credentials in output, source or migration history.
+- **Production/customer data touched:** no. Test data are synthetic. No advertising activated.
+- **Recovery:** disable branch runtime flags and mark the new logins NOLOGIN before revoking memberships; preserve durable queue/attempt history. For Google, revoke its RPC access first and restore captured functions/ACLs only after preserving any Google records. Never reset a claim to permit a resend.
+- **Next gate:** verify deployed restricted connections, complete provider-specific access and callback configuration, establish attributable test authority through existing controls, run one owner-controlled enquiry and replay, reconcile one provider message with handset receipt, then review the checkpoint before any merge/live launch.

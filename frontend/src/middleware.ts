@@ -4,6 +4,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { decideAdminMfaRoute, normalizeAssuranceLevel, safeMfaRedirectTarget } from "@/lib/auth/mfa";
 import { requiresMfaForRoleLookup } from "@/lib/auth/mfaRoleResolution";
+import { isPreviewIntakePath } from "@/lib/lead-gateway/previewIntakePath";
 
 const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/business-energy-quote"];
 const PUBLIC_PREFIXES = ["/leads/web/"];
@@ -19,6 +20,7 @@ function isMfaPath(pathname: string): boolean {
 }
 
 export async function middleware(request: NextRequest) {
+  if (isPreviewIntakePath(request.nextUrl.pathname,process.env)) return NextResponse.next({request});
   let response = NextResponse.next({ request });
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

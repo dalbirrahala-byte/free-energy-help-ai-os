@@ -44,7 +44,7 @@ function extractDetails(raw: unknown, ref: MetaLeadReference) {
 export async function ingestMetaLeadAcknowledgements(
   rawBody: Uint8Array,
   signature: unknown,
-  config: Readonly<{ appSecret: string; pageId: string; formId: string }>,
+  config: Readonly<{ appSecret: string; pageId: string; formId: string; allowedPhone?: string }>,
   readDetails: MetaLeadDetailsReader,
   ingestor: MetaIngestionRpc,
 ): Promise<MetaAcknowledgementIngressResult> {
@@ -59,6 +59,12 @@ export async function ingestMetaLeadAcknowledgements(
       const normalized = extractDetails(await readDetails(reference), reference);
       if (!normalized?.success) return result('rejected');
       const lead = normalized.lead;
+      if (config.allowedPhone !== undefined) {
+        const cleaned = lead.telephone?.trim().replace(/[ ()-]/g,'');
+        const canonical = cleaned?.startsWith('07') ? '+44'+cleaned.slice(1)
+          : cleaned?.startsWith('0044') ? '+'+cleaned.slice(2) : cleaned;
+        if (!/^\+447[1-57-9]\d{8}$/.test(config.allowedPhone) || canonical !== config.allowedPhone) return result('rejected');
+      }
       const receipt = await ingestor.rpc('ingest_meta_lead_with_acknowledgement', {
         p_page_id: reference.pageId, p_form_id: reference.formId,
         p_external_lead_id: lead.externalLeadId, p_provider_created_at: lead.receivedAt,

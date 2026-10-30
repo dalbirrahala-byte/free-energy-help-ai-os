@@ -10,7 +10,7 @@
     "lint:ci": "node --max-old-space-size=4096 ./node_modules/eslint/bin/eslint.js . --concurrency off",
     "test:factory-041": "node --test src/lib/identity-resolution/*.test.ts src/lib/suppression/*.test.ts src/lib/compliance/*.test.ts src/lib/outreach/*.test.ts src/lib/execution-authorization/*.test.ts",
     "test:execution-dispatch": "node --test src/lib/execution-dispatch/*.test.ts src/lib/execution-dispatch/*.test.mjs",
-    "test:lead-acknowledgement": "node --test src/lib/lead-gateway/*.test.ts src/lib/execution-dispatch/leadAcknowledgement.database.test.mjs src/lib/execution-dispatch/telnyx*.test.ts src/lib/execution-dispatch/telnyx*.test.mjs",
+    "test:lead-acknowledgement": "node --test src/lib/lead-gateway/*.test.ts src/lib/lead-gateway/*.test.mjs src/lib/execution-dispatch/leadAcknowledgement.database.test.mjs src/lib/execution-dispatch/telnyx*.test.ts src/lib/execution-dispatch/telnyx*.test.mjs",
     "test:factory-044": "node --test src/lib/lead-discovery/*.test.ts",
     "test:factory-045": "node --test src/lib/whatsapp-inbound/*.test.ts",
     "test:auth": "node --test src/lib/auth/*.test.ts",
@@ -26,6 +26,7 @@
     "@supabase/supabase-js": "^2.110.8",
     "lucide-react": "^1.26.0",
     "next": "16.2.11",
+    "postgres": "4.0.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },

@@ -76,9 +76,11 @@
 
 import type { ContactChannel } from "../compliance/evaluateContactPermission.ts";
 import type { ProviderAdapterOutcome } from "./providerAdapter.ts";
-import type { createClient } from "../supabase/server";
-
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+// The controlled boundary needs only RPC access. A restricted direct-Postgres
+// client can provide this without an administrator or service-role API key.
+type SupabaseServerClient = {
+  rpc(name: string, args?: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown }>;
+};
 
 const MAX_REFERENCE_LENGTH = 200;
 

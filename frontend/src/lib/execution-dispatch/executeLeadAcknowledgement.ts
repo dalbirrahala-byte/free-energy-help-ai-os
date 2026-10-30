@@ -20,7 +20,7 @@ function claimIntent(data: unknown, authorizationId: number, adapterId: number):
   const r = data[0] as Record<string, unknown>;
   if (r.claim_status !== 'claimed' || r.authorization_id !== authorizationId ||
       r.provider_adapter_id !== adapterId || !positive(r.contact_id) ||
-      !token(r.action_id) || !/^meta:feh-callback-ack-v1:[0-9]{6,100}$/.test(r.action_id) ||
+      !token(r.action_id) || !/^(?:meta:feh-callback-ack-v1:[0-9]{6,100}|google_ads:feh-callback-ack-v1:[A-Za-z0-9_-]{6,100})$/.test(r.action_id) ||
       !token(r.idempotency_key) || !token(r.policy_version) ||
       typeof r.destination !== 'string' || !/^\+447[1-57-9]\d{8}$/.test(r.destination) ||
       typeof r.authorization_expires_at !== 'string' || !Number.isFinite(Date.parse(r.authorization_expires_at)) ||

@@ -38,15 +38,17 @@ before(async () => {
 });
 after(async () => { await db.close(); });
 
-async function fixture() {
-  const externalId = String(++external);
-  const lead = (await db.query(`select * from public.ingest_meta_lead_with_acknowledgement(
-    '123456','654321',$1,now(),'Synthetic FEH test','Synthetic Contact',$2,'test@example.invalid',null)`, [externalId, phone])).rows[0];
+async function fixture(provider='meta') {
+  const externalId = (provider==='meta'?'':'google_')+String(++external);
+  const intake=provider==='meta'?`select * from public.ingest_meta_lead_with_acknowledgement(
+    '123456','654321',$1,now(),'Synthetic FEH test','Synthetic Contact',$2,'test@example.invalid',null)`:
+    `select * from public.ingest_google_lead_with_acknowledgement('654321','123456',$1,now(),'Synthetic FEH test','Synthetic Contact',$2,'test@example.invalid')`;
+  const lead = (await db.query(intake, [externalId, phone])).rows[0];
   const org = (await db.query("insert into organisations(legal_name) values('Synthetic FEH test') returning id")).rows[0].id;
   const contact = (await db.query('insert into contacts(organisation_id,phone) values($1,$2) returning id', [org, phone])).rows[0].id;
   await db.query('update leads set organisation_id=$1 where id=$2', [org, lead.lead_id]);
   const intent = (await db.query("select * from create_execution_intent($1,'SMS',$2)",
-    [contact, `meta:feh-callback-ack-v1:${externalId}`])).rows[0].execution_intent_id;
+    [contact, `${provider}:feh-callback-ack-v1:${externalId}`])).rows[0].execution_intent_id;
   await db.query(`insert into compliance_decisions(evaluated_at,organisation_id,contact_id,requested_channel,
     policy_version,decision,identity_tier,contactability_status,has_email,has_telephone,has_domain,
     destination_commitment_nonce,destination_commitment,expires_at,execution_intent_id)
@@ -128,6 +130,32 @@ test('ambiguous provider outcome is finalized indeterminate and cannot be resent
   assert.equal((await executeLeadAcknowledgement(worker,f,{from},transport(sends,'timeout'))).status,'indeterminate');
   await executeLeadAcknowledgement(worker,f,{from},transport(sends)); assert.equal(sends.length,1);
   assert.equal((await db.query('select status from execution_dispatch_attempts where execution_authorization_id=$1',[f.authorizationId])).rows[0].status,'indeterminate');
+});
+
+test('Google enquiry creates one reservation and one fixed acknowledgement; replay cannot resend',async()=>{
+  const f=await fixture('google_ads');const sends=[];
+  const replay=(await db.query("select * from ingest_google_lead_with_acknowledgement('654321','123456',$1,now(),null,null,$2,null)",[f.externalId,phone])).rows[0];
+  assert.equal(replay.outcome,'duplicate');assert.equal(replay.acknowledgement_reserved,false);
+  assert.equal((await executeLeadAcknowledgement(worker,f,{from},transport(sends))).status,'succeeded');
+  await executeLeadAcknowledgement(worker,f,{from},transport(sends));assert.equal(sends.length,1);
+  const rows=(await db.query('select l.provider,l.lead_source,l.consent_status,q.provider as queue_provider,q.page_id from leads l join lead_acknowledgements q on q.lead_id=l.id where l.id=$1',[f.leadId])).rows;
+  assert.deepEqual(rows,[{provider:'google_ads',lead_source:'google_ads',consent_status:'unknown',queue_provider:'google_ads',page_id:null}]);
+});
+
+test('new runtime identities can assume only their assigned capabilities and inherit none',async()=>{
+  const rows=(await db.query(`select p.rolname as capability,r.rolname as runtime,m.admin_option,m.inherit_option,m.set_option
+    from pg_auth_members m join pg_roles p on p.oid=m.roleid join pg_roles r on r.oid=m.member
+    where r.rolname in ('feh_ack_preview_ingestor','feh_ack_preview_worker') order by r.rolname`)).rows;
+  assert.deepEqual(rows,[
+    {capability:'external_lead_ingestor',runtime:'feh_ack_preview_ingestor',admin_option:false,inherit_option:false,set_option:true},
+    {capability:'execution_dispatch_worker',runtime:'feh_ack_preview_worker',admin_option:false,inherit_option:false,set_option:true},
+  ]);
+  for(const role of ['feh_ack_preview_ingestor','feh_ack_preview_worker']) {
+    const attributes=(await db.query('select rolsuper,rolcreatedb,rolcreaterole,rolbypassrls,rolreplication,rolconnlimit from pg_roles where rolname=$1',[role])).rows[0];
+    assert.deepEqual(attributes,{rolsuper:false,rolcreatedb:false,rolcreaterole:false,rolbypassrls:false,rolreplication:false,rolconnlimit:2});
+    assert.equal((await db.query("select has_table_privilege($1,'public.lead_acknowledgements','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') as allowed",[role])).rows[0].allowed,false);
+  }
+  for(const role of ['anon','authenticated','service_role','execution_dispatch_worker'])assert.equal((await db.query("select has_function_privilege($1,'public.ingest_google_lead_with_acknowledgement(text,text,text,timestamptz,text,text,text,text)','EXECUTE') as allowed",[role])).rows[0].allowed,false);
 });
 
 test('worker crash after a durable claim cannot obtain the claim again', async () => {
