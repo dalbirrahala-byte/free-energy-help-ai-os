@@ -12,13 +12,13 @@ This is the next increment after the owner-controlled staging OTP receipt and tw
 - Reuse the existing consumption, preparation, immediate pre-call checkpoint and finalization sequence. The destination and fixed message come from reviewed database/code bindings, never caller-provided message text or permission booleans.
 - A crash or uncertain provider response after claim is held for reconciliation. The reservation is never automatically reset or resent. Provider acceptance does not prove handset delivery.
 
-The reservation is automatic when the authenticated intake composition is invoked. **It does not automatically create contact/organisation matches, compliance decisions, human approvals, execution authorizations or adapter grants.** Those are separate existing authority boundaries. A new public route, Graph transport, runtime credentials, scheduler, live Telnyx transport and delivery/inbound-STOP webhook are not added in this increment.
+The reservation is automatic when the authenticated intake composition is invoked. **It does not automatically create contact/organisation matches, compliance decisions, human approvals, execution authorizations or adapter grants.** Those are separate existing authority boundaries. There is no new public route, Graph transport, dedicated database runtime credentials, scheduler or delivery/inbound-STOP webhook. The follow-up below adds a disabled Preview Telnyx HTTP transport; it is not connected to a route or worker invocation.
 
 Fixed message:
 
 > Free Energy Help: Thank you for your enquiry. Dalbir will call you about it from 01332 605506 during business hours.
 
-The sender supplied by the owner remains the Telnyx mobile ending 1020. The callback number in the copy is separate and still needs actual caller-ID verification before activation.
+The sender supplied by the owner remains the Telnyx mobile ending 1020. Dalbir explicitly confirmed on 30 October 2026: **“customers see 01332 605506”**. This is owner confirmation of the callback caller ID, not a new outgoing-call test. The existing fixed template already matches. This confirmation alone does not create customer permission or sending authority.
 
 ## Staging and account findings
 
@@ -30,9 +30,37 @@ Staging still has the older text-returning preparation function and one-argument
 2. `20260828120000_prepared_dispatch_destination_binding.sql`
 3. `20261030130256_meta_lead_acknowledgement_queue.sql`
 
-The first remote migration request returned **confirmation expired**, not success. A fresh catalogue read confirmed the old functions remain and the new functions/table are absent. **No migration in this increment was applied.** Do not silently repair migration history: compare the Supabase-assigned versions and source migrations during the approved staging run.
+The initial migration request and the follow-up after caller-ID confirmation returned **confirmation expired**, not success. Fresh catalogue read-back still shows the text-returning preparation function and one-argument pre-call function. **No migration in this increment was applied.** The two existing function definitions and ACLs match the captured recovery snapshot; staging has zero approved adapters and zero dispatch attempts, and the worker is still NOLOGIN. Do not silently repair migration history: compare the Supabase-assigned versions and source migrations during the approved staging run.
 
-The signed-in Cloud Browser reached Meta's **Create a Meta for Developers account** page. Continuing requires accepting Meta Platform Terms and Developer Policies. No terms were accepted and no developer account/app was created. The owner must complete that registration through the browser handoff before the real app/page/form can be inspected and connected.
+Meta registration and app creation are now complete following the owner's explicit app/terms approval and secure password re-entry. **Free Energy Help CRM Leads**, app `1121337167194437`, is unpublished under Free Energy Help portfolio `1384515823534756`. Page `100693684801233` and form `1788543365401126` (**FEH | UK Business Energy Review | 2 Questions | Oct 2026**) were verified read-only. The form promises contact about the enquiry within one working day; no SMS-specific opt-in appeared in the preview. No lead was submitted. Existing Zapier and Metricool connections were left intact. Page webhook callback/token fields remain blank, `leadgen` unsubscribed, and the new app is not associated with the Page. No Page token was generated.
+
+## Preview HTTP transport follow-up
+
+The owner-confirmed caller number remains unchanged in `feh-callback-ack-v1`. The new `telnyxAcknowledgementHttpTransport.server.ts` uses Next's `server-only` boundary and only constructs a transport when all of these trusted server settings agree:
+
+- `VERCEL_ENV=preview` and separate `FEH_ACK_PREVIEW_ENABLED=true`.
+- Exact staging URL `https://vredwhyphrhsudggrsen.supabase.co`.
+- Existing FEH Telnyx sender `+447427851020`, a nonempty private `TELNYX_API_KEY`, and one E.164 UK mobile in `FEH_ACK_PREVIEW_ALLOWED_PHONE`.
+- Every request must match that sender, the one configured test recipient, SMS channel and the exact fixed acknowledgement copy. OTP flags cannot enable this transport.
+
+No values were provisioned for the new flags; the capability remains disabled. The saved Telnyx key's presence was checked through metadata only; its value was not read or used. Production and unknown environments return no transport.
+
+Architecture review: the transport is a final provider connector, never an authorization writer or direct public handler. It must be injected into the existing claim/consume/prepare/immediate-check/finalize worker after persisted authority has been established. Future runtime wiring must independently bind its restricted database client to staging; a configured public URL alone is not proof of that client's identity. The transport makes one POST to the fixed Telnyx endpoint, rejects redirects, bounds the timeout to 10 seconds and response body to 64 KiB, and retains only validated provider message metadata. Errors, malformed responses and timeouts remain indeterminate; no retry or claim reset is introduced. A provider accepted/sent status still is not handset-delivery proof.
+
+The implementation follows the installed Next server-only guide and [Telnyx's Send a message API](https://developers.telnyx.com/api-reference/messages/send-a-message). Unit tests replace only the Next server-only marker in Node's isolated test process and inject fake fetch responses; they do not call Telnyx or load real credentials.
+
+### Follow-up Completion Evidence Block
+
+- **Scope:** record owner-confirmed caller ID; construct a disabled staging-only Telnyx HTTP connector; retry the previously approved staging prerequisite update and verify it did not run after the connector confirmation expired.
+- **Created:** `frontend/src/lib/execution-dispatch/telnyxAcknowledgementHttpTransport.server.ts` and `frontend/src/lib/execution-dispatch/telnyxAcknowledgementHttpTransport.test.mjs`.
+- **Modified:** `frontend/package.json` adds the new transport tests to the focused acknowledgement command; this report corrects the completed Meta/callback steps and records current limitations. **Deleted:** none. No dependency change.
+- **Tests:** full execution-dispatch suite — **579 passed, 0 failed**, including **40 new transport tests** covering environment/recipient/template isolation, redirects, malformed and oversized bodies, redaction and uncertain outcomes without retry.
+- **Typecheck:** exit 0. **Targeted ESLint:** exit 0. **Production build:** exit 0; existing middleware deprecation and Node module-type/npm configuration warnings remain. Exact publication evidence is recorded in PR #115 after completion.
+- **Git/publication:** same review branch and draft PR #115; no merge. Exact local/remote SHAs, final status and Preview result are recorded in the PR after publication.
+- **Database/deployment:** no remote migration applied; no new runtime configuration or activation; production unchanged. No test acknowledgement SMS sent.
+- **External systems:** Supabase catalogue/advisory reads and expired migration confirmation; GitHub PR evidence update and review-branch publication. No Meta or Telnyx account mutation in this follow-up.
+- **Credentials/customer data:** no secret values accessed; no real customer data read or sent. All new transport tests use a reserved fictional recipient and synthetic token.
+- **Remaining gates:** Supabase connector confirmation for reviewed staging migrations; Meta access/Graph/webhook connection; restricted database identities and attributable contact/approval policy; delivery/STOP reconciliation; one owner-controlled end-to-end lead test; reviewed migration checkpoint before merge. Google intake needs separate implementation/verification before its launch can be declared ready.
 
 ## Review and recovery
 
@@ -58,4 +86,4 @@ The signed-in Cloud Browser reached Meta's **Create a Meta for Developers accoun
 - **External systems:** read-only Vercel environment metadata, Supabase schema/roles/advisories/log counts, Meta developer registration page; GitHub review-branch publication. The attempted Supabase migration was not executed.
 - **Credentials accessed in this increment:** no secret values read, printed, provisioned or rotated.
 - **Production/customer data:** no production mutation, real customer ingestion, acknowledgement SMS or advertising activation. Test phone numbers use reserved synthetic ranges.
-- **Remaining risks/gate:** owner completes Meta registration; inspect the actual app, FEH form and callback/notice evidence; review and apply the staging migrations; provision restricted runtime identities; implement the attributable approval policy and verified contact linkage; wire authenticated HTTP intake and worker execution; add authenticated delivery/STOP reconciliation; test one owner-controlled enquiry and replay before any live release.
+- **Remaining risks/gate:** Meta registration, app creation, form inspection and owner confirmation of callback caller ID are complete (see follow-up above). Apply the staging migrations through the required connector confirmation; provision restricted runtime identities; implement the attributable approval policy and verified contact linkage; wire authenticated HTTP intake and worker execution; add authenticated delivery/STOP reconciliation; test one owner-controlled enquiry and replay before any live release.
