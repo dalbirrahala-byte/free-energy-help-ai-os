@@ -76,3 +76,10 @@ test('readiness fails closed on privilege mismatch and private connection error'
  assert.equal(await harness('worker',{identity:{raw_queue_access:true}}).client.verifyConnection(),false);
  assert.equal(await harness('ingestor',{fail:true}).client.verifyConnection(),false);
 });
+test('readiness exposes only a closed diagnostic vocabulary',async()=>{
+ const h=harness('worker',{fail:true});await h.client.verifyConnection();
+ assert.equal(h.client.verificationFailure(),'UNAVAILABLE');
+ const identity=harness('worker',{identity:{login:'postgres'}});await identity.client.verifyConnection();
+ assert.equal(identity.client.verificationFailure(),'IDENTITY_MISMATCH');
+ assert.ok(!JSON.stringify([h.client.verificationFailure(),identity.client.verificationFailure()]).includes(password));
+});

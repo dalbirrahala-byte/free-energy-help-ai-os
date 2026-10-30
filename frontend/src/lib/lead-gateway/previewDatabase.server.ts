@@ -73,6 +73,7 @@ export function createPreviewAcknowledgementDatabase(
   const identity = identities[kind];
   let pool: Pool;
   try { pool = connect(configuration); } catch { return null; }
+  let verificationFailure: string | null = null;
   async function bindIdentity(tx: Transaction) {
     await tx.unsafe("set local statement_timeout = '10s'");
     await tx.unsafe("set local lock_timeout = '3s'");
@@ -92,9 +93,18 @@ export function createPreviewAcknowledgementDatabase(
           await tx.unsafe('set transaction read only');
           await bindIdentity(tx);
         });
+        verificationFailure = null;
         return true;
-      } catch { return false; }
+      } catch (error) {
+        const code = error && typeof error === 'object' && 'code' in error ? error.code : null;
+        const allowed = ['28P01','28000','42501','53300','XX000','ENOTFOUND','ECONNREFUSED','CONNECT_TIMEOUT',
+          'CONNECTION_CLOSED','SELF_SIGNED_CERT_IN_CHAIN','UNABLE_TO_VERIFY_LEAF_SIGNATURE','CERT_HAS_EXPIRED'];
+        verificationFailure = typeof code === 'string' && allowed.includes(code) ? code
+          : error instanceof Error && error.message === 'identity' ? 'IDENTITY_MISMATCH' : 'UNAVAILABLE';
+        return false;
+      }
     },
+    verificationFailure() { return verificationFailure; },
     async rpc(name: string, args: Record<string,unknown> = {}) {
       if (!Object.hasOwn(definitions,name)) return unavailable();
       const definition = definitions[name];
