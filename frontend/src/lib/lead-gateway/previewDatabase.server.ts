@@ -15,6 +15,7 @@ type Configuration = Readonly<{
 }>;
 type Definition = { kind: Kind; keys: readonly string[]; types: readonly string[]; rows: boolean };
 const definitions: Record<string, Definition> = {
+  select_lead_acknowledgement_candidate: { kind: 'worker', keys: ['p_allowed_phone'], types: ['text'], rows: true },
   ingest_google_lead_with_acknowledgement: { kind: 'ingestor', keys: ['p_form_id','p_campaign_id','p_external_lead_id','p_provider_created_at','p_company_name','p_contact_name','p_telephone','p_email'], types: ['text','text','text','timestamptz','text','text','text','text'], rows: true },
   ingest_meta_lead_with_acknowledgement: { kind: 'ingestor', keys: ['p_page_id','p_form_id','p_external_lead_id','p_provider_created_at','p_company_name','p_contact_name','p_telephone','p_email','p_campaign_id'], types: ['text','text','text','timestamptz','text','text','text','text','text'], rows: true },
   claim_meta_lead_acknowledgement: { kind: 'worker', keys: ['p_lead_id','p_execution_authorization_id','p_provider_adapter_id'], types: ['bigint','bigint','bigint'], rows: true },

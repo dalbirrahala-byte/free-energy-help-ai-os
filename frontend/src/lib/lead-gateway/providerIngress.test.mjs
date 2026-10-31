@@ -47,6 +47,6 @@ for(const [name,mutate,status] of [
 test('Google duplicate receives 200 and cannot create a second reservation',async()=>{const h=harness({outcome:'duplicate'});assert.equal((await createGoogleIngressHandler(google,h.dependencies.database)(googleRequest())).status,200);assert.equal(h.calls.rpc.length,1);});
 for(const [name,changes] of Object.entries({production:{VERCEL_ENV:'production'},disabled:{FEH_GOOGLE_INGRESS_ENABLED:'false'},missingForm:{FEH_GOOGLE_FORM_ID:undefined},missingKey:{FEH_GOOGLE_WEBHOOK_KEY:undefined},missingPhone:{FEH_ACK_PREVIEW_ALLOWED_PHONE:undefined}}))test(`Google ${name} is disabled`,async()=>{const h=harness();assert.equal((await createGoogleIngressHandler({...google,...changes},h.dependencies.database)(googleRequest())).status,404);assert.equal(h.calls.connections,0);});
 test('only exact staging machine-intake paths bypass CRM login',()=>{
- for(const path of ['/api/lead-intake/meta','/api/lead-intake/google','/api/lead-intake/readiness']){assert.equal(isPreviewIntakePath(path,base),true);assert.equal(isPreviewIntakePath(path,{...base,VERCEL_ENV:'production'}),false);}
- for(const path of ['/api/lead-intake/meta/extra','/api/lead-intake/google-admin','/leads','/api/sms/send'])assert.equal(isPreviewIntakePath(path,base),false);
+ for(const path of ['/api/lead-intake/meta','/api/lead-intake/google','/api/lead-intake/readiness','/api/lead-acknowledgements/run']){assert.equal(isPreviewIntakePath(path,base),true);assert.equal(isPreviewIntakePath(path,{...base,VERCEL_ENV:'production'}),false);}
+ for(const path of ['/api/lead-intake/meta/extra','/api/lead-intake/google-admin','/leads','/api/sms/send','/api/lead-acknowledgements/run/extra'])assert.equal(isPreviewIntakePath(path,base),false);
 });

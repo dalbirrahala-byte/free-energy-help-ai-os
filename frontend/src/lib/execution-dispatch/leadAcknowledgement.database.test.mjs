@@ -3,6 +3,7 @@ import { before, after, test } from 'node:test';
 import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { executeLeadAcknowledgement } from './executeLeadAcknowledgement.ts';
+import { runLeadAcknowledgementOnce } from './runLeadAcknowledgementOnce.ts';
 
 // Real PostgreSQL engine in WASM, isolated from Supabase and Telnyx. PGlite has
 // one connection: these prove persisted SQL invariants, not multi-session races.
@@ -38,14 +39,14 @@ before(async () => {
 });
 after(async () => { await db.close(); });
 
-async function fixture(provider='meta') {
+async function fixture(provider='meta', recipient=phone) {
   const externalId = (provider==='meta'?'':'google_')+String(++external);
   const intake=provider==='meta'?`select * from public.ingest_meta_lead_with_acknowledgement(
     '123456','654321',$1,now(),'Synthetic FEH test','Synthetic Contact',$2,'test@example.invalid',null)`:
     `select * from public.ingest_google_lead_with_acknowledgement('654321','123456',$1,now(),'Synthetic FEH test','Synthetic Contact',$2,'test@example.invalid')`;
-  const lead = (await db.query(intake, [externalId, phone])).rows[0];
+  const lead = (await db.query(intake, [externalId, recipient])).rows[0];
   const org = (await db.query("insert into organisations(legal_name) values('Synthetic FEH test') returning id")).rows[0].id;
-  const contact = (await db.query('insert into contacts(organisation_id,phone) values($1,$2) returning id', [org, phone])).rows[0].id;
+  const contact = (await db.query('insert into contacts(organisation_id,phone) values($1,$2) returning id', [org, recipient])).rows[0].id;
   await db.query('update leads set organisation_id=$1 where id=$2', [org, lead.lead_id]);
   const intent = (await db.query("select * from create_execution_intent($1,'SMS',$2)",
     [contact, `${provider}:feh-callback-ack-v1:${externalId}`])).rows[0].execution_intent_id;
@@ -64,6 +65,7 @@ async function fixture(provider='meta') {
 }
 
 const rpcArgs = {
+  select_lead_acknowledgement_candidate: ['p_allowed_phone'],
   claim_meta_lead_acknowledgement: ['p_lead_id','p_execution_authorization_id','p_provider_adapter_id'],
   consume_execution_authorization: ['p_execution_authorization_id'],
   prepare_execution_dispatch: ['p_execution_authorization_id','p_provider_adapter_id'],
@@ -72,7 +74,7 @@ const rpcArgs = {
   complete_execution_dispatch_failure: ['p_execution_dispatch_attempt_id','p_failure_code'],
   complete_execution_dispatch_indeterminate: ['p_execution_dispatch_attempt_id','p_failure_code'],
 };
-const rowResults = new Set(['claim_meta_lead_acknowledgement','prepare_execution_dispatch']);
+const rowResults = new Set(['claim_meta_lead_acknowledgement','prepare_execution_dispatch','select_lead_acknowledgement_candidate']);
 const worker = {
   async rpc(name, args) {
     const keys = rpcArgs[name]; assert.ok(keys, 'only reviewed RPC names');
@@ -241,4 +243,69 @@ test('overlapping deliveries through the worker receive only one claim', async (
     executeLeadAcknowledgement(worker,f,{from},transport(sends))]);
   assert.equal(results.filter(r=>r.status==='succeeded').length,1);
   assert.equal(sends.length,1);
+});
+
+// Separate destination isolates worker-selection tests from earlier negative fixtures.
+const runnerPhone = '+447700900004';
+test('candidate discovery is read-only, worker-only and has no caller-supplied authority',async()=>{
+  const f=await fixture('meta', runnerPhone);
+  for(const role of ['anon','authenticated','service_role','external_lead_ingestor','feh_ack_preview_ingestor','feh_ack_preview_worker'])
+    assert.equal((await db.query("select has_function_privilege($1,'public.select_lead_acknowledgement_candidate(text)','EXECUTE') as allowed",[role])).rows[0].allowed,false);
+  for(const allowed of [null,'', '+447700900002', '07700900001'])
+    assert.deepEqual((await worker.rpc('select_lead_acknowledgement_candidate',{p_allowed_phone:allowed})).data,[]);
+  const selected=await worker.rpc('select_lead_acknowledgement_candidate',{p_allowed_phone:runnerPhone});
+  assert.deepEqual(selected.data,[{lead_id:f.leadId,authorization_id:f.authorizationId,provider_adapter_id:f.providerAdapterId}]);
+  assert.equal((await db.query('select status from lead_acknowledgements where lead_id=$1',[f.leadId])).rows[0].status,'awaiting_authority');
+  assert.equal((await runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport([]))).status,'succeeded');
+});
+
+for(const provider of ['meta','google_ads'])test(`${provider}: worker selection -> one SMS; intake replay and next run stay idle`,async()=>{
+  const f=await fixture(provider, runnerPhone);const sends=[];
+  const first=await runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport(sends));
+  assert.equal(first.status,'succeeded');assert.ok(first.attemptId);
+  const replay=provider==='meta'
+    ? await db.query("select * from ingest_meta_lead_with_acknowledgement('123456','654321',$1,now(),null,null,$2,null,null)",[f.externalId,runnerPhone])
+    : await db.query("select * from ingest_google_lead_with_acknowledgement('654321','123456',$1,now(),null,null,$2,null)",[f.externalId,runnerPhone]);
+  assert.equal(replay.rows[0].outcome,'duplicate');
+  assert.equal((await runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport(sends))).status,'idle');
+  assert.equal(sends.length,1);
+});
+
+test('runner stops after one job even with two approved candidates',async()=>{
+  await fixture('meta', runnerPhone);await fixture('google_ads', runnerPhone);const sends=[];
+  assert.equal((await runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport(sends))).status,'succeeded');
+  assert.equal(sends.length,1);
+  assert.equal((await worker.rpc('select_lead_acknowledgement_candidate',{p_allowed_phone:runnerPhone})).data.length,1);
+  assert.equal((await runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport(sends))).status,'succeeded');
+  assert.equal(sends.length,2);
+});
+
+test('overlapping runners may select the same row but make one provider call',async()=>{
+  await fixture('meta', runnerPhone);const sends=[];
+  const results=await Promise.all([runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport(sends)),
+    runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport(sends))]);
+  assert.equal(results.filter(r=>r.status==='succeeded').length,1);assert.equal(sends.length,1);
+});
+
+test('uncertain provider result is not selected again by the runner',async()=>{
+  await fixture('meta', runnerPhone);const sends=[];
+  assert.equal((await runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport(sends,'timeout'))).status,'indeterminate');
+  assert.equal((await runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport(sends))).status,'idle');assert.equal(sends.length,1);
+});
+
+test('destination changed after selection cannot reach a different recipient',async()=>{
+  const f=await fixture('meta', runnerPhone);const sends=[];
+  const changed={async rpc(name,args){const result=await worker.rpc(name,args);
+    if(name==='select_lead_acknowledgement_candidate')await db.query('update contacts set phone=$1 where id=$2',['+447700900003',f.contact]);
+    return result;}};
+  assert.equal((await runLeadAcknowledgementOnce(changed,{from,allowedPhone:runnerPhone},transport(sends))).status,'blocked');assert.equal(sends.length,0);
+});
+
+test('STOP before candidate discovery returns idle without altering the reservation',async()=>{
+  const f=await fixture('meta', runnerPhone);const sends=[];
+  await db.query("select stop_execution('synthetic stop','local worker test')");
+  try {
+    assert.equal((await runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport(sends))).status,'idle');assert.equal(sends.length,0);
+    assert.equal((await db.query('select status from lead_acknowledgements where lead_id=$1',[f.leadId])).rows[0].status,'awaiting_authority');
+  }finally{await db.query("select release_execution('synthetic release','local worker test')");}
 });

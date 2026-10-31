@@ -47,6 +47,15 @@ test('only parameterized allowlisted worker functions, role local to transaction
  assert.equal(h.calls[2].sql,'set local role execution_dispatch_worker');assert.equal(h.calls.at(-1).sql,'select to_jsonb(public.consume_execution_authorization($1::bigint)) as result');assert.deepEqual(h.calls.at(-1).args,[123]);assert.equal(h.transactions(),1);
  await h.client.close();assert.equal(h.closed(),1);
 });
+test('candidate lookup is parameterized and unavailable to the ingestor',async()=>{
+ const row={lead_id:1,authorization_id:2,provider_adapter_id:3};
+ const h=harness('worker',{result:row});
+ assert.deepEqual(await h.client.rpc('select_lead_acknowledgement_candidate',{p_allowed_phone:'+447700900001'}),{data:[row],error:null});
+ assert.equal(h.calls.at(-1).sql,'select to_jsonb(result) as result from public.select_lead_acknowledgement_candidate($1::text) as result');
+ assert.deepEqual(h.calls.at(-1).args,['+447700900001']);
+ const ingestor=harness('ingestor');assert.ok((await ingestor.client.rpc('select_lead_acknowledgement_candidate',{p_allowed_phone:'+447700900001'})).error);
+ assert.equal(ingestor.transactions(),0);
+});
 test('ingestion values stay parameters and returns a row array',async()=>{
  const h=harness('ingestor',{result:{outcome:'accepted',lead_id:42,acknowledgement_reserved:true}});
  const value="Synthetic O'Name; --";const r=await h.client.rpc('ingest_meta_lead_with_acknowledgement',{p_page_id:'123456',p_form_id:'654321',p_external_lead_id:'987654',p_provider_created_at:'2026-10-30T12:00:00Z',p_company_name:value,p_telephone:'+447700900001'});
