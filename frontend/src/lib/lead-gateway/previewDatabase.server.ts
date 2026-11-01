@@ -37,9 +37,13 @@ const unavailable = () => ({ data: null, error: { code: 'ACK_DATABASE_UNAVAILABL
 /** Credentials never leave this server-only module; URLs cannot select production,
  * an administrator, an arbitrary host, SSL options or another database. */
 export function readPreviewDatabaseConfiguration(kind: Kind, environment: Readonly<Record<string,string | undefined>>): Configuration | null {
-  const validRuntime = kind === 'receiver'
-    ? environment.FEH_INTAKE_RUNTIME === 'supabase-edge' && environment.SUPABASE_URL === `https://${ACK_STAGING_PROJECT}.supabase.co`
-    : environment.VERCEL_ENV === 'preview';
+  const edge = environment.VERCEL_ENV === undefined && environment.FEH_INTAKE_RUNTIME === 'supabase-edge' &&
+    environment.SUPABASE_URL === `https://${ACK_STAGING_PROJECT}.supabase.co` && environment.FEH_INTAKE_RECEIVER_ENABLED === 'true';
+  const preview = environment.FEH_INTAKE_RUNTIME === undefined && environment.VERCEL_ENV === 'preview';
+  // Edge form intake may use the EXISTING restricted ingestor identity. Never
+  // admit the worker identity in this public receiver runtime.
+  const validRuntime = kind === 'receiver' ? edge
+    : preview || (kind === 'ingestor' && edge && environment.FEH_META_FORM_TEST_ENABLED === 'true');
   if (!Object.hasOwn(identities, kind) || !validRuntime ||
       environment.FEH_ACK_DATABASE_ENABLED !== 'true' ||
       environment.NEXT_PUBLIC_SUPABASE_URL !== `https://${ACK_STAGING_PROJECT}.supabase.co`) return null;

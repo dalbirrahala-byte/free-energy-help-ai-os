@@ -44,7 +44,7 @@ function extractDetails(raw: unknown, ref: MetaLeadReference) {
 export async function ingestMetaLeadAcknowledgements(
   rawBody: Uint8Array,
   signature: unknown,
-  config: Readonly<{ appSecret: string; pageId: string; formId: string; allowedPhone?: string }>,
+  config: Readonly<{ appSecret: string; pageId: string; formId: string; allowedPhone?: string; allowedLeadId?: string }>,
   readDetails: MetaLeadDetailsReader,
   ingestor: MetaIngestionRpc,
 ): Promise<MetaAcknowledgementIngressResult> {
@@ -54,6 +54,11 @@ export async function ingestMetaLeadAcknowledgements(
     ({ status, accepted, duplicates, executionAllowed: false });
   const reviewed = reviewMetaWebhook(rawBody, signature, config);
   if (reviewed.status !== 'references_for_review') return result('rejected');
+  // Validate the ENTIRE batch before any Graph request. A phone restriction
+  // alone would retrieve unrelated customer details before rejecting them.
+  if (config.allowedLeadId !== undefined &&
+      (!/^[1-9]\d{5,99}$/.test(config.allowedLeadId) ||
+       reviewed.references.some(reference => reference.leadId !== config.allowedLeadId))) return result('rejected');
   try {
     for (const reference of reviewed.references) {
       const normalized = extractDetails(await readDetails(reference), reference);
