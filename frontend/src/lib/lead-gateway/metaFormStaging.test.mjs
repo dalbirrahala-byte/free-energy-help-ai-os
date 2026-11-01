@@ -41,6 +41,23 @@ test('Edge form path composes signed retrieval and the existing atomic queue RPC
  // This harness verifies HTTP/RPC composition. Real atomic SQL is separately
  // exercised by leadAcknowledgement.database.test.mjs, never claimed here.
 });
+test('the original callback accepts the same pinned lead and deduplicates across callback paths',async()=>{
+ const h=harness();const receiver=createIntakeReceiver(env,{metaForm:createMetaIngressHandlers(env,h.dependencies),now:h.dependencies.now});
+ for(const path of [url.replace('/meta-form','/meta'),url])assert.equal((await receiver(request(payload(),path))).status,200);
+ assert.equal(h.receipts.size,1);assert.deepEqual(h.calls.rpc[0],h.calls.rpc[1]);
+});
+for(const [name,changes] of Object.entries({disabled:{FEH_META_FORM_TEST_ENABLED:'false'},expired:{FEH_META_FORM_TEST_EXPIRES_AT:'2026-11-01T20:59:59Z'},receiverDisabled:{FEH_INTAKE_RECEIVER_ENABLED:'false'}}))test(`original callback remains closed when ${name}`,async()=>{
+ const h=harness();const settings={...env,...changes};
+ const receiver=createIntakeReceiver(settings,{metaForm:createMetaIngressHandlers(settings,h.dependencies),now:h.dependencies.now});
+ assert.equal((await receiver(request(payload(),url.replace('/meta-form','/meta')))).status,404);
+ assert.equal(h.calls.graph,0);assert.equal(h.calls.connections,0);
+});
+test('original callback rejects an unapproved lead before reading Graph',async()=>{
+ const h=harness();const receiver=createIntakeReceiver(env,{metaForm:createMetaIngressHandlers(env,h.dependencies),now:h.dependencies.now});
+ const p=payload();p.entry[0].changes[0].value.leadgen_id='987654322';
+ assert.equal((await receiver(request(p,url.replace('/meta-form','/meta')))).status,400);
+ assert.equal(h.calls.graph,0);assert.equal(h.calls.connections,0);
+});
 for(const [name,change] of Object.entries({unapprovedLead:p=>p.entry[0].changes[0].value.leadgen_id='987654322',
  mixedBatch:p=>p.entry[0].changes.push({field:'leadgen',value:{...value(),leadgen_id:'987654322'}}),
  otherPage:p=>p.entry[0].id='999999',otherForm:p=>p.entry[0].changes[0].value.form_id='999999'}))test(`${name} is rejected BEFORE Graph can read any customer details`,async()=>{

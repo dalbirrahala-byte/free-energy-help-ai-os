@@ -25,8 +25,12 @@ export function createIntakeReceiver(environment:Environment=process.env,depende
       return new Response(null,{status:405,headers:{Allow:'GET, POST'}});
     }
     if(path==='/feh-staging-lead-intake/meta'||path==='/functions/v1/feh-staging-lead-intake/meta'){
-      if(request.method==='GET')return meta.GET(request);
-      if(request.method==='POST')return meta.POST(request);
+      // Meta may retry a notification against the callback that was registered
+      // when it was created. During the explicitly pinned form test, preserve
+      // that URL without relaxing any signature, Page/form/lead or expiry gate.
+      const handler=environment.FEH_META_FORM_TEST_ENABLED==='true'?metaForm:meta;
+      if(request.method==='GET')return handler.GET(request);
+      if(request.method==='POST')return handler.POST(request);
       return new Response(null,{status:405,headers:{Allow:'GET, POST'}});
     }
     if(path!=='/feh-staging-lead-intake/google' && path!=='/functions/v1/feh-staging-lead-intake/google')return new Response(null,{status:404});
