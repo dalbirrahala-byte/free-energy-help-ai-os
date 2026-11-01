@@ -1,6 +1,8 @@
 # One owner-controlled staging SMS: approval and recovery flow
 
-**Prepared and locally validated; database installation and activation are BLOCKED pending explicit approval of the new security access.** No role, capability, adapter approval, authorization, enquiry or RELEASE has been written in staging by this increment. The owner-created test account remains read-only; no acknowledgement SMS was sent.
+**Update, 1 November:** the owner explicitly approved installation, temporary account authority, and the one-test RELEASE/restore cycle. The migration is now installed and verified in staging as `20261101130501_acknowledgement_owner_test_control`; the reviewed bootstrap was executed. The known owner test account is temporarily admin with the two pinned capabilities, and STOP remains enabled. See [the installation record](ACKNOWLEDGEMENT_OWNER_INSTALL_20261101.md). The remaining text records the 31 October preparation and initial rejection, not the current activation state.
+
+**Historical state on 31 October:** prepared and locally validated; database installation and activation were blocked pending explicit approval of the new security access. No role, capability, adapter approval, authorization, enquiry or RELEASE had been written by that increment.
 
 ## What was missing
 
@@ -47,7 +49,7 @@ This manual synthetic owner test will prove the controlled sending path. It does
 
 ## Completion Evidence Block
 
-- **Created:** this report; `docs/staging/ACK_OWNER_TEST_BOOTSTRAP.sql.in`; `supabase/migrations/20261031182643_acknowledgement_owner_test_control.sql`; `frontend/src/lib/lead-gateway/ownerTestControl.server.ts`; `frontend/src/lib/lead-gateway/ownerTestControl.database.test.mjs`; `frontend/src/app/acknowledgement-test-preview/actions.ts`; `frontend/src/app/acknowledgement-test-preview/page.tsx`.
+- **Created:** this report; `docs/staging/ACK_OWNER_TEST_BOOTSTRAP.sql.in`; the owner-control migration (now aligned to remote version `supabase/migrations/20261101130501_acknowledgement_owner_test_control.sql`); `frontend/src/lib/lead-gateway/ownerTestControl.server.ts`; `frontend/src/lib/lead-gateway/ownerTestControl.database.test.mjs`; `frontend/src/app/acknowledgement-test-preview/actions.ts`; `frontend/src/app/acknowledgement-test-preview/page.tsx`.
 - **Modified:** `frontend/src/lib/execution-dispatch/leadAcknowledgement.database.test.mjs` adds the synthetic `auth.jwt()` stub required to load the new dormant migration in isolated tests. **Deleted:** none. Application dependencies unchanged.
 - **Tests/typecheck/lint/build:** results and limits above. No real SMS or owner MFA test claimed.
 - **Git:** existing approved draft review branch and PR #115; normal expected-head publication only, no merge or force push. Final local/remote commits, tree and Preview result are recorded in the PR body after publication.
