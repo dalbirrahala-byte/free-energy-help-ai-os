@@ -1,6 +1,6 @@
 # Meta permission and owner-number SMS result — 1 November 2026
 
-**PASS: approved Meta permission, provider-originated test intake, qualification answers, and one provider-accepted SMS. BLOCKED: the post-send replay check needs Meta reauthentication. Advertising is not ready to launch.**
+**PASS: approved Meta permission, provider-originated test intake, qualification answers, and one SMS accepted by Telnyx and received on the owner's phone. BLOCKED: the post-send replay check needs Meta reauthentication. Advertising is not ready to launch.**
 
 ## Approved scope and result
 
@@ -27,7 +27,7 @@ The refreshed Page token was saved to `FEH_META_PAGE_TOKEN` in Supabase staging 
 | Telnyx message reference | `4031a199-5db0-4346-b6bd-4d0b61d0f9a3` |
 | Case closed | `2026-11-01T23:06:57.727297Z` |
 
-The contact was the already approved owner test mobile ending 7373, with synthetic name, company and email. The acknowledgement uses the approved callback number **01332 605506**. Telnyx acceptance is confirmed; handset delivery of this new message has not yet been confirmed. The earlier handset screenshot belongs to the earlier synthetic test and is not reused as delivery proof for this message.
+The contact was the already approved owner test mobile ending 7373, with synthetic name, company and email. The acknowledgement uses the approved callback number **01332 605506**. Following this send, the owner supplied a fresh handset screenshot (phone clock 23:12) showing the acknowledgement from the expected SMS sender and the correct callback number. This confirms handset receipt in addition to Telnyx acceptance; it does not establish an exact carrier delivery timestamp or prove absence of future duplicates. The earlier 13:44 handset screenshot belongs to the earlier synthetic test and is not reused as delivery proof for this message.
 
 The actual initial notification and successful retry came from Meta's custom `test_leads` creation flow. No locally signed notification, direct SQL insert or forged JWT was used to manufacture this initial receipt. One `external_lead_accepted`, one `lead_acknowledgement_reserved`, and one `lead_acknowledgement_claimed` audit were observed for lead 12.
 
@@ -76,5 +76,5 @@ Next.js build was not repeated locally because this increment changes only the s
 - **External systems accessed/mutated:** Meta Page authorization, private staging token and callback, synthetic test leads; Supabase staging receiver/settings/owner case/CRM test/audit; Vercel Preview-branch verification variable and automatic Preview; GitHub review branch; Telnyx one authorized test send. Google unchanged in this increment.
 - **Credentials accessed:** yes, Meta user/Page tokens and newly generated callback verification values; securely stored without inclusion in this report. App-secret replay access stopped at Meta reauthentication. The owner's existing authenticated CRM session was reused; no password, OTP or JWT was read or fabricated.
 - **Production/customer data touched:** no production CRM/database or real customer records; only approved owner test contact and synthetic data. No advertising spend enabled.
-- **Remaining risks:** post-send replay proof, handset receipt, permanent Google intake with existing email delivery preserved, automatic worker/authorization policy and provider callback lifecycle, token lifecycle, and the protected-path review checkpoint. The earlier Google dashboard test remains separate from a permanent Google-to-SMS connection.
+- **Remaining risks:** post-send replay proof, permanent Google intake with existing email delivery preserved, automatic worker/authorization policy and provider callback lifecycle, token lifecycle, and the protected-path review checkpoint. The earlier Google dashboard test remains separate from a permanent Google-to-SMS connection.
 - **Next gate:** complete Meta reauthentication for the controlled replay under existing approval; then finish the remaining Google/automatic-dispatch work before any launch decision.
