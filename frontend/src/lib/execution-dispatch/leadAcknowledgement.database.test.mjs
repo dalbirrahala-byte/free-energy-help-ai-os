@@ -117,6 +117,68 @@ test('atomic ingestion: replay creates one lead and one reservation with unknown
   assert.deepEqual(counts, { total: 1, unknown: true });
 });
 
+const qualificationSql = `select * from public.ingest_meta_lead_with_acknowledgement(
+  '123456','654321',$1,now(),'Synthetic FEH test','Synthetic Contact',$2,
+  'test@example.invalid',null,$3,$4)`;
+async function qualifiedReceipt(id, contract, spend) {
+  return db.transaction(async tx => {
+    await tx.exec('set local role external_lead_ingestor');
+    return (await tx.query(qualificationSql, [id,phone,contract,spend])).rows[0];
+  });
+}
+test('qualification notes persist once with the reservation; replay preserves original answers and consent', async () => {
+  const id = String(++external);
+  const first = await qualifiedReceipt(id, ' Within 3 months ', '£500–£2,000');
+  assert.equal(first.outcome, 'accepted');
+  const replay = await qualifiedReceipt(id, 'Changed answer', 'Changed spend');
+  assert.equal(replay.outcome, 'duplicate'); assert.equal(replay.acknowledgement_reserved, false);
+  const row = (await db.query(`select l.notes,l.contract_end,l.consent_status,l.consent_given,
+    (select count(*)::int from lead_acknowledgements q where q.lead_id=l.id) as reservations
+    from leads l where l.id=$1`, [first.lead_id])).rows[0];
+  assert.deepEqual(row, { notes: 'Meta enquiry answers\nContract end: Within 3 months\nMonthly energy spend: £500–£2,000',
+    contract_end: null, consent_status: 'unknown', consent_given: false, reservations: 1 });
+  const audit = (await db.query("select metadata from audit_log where entity_type='lead' and entity_id=$1", [String(first.lead_id)])).rows;
+  assert.ok(!JSON.stringify(audit).includes('£500'));
+});
+test('missing qualification answers remain absent without inventing notes', async () => {
+  const row = await qualifiedReceipt(String(++external), null, ' ');
+  assert.equal(row.outcome, 'accepted');
+  assert.equal((await db.query('select notes from leads where id=$1', [row.lead_id])).rows[0].notes, null);
+});
+test('qualification overload grants only ingestion, with no raw table or execution access', async () => {
+  const fn = 'public.ingest_meta_lead_with_acknowledgement(text,text,text,timestamptz,text,text,text,text,text,text,text)';
+  for (const role of ['anon','authenticated','service_role','execution_dispatch_worker'])
+    assert.equal((await db.query("select has_function_privilege($1,$2,'EXECUTE') as allowed", [role,fn])).rows[0].allowed, false);
+  assert.equal((await db.query("select has_function_privilege('external_lead_ingestor',$1,'EXECUTE') as allowed", [fn])).rows[0].allowed, true);
+});
+test('malformed qualification answers reject without a lead or reservation', async () => {
+  for (const [contract,spend] of [['x'.repeat(201),null],[null,'x'.repeat(201)],['Band\nInjected',null],[null,'Band\tInjected']]) {
+    const id = String(++external);
+    assert.equal((await qualifiedReceipt(id,contract,spend)).outcome, 'rejected');
+    assert.equal((await db.query('select count(*)::int as n from leads where external_lead_id=$1', [id])).rows[0].n,0);
+  }
+});
+test('failed qualification storage rolls back the lead, reservation and audit', async () => {
+  const id = String(++external);
+  const auditBefore = (await db.query('select count(*)::int as n from audit_log')).rows[0].n;
+  await assert.rejects(db.transaction(async tx => {
+    await tx.exec("alter table leads add constraint synthetic_note_failure check(notes is null) not valid");
+    await tx.query(qualificationSql, [id,phone,'Within 3 months','£500–£2,000']);
+  }));
+  assert.equal((await db.query('select count(*)::int as n from leads where external_lead_id=$1', [id])).rows[0].n,0);
+  assert.equal((await db.query('select count(*)::int as n from lead_acknowledgements where external_lead_id=$1', [id])).rows[0].n,0);
+  assert.equal((await db.query('select count(*)::int as n from audit_log')).rows[0].n,auditBefore);
+});
+test('qualification replay cannot backfill or overwrite an existing lead outside this receipt', async () => {
+  const id = String(++external);
+  const original = (await db.query("select * from ingest_external_lead('meta',$1,now(),'unknown',null,null,$2,null,null)", [id,phone])).rows[0];
+  await db.query("update leads set notes='Existing operator notes' where id=$1", [original.lead_id]);
+  const replay = await qualifiedReceipt(id,'Within 3 months','£500–£2,000');
+  assert.equal(replay.outcome,'duplicate'); assert.equal(replay.acknowledgement_reserved,false);
+  assert.equal((await db.query('select notes from leads where id=$1', [original.lead_id])).rows[0].notes,'Existing operator notes');
+  assert.equal((await db.query('select count(*)::int as n from lead_acknowledgements where lead_id=$1', [original.lead_id])).rows[0].n,0);
+});
+
 test('full database claim -> existing Factory 041 worker -> fixed message -> durable finalization; replay never sends', async () => {
   const f=await fixture(); const sends=[];
   const first=await executeLeadAcknowledgement(worker,f,{from},transport(sends));

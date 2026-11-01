@@ -23,7 +23,9 @@ test('verified event and matching details reserve through the atomic ingestor on
       assert.equal(args.p_form_id, config.formId);
       assert.equal(args.p_external_lead_id, '999999');
       assert.equal(args.p_telephone, '07700900001');
-      assert.equal(Object.keys(args).length, 9);
+      assert.equal(Object.keys(args).length, 11);
+      assert.equal(args.p_contract_end_answer, null);
+      assert.equal(args.p_monthly_spend_answer, null);
       assert.ok(!JSON.stringify(args).includes('must not persist'));
       assert.ok(!JSON.stringify(args).includes('Consent'));
       return { data: [{ outcome: 'accepted', lead_id: 1, acknowledgement_reserved: true }], error: null };
@@ -77,4 +79,36 @@ test('provider exceptions remain redacted', async () => {
     async rpc() { throw Error('must not call'); },
   });
   assert.deepEqual(result, { status: 'retry_required', accepted: 0, duplicates: 0, executionAllowed: false });
+});
+
+const contractQuestion = 'when_does_your_current_business_energy_contract_end?';
+const spendQuestion = 'roughly_how_much_does_your_business_spend_on_energy_each_month?';
+test('FEH qualification answers reach the atomic receipt without inventing dates or permission', async () => {
+  const d = details();
+  d.field_data.push({ name: contractQuestion, values: [' Within 3 months '] },
+    { name: spendQuestion, values: ['£500–£2,000'] });
+  let argsSeen: Record<string, unknown> = {};
+  const result = await ingestMetaLeadAcknowledgements(raw, signature, config, async () => d, {
+    async rpc(_name, args) { argsSeen = args; return { data: [{ outcome: 'accepted', lead_id: 1, acknowledgement_reserved: true }], error: null }; },
+  });
+  assert.equal(result.status, 'persisted');
+  assert.equal(argsSeen.p_contract_end_answer, 'Within 3 months');
+  assert.equal(argsSeen.p_monthly_spend_answer, '£500–£2,000');
+  assert.ok(!('p_contract_end' in argsSeen));
+  assert.ok(!('p_consent_status' in argsSeen));
+  assert.ok(!JSON.stringify(argsSeen).includes('must not persist'));
+});
+
+for (const fields of [
+  [{ name: contractQuestion, values: ['Within 3 months'] }, { name: contractQuestion, values: ['Later'] }],
+  [{ name: spendQuestion, values: ['Low', 'High'] }],
+  [{ name: contractQuestion, values: ['x'.repeat(201)] }],
+  [{ name: spendQuestion, values: ['Band\nForged field: approved'] }],
+  [{ name: spendQuestion, values: ['Band\u0085Forged field: approved'] }],
+]) test('ambiguous, oversized or control-bearing answers cannot reach persistence', async () => {
+  const d = details(); d.field_data.push(...fields);
+  const result = await ingestMetaLeadAcknowledgements(raw, signature, config, async () => d, {
+    async rpc() { assert.fail('invalid answers must not persist'); },
+  });
+  assert.equal(result.status, 'rejected');
 });

@@ -24,21 +24,33 @@ function extractDetails(raw: unknown, ref: MetaLeadReference) {
       Date.parse(raw.created_time) !== ref.createdTime * 1000 ||
       !Array.isArray(raw.field_data) || raw.field_data.length > 100) return null;
   const selected = new Map<string, string>();
-  const supported = new Set(['email', 'phone_number', 'full_name', 'company_name']);
+  // Exact identifiers observed on the configured FEH form. Preserve the supplied
+  // bands as answers; they are neither an exact renewal date nor consent.
+  const contractQuestion = 'when_does_your_current_business_energy_contract_end?';
+  const spendQuestion = 'roughly_how_much_does_your_business_spend_on_energy_each_month?';
+  const supported = new Set(['email', 'phone_number', 'full_name', 'company_name', contractQuestion, spendQuestion]);
   for (const field of raw.field_data) {
     if (!record(field) || typeof field.name !== 'string') return null;
     if (!supported.has(field.name)) continue;
     if (selected.has(field.name) || !Array.isArray(field.values) || field.values.length !== 1 ||
         typeof field.values[0] !== 'string' || field.values[0].length > 1000) return null;
-    selected.set(field.name, field.values[0]);
+    const value = field.values[0];
+    if ((field.name === contractQuestion || field.name === spendQuestion) &&
+        (value.length > 200 || Array.from(value).some(char =>
+          char.charCodeAt(0) < 32 || (char.charCodeAt(0) >= 127 && char.charCodeAt(0) <= 159)))) return null;
+    selected.set(field.name, value);
   }
-  return normalizeMetaLead({
+  const normalized = normalizeMetaLead({
     leadId: ref.leadId, formId: ref.formId, createdTime: raw.created_time,
     email: selected.get('email'), phoneNumber: selected.get('phone_number'),
     fullName: selected.get('full_name'), companyName: selected.get('company_name'),
     // Submission is not marketing consent. No arbitrary payload flag is used.
     hasExplicitConsentEvidence: false,
   });
+  return normalized.success ? { ...normalized,
+    contractEndAnswer: selected.get(contractQuestion)?.trim() || null,
+    monthlySpendAnswer: selected.get(spendQuestion)?.trim() || null,
+  } : normalized;
 }
 
 export async function ingestMetaLeadAcknowledgements(
@@ -75,6 +87,8 @@ export async function ingestMetaLeadAcknowledgements(
         p_external_lead_id: lead.externalLeadId, p_provider_created_at: lead.receivedAt,
         p_company_name: lead.companyName, p_contact_name: lead.contactName,
         p_telephone: lead.telephone, p_email: lead.email, p_campaign_id: lead.campaignId,
+        p_contract_end_answer: normalized.contractEndAnswer,
+        p_monthly_spend_answer: normalized.monthlySpendAnswer,
       });
       if (receipt.error || !Array.isArray(receipt.data) || receipt.data.length !== 1 ||
           !record(receipt.data[0])) return result('retry_required');
