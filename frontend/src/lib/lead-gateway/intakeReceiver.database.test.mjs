@@ -9,7 +9,7 @@ test('receiver migration adds one expiring intake-only identity without membersh
  create function public.ingest_external_lead(text,text,timestamptz,text,text,text,text,text,text) returns text language sql as 'select ''accepted''::text';
  create function public.claim_meta_lead_acknowledgement() returns text language sql as 'select ''blocked''::text';
  revoke execute on all functions in schema public from public;`);
- await db.exec(await readFile(new URL('../../../../supabase/migrations/20261101181853_restricted_staging_intake_receiver.sql',import.meta.url),'utf8'));
+ await db.exec(await readFile(new URL('../../../../supabase/migrations/20261101182034_restricted_staging_intake_receiver.sql',import.meta.url),'utf8'));
  const {rows}=await db.query(`select rolcanlogin,rolsuper,rolbypassrls,rolcreaterole,rolcreatedb,rolinherit,rolconnlimit,rolvaliduntil,
  has_function_privilege(rolname,'public.ingest_external_lead(text,text,timestamptz,text,text,text,text,text,text)','execute') intake,
  has_function_privilege(rolname,'public.claim_meta_lead_acknowledgement()','execute') worker,
