@@ -3,7 +3,7 @@ import postgres from 'postgres';
 import {SUPABASE_DATABASE_CA} from './supabaseCa.server.ts';
 
 export const ACK_STAGING_PROJECT = 'vredwhyphrhsudggrsen';
-type Kind = 'ingestor' | 'worker';
+type Kind = 'ingestor' | 'worker' | 'receiver';
 type Value = string | number | null;
 type Row = Record<string, unknown>;
 type Transaction = { unsafe(query: string, args?: Value[]): PromiseLike<Row[]> };
@@ -15,6 +15,7 @@ type Configuration = Readonly<{
 }>;
 type Definition = { kind: Kind; keys: readonly string[]; types: readonly string[]; rows: boolean };
 const definitions: Record<string, Definition> = {
+  ingest_external_lead: { kind: 'receiver', keys: ['p_provider','p_external_lead_id','p_provider_created_at','p_consent_status','p_company_name','p_contact_name','p_telephone','p_email','p_utm_campaign'], types: ['text','text','timestamptz','text','text','text','text','text','text'], rows: true },
   select_lead_acknowledgement_candidate: { kind: 'worker', keys: ['p_allowed_phone'], types: ['text'], rows: true },
   ingest_google_lead_with_acknowledgement: { kind: 'ingestor', keys: ['p_form_id','p_campaign_id','p_external_lead_id','p_provider_created_at','p_company_name','p_contact_name','p_telephone','p_email'], types: ['text','text','text','timestamptz','text','text','text','text'], rows: true },
   ingest_meta_lead_with_acknowledgement: { kind: 'ingestor', keys: ['p_page_id','p_form_id','p_external_lead_id','p_provider_created_at','p_company_name','p_contact_name','p_telephone','p_email','p_campaign_id'], types: ['text','text','text','timestamptz','text','text','text','text','text'], rows: true },
@@ -29,17 +30,22 @@ const definitions: Record<string, Definition> = {
 const identities = {
   ingestor: { login: 'feh_ack_preview_ingestor', role: 'external_lead_ingestor' },
   worker: { login: 'feh_ack_preview_worker', role: 'execution_dispatch_worker' },
+  receiver: { login: 'feh_intake_preview_receiver', role: 'feh_intake_preview_receiver' },
 } as const;
 const unavailable = () => ({ data: null, error: { code: 'ACK_DATABASE_UNAVAILABLE' } });
 
 /** Credentials never leave this server-only module; URLs cannot select production,
  * an administrator, an arbitrary host, SSL options or another database. */
 export function readPreviewDatabaseConfiguration(kind: Kind, environment: Readonly<Record<string,string | undefined>>): Configuration | null {
-  if (!Object.hasOwn(identities, kind) || environment.VERCEL_ENV !== 'preview' ||
+  const validRuntime = kind === 'receiver'
+    ? environment.FEH_INTAKE_RUNTIME === 'supabase-edge' && environment.SUPABASE_URL === `https://${ACK_STAGING_PROJECT}.supabase.co`
+    : environment.VERCEL_ENV === 'preview';
+  if (!Object.hasOwn(identities, kind) || !validRuntime ||
       environment.FEH_ACK_DATABASE_ENABLED !== 'true' ||
       environment.NEXT_PUBLIC_SUPABASE_URL !== `https://${ACK_STAGING_PROJECT}.supabase.co`) return null;
   try {
-    const value = environment[kind === 'ingestor' ? 'FEH_ACK_INGESTOR_DATABASE_URL' : 'FEH_ACK_WORKER_DATABASE_URL'];
+    if (kind === 'receiver' && environment.FEH_INTAKE_RECEIVER_ENABLED !== 'true') return null;
+    const value = environment[kind === 'receiver' ? 'FEH_INTAKE_RECEIVER_DATABASE_URL' : kind === 'ingestor' ? 'FEH_ACK_INGESTOR_DATABASE_URL' : 'FEH_ACK_WORKER_DATABASE_URL'];
     if (!value || value.length > 2048) return null;
     const url = new URL(value);
     const login = identities[kind].login;
