@@ -1,6 +1,6 @@
 # Meta permission and owner-number SMS result — 1 November 2026
 
-**PASS: approved Meta permission, provider-originated test intake, qualification answers, and one SMS accepted by Telnyx and received on the owner's phone. BLOCKED: the post-send replay check needs Meta reauthentication. Advertising is not ready to launch.**
+**PASS: approved Meta permission, provider-originated test intake, qualification answers, one SMS accepted by Telnyx and received on the owner's phone, and two controlled post-send replays without another lead, reservation or SMS attempt. Advertising is not ready to launch.**
 
 ## Approved scope and result
 
@@ -42,11 +42,13 @@ The existing owner bootstrap template was applied for lead 12 under the retained
 
 The saved Page callback is `/functions/v1/feh-staging-lead-intake/meta-form`, with `leadgen` subscribed at v26.0. A small receiver compatibility change sends the former `/meta` URL through the same form handler only while the restricted form test is enabled. Signature, Page, form, exact lead, owner phone and finite expiry checks all remain enforced. No worker, scheduler or SMS transport was added to the public receiver.
 
-## Replay limitation
+## Post-send replay proof
 
-The post-send replay has **not** passed yet. A diagnostic attempt to call the existing queue RPC under `external_lead_ingestor` through the operator SQL connection was rejected at `SET ROLE`; no replay RPC ran and no role grant was added to bypass it. Meta's webhook sample dialog offers fixed dummy IDs, not a replay of this existing enquiry. Obtaining the existing signing secret for a clearly labelled controlled HTTP replay prompted Meta password reauthentication. That sign-in is the next required user interaction; no further permission expansion or SMS approval is requested.
+Meta reauthentication succeeded after the owner's handoff. The approved app signing secret was used privately to generate an HMAC for a minimal notification containing the existing Page, form and lead identifiers. Two sequential HTTP POSTs to the staging `/meta-form` receiver returned **200**. Both generated `external_lead_duplicate` audit entries for lead 12. The database counts remained **one lead, one acknowledgement reservation and one dispatch attempt**, while duplicate audits increased from zero to two. This is a controlled, locally signed HTTP replay, not a second Meta-originated redelivery. The initial intake and successful retry described above genuinely came from Meta.
 
-After authentication, use the already approved signing secret only to construct a controlled replay for lead `1781907386353507`, temporarily reopen the exact-lead intake window, verify duplicate audit evidence with the row/reservation/attempt counts unchanged, and close the window again. Keep STOP on throughout. Distinguish this controlled signed replay from the genuine Meta-originated initial delivery above. Never issue another SMS CREATE or reset the consumed authorization.
+Only the existing exact-lead intake window was reopened for these two requests, within its original `2026-11-01T23:32:31.726Z` expiry. STOP stayed `stopped`; active execution grants, enabled adapters and unconsumed authorizations each remained zero. No additional SMS CREATE was issued and the consumed authorization was not reset. Both intake switches were restored to `false` at `23:24:27Z`; their digests matched the expected disabled value. Subsequent unauthenticated GET and POST checks both returned 404. Independent post-closure database readback retained the same one/one/one counts and two duplicate audits.
+
+An earlier diagnostic SQL replay attempt was rejected at `SET ROLE external_lead_ingestor`; no replay RPC ran and no bypass grant was added. It is not counted as successful replay evidence. Meta's webhook sample dialog offers fixed dummy IDs and could not replay this selected enquiry. The signed HTTP approach resolved that test limitation without changing authority or production settings.
 
 ## Closed state and credential handling
 
@@ -54,13 +56,15 @@ Independent final readback: STOP `stopped`; active execution grants `0`; enabled
 
 A callback verification value appeared in an earlier diagnostic GET URL. It was replaced in Supabase, the exact Vercel Preview branch variable, and Meta's Page verification configuration. No Page token, app secret or database credential is included in this report. Subsequent diagnostic queries strip URL query strings at source. During Meta's redirect back to the default User tab, an unused User callback was briefly configured; it was removed, and the intended Page callback/subscription was verified separately. The temporary Graph token input was cleared.
 
+After the replay, the temporary file containing the narrowly scoped signed request was deleted, its in-memory request/signing buffers were cleared, and the Meta app-secret view was reloaded to hide the value. The app secret itself was never written to that replay file. No credential appears in source control or the report.
+
 ## Validation and review branch
 
 - Focused receiver tests: **85 passed, 0 failed**.
 - Full acknowledgement suite: **525 passed, 0 failed, 0 skipped**.
 - TypeScript typecheck, targeted ESLint and diff whitespace checks: **PASS**.
 - Thirteen-file receiver artifact SHA-256: `3f9c850aafbaebd797b1a61cfad132df7498faa4b3823726a05a940658f3f0f4`.
-- Supabase deployment code v16, final configuration v18 ACTIVE; bundle hash `0149447052fa48ce0bc78f7509351d88f86c485bf41e9d312e9ff731e2e6594c`. All thirteen fetched file contents matched the generated artifact. The first deployment request failed before installation due to an inherited import-map path; supplying the explicit `deno.json` path succeeded.
+- Supabase deployment code v16, final configuration v20 ACTIVE; unchanged bundle hash `0149447052fa48ce0bc78f7509351d88f86c485bf41e9d312e9ff731e2e6594c`. All thirteen fetched file contents matched the generated artifact. The first deployment request failed before installation due to an inherited import-map path; supplying the explicit `deno.json` path succeeded. The replay follow-up changed only temporary configuration and this evidence report, so code tests/builds were not repeated.
 - Remote code commit `756a16d6f61ae2f1e3c14317d5daf56b1791737c`, local code commit `2884e2744f853f6f56d9cd073976515cb1078bf7`, identical tree `b1abb8d56f69cf53d5ffb2cb221465d5c23c11f4`.
 - Code-commit CI: CRM guard and independent verifier passed; Vercel deployment completed. Factory 041 tests, typecheck and isolated lint passed; its existing protected-path checkpoint drift step failed (run `41359700871`). No checkpoint or protection was bypassed.
 
@@ -68,13 +72,13 @@ Next.js build was not repeated locally because this increment changes only the s
 
 ## Completion Evidence Block
 
-- **Scope completed:** approved Page permission/token refresh; exact staging callback; provider-originated owner test into CRM; both qualification answers retained; one approved SMS accepted; stop/access cleanup verified.
+- **Scope completed:** approved Page permission/token refresh; exact staging callback; provider-originated owner test into CRM; both qualification answers retained; one approved SMS accepted and handset receipt confirmed; two controlled signed replays with no additional lead/reservation/SMS attempt; stop/access cleanup verified.
 - **Created:** this report. **Modified:** `frontend/src/lib/lead-gateway/intakeReceiver.server.ts`, `frontend/src/lib/lead-gateway/metaFormStaging.test.mjs`. **Deleted:** no repository files.
-- **Tests:** focused 85/85; acknowledgement 525/525; two closed-route hosted checks passed. **Typecheck:** PASS. **Lint:** PASS. **Build:** receiver generation/deployment/file match PASS; remote Preview build PASS; local Next build not rerun for the stated reason.
+- **Tests:** focused 85/85; acknowledgement 525/525; two post-send HTTP replays returned 200 with two duplicate audits and unchanged one/one/one counts; two final closed-route hosted checks returned 404. **Typecheck:** PASS. **Lint:** PASS. **Build:** receiver generation/deployment/file match PASS; code-commit remote Preview build PASS; local Next build not rerun for the stated reason. No code changed during the replay evidence follow-up; only diff/secret checks were repeated for its report update.
 - **Git:** code committed locally and published with an expected-head normal update to `work/telnyx-otp-lead-sms-20261030`; no force push or merge. This evidence-only follow-up's final hashes and clean-state result are recorded in draft PR115.
-- **Deployment/migrations:** staging receiver/configuration v18, both test switches off; existing owner-case bootstrap used; no new schema migration or production deployment.
+- **Deployment/migrations:** staging receiver/configuration v20, both test switches off; existing owner-case bootstrap used; no new schema migration or production deployment.
 - **External systems accessed/mutated:** Meta Page authorization, private staging token and callback, synthetic test leads; Supabase staging receiver/settings/owner case/CRM test/audit; Vercel Preview-branch verification variable and automatic Preview; GitHub review branch; Telnyx one authorized test send. Google unchanged in this increment.
-- **Credentials accessed:** yes, Meta user/Page tokens and newly generated callback verification values; securely stored without inclusion in this report. App-secret replay access stopped at Meta reauthentication. The owner's existing authenticated CRM session was reused; no password, OTP or JWT was read or fabricated.
+- **Credentials accessed:** yes, Meta user/Page tokens, callback verification values and the approved app signing secret; privately handled without inclusion in this report. The signing secret was used only for the scoped controlled replay and its temporary buffers were cleared. The owner's existing authenticated CRM session was reused; no password, OTP or JWT was read or fabricated.
 - **Production/customer data touched:** no production CRM/database or real customer records; only approved owner test contact and synthetic data. No advertising spend enabled.
-- **Remaining risks:** post-send replay proof, permanent Google intake with existing email delivery preserved, automatic worker/authorization policy and provider callback lifecycle, token lifecycle, and the protected-path review checkpoint. The earlier Google dashboard test remains separate from a permanent Google-to-SMS connection.
-- **Next gate:** complete Meta reauthentication for the controlled replay under existing approval; then finish the remaining Google/automatic-dispatch work before any launch decision.
+- **Remaining risks:** permanent Google intake with existing email delivery preserved, automatic worker/authorization policy and provider callback lifecycle, token lifecycle, and the protected-path review checkpoint. The earlier Google dashboard test remains separate from a permanent Google-to-SMS connection. The bounded replay proves duplicate handling for this tested identity and path; it is not a universal exactly-once guarantee or production launch approval.
+- **Next gate:** finish the remaining Google/automatic-dispatch work and review the protected changes before any launch decision. No further owner action is needed for the completed Meta replay.
