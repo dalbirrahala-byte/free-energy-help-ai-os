@@ -1,6 +1,6 @@
 # Google and Meta intake staging evidence — 1 November 2026
 
-Google dashboard-to-staging intake: **PASS**. Meta intake: **BLOCKED by account verification and unfinished setup**. Advertising launch: **NOT READY**.
+Google dashboard-to-staging intake: **PASS**. Subsequent Meta dashboard notification/replay: **PASS**; real-form retrieval remains unproven. Advertising launch: **NOT READY**. See [the later Meta staging proof](META_DASHBOARD_STAGING_2026-11-01.md) for the cleared authentication blocker, saved callback/subscription and version 6 runtime. The Google checkpoint evidence below remains valid.
 
 Google's own **Send test data** action returned “Test data sent.” Its supplied provider identity created exactly one staging lead (ID 6), one acceptance audit and two duplicate audits after repeated Google verification clicks. No acknowledgement reservation was created for that lead. Total SMS attempts remained one from the previously completed owner test. STOP remained `stopped`, with zero active execution grants.
 
@@ -22,7 +22,7 @@ A separate manual synthetic receiver check also passed: lead ID 4, one row after
 - TLS certificate/hostname verification retained; pooled transaction identity checked. Existing Vercel worker/ingestor runtime gates remain unchanged. No worker route, SMS transport, scheduler or execution grant added.
 - Vercel creation of a separate receiver project was denied by the connected API (403). No Vercel project was created or CRM protection weakened. Existing Supabase staging provided the supported alternative.
 
-## Meta state and remaining work
+## Meta state at the Google checkpoint (superseded by the linked follow-up)
 
 App `Free Energy Help CRM Leads` / `1121337167194437` is unpublished. `pages_manage_metadata` is present and ready for testing. Page webhook callback/verify token remain unset and `leadgen` remains unsubscribed. No Meta credentials were retrieved or changed, no Page subscription was enabled, and no Meta test reached the receiver.
 
