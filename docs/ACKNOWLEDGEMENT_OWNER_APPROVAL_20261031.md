@@ -1,6 +1,6 @@
 # One owner-controlled staging SMS: approval and recovery flow
 
-**Update, 1 November:** the owner explicitly approved installation, temporary account authority, and the one-test RELEASE/restore cycle. The migration is now installed and verified in staging as `20261101130501_acknowledgement_owner_test_control`; the reviewed bootstrap was executed. The known owner test account is temporarily admin with the two pinned capabilities, and STOP remains enabled. See [the installation record](ACKNOWLEDGEMENT_OWNER_INSTALL_20261101.md). The remaining text records the 31 October preparation and initial rejection, not the current activation state.
+**Final update, 1 November: PASS for the controlled owner test.** The approved controls were installed, real owner MFA and approval completed, one SMS was accepted by Telnyx and confirmed on the owner's handset, and replay created no second reservation or attempt. STOP is restored, the adapter and test scope are disabled, both temporary grants are revoked, and the account is read-only. See [the final test evidence](ACKNOWLEDGEMENT_SMS_TEST_RESULT_20261101.md). The remaining text records the 31 October preparation and initial rejection, not the current state.
 
 **Historical state on 31 October:** prepared and locally validated; database installation and activation were blocked pending explicit approval of the new security access. No role, capability, adapter approval, authorization, enquiry or RELEASE had been written by that increment.
 

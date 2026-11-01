@@ -1,6 +1,6 @@
 # Restricted staging owner test installation — 1 November 2026
 
-**Installation and temporary authority: PASS. Real owner login/MFA and one-message/replay evidence: pending. STOP remains enabled; no acknowledgement SMS has been sent.**
+**Final update: PASS for the controlled owner test.** One SMS was accepted by Telnyx, the owner supplied a matching handset screenshot, and duplicate replay reserved/sent nothing further. The test is finished and disabled; STOP is restored, the adapter is disabled, active temporary grants are zero, and the account is read-only. See [the final test evidence](ACKNOWLEDGEMENT_SMS_TEST_RESULT_20261101.md). The installation-time state and next steps below are historical.
 
 The owner explicitly approved installing the reviewed restricted controls, temporarily granting the existing test login the required permissions, and releasing/restoring the sending stop for one owner-controlled test. This resolves the earlier automatic approval rejection; the same migration was accepted through the normal Supabase migration tool after that new approval.
 
