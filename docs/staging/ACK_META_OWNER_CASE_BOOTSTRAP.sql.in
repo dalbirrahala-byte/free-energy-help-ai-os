@@ -1,0 +1,59 @@
+-- Privileged staging-only REVIEW TEMPLATE. Explicit owner approval required.
+-- Pin an existing Meta owner-number test lead; never manufacture provider intake.
+-- No RELEASE, adapter activation, intent approval, authorization or dispatch.
+-- Preserve the completed control record in audit before installing a fresh case.
+do $$
+declare
+  v_owner uuid := '__OWNER_UUID__';
+  v_phone text := '__OWNER_PHONE__';
+  v_lead bigint := __LEAD_ID__;
+  v_evidence text := '__APPROVAL_REFERENCE__';
+  c public.ack_preview_owner_test_control%rowtype;
+  v_role text; v_authoriser bigint; v_controller bigint; v_case uuid:=pg_catalog.gen_random_uuid();
+begin
+  if current_user <> 'postgres' then raise exception 'privileged_staging_operator_required'; end if;
+  if v_phone !~ '^\+447[1-57-9][0-9]{8}$' or v_phone='+447427851020'
+    or v_evidence !~ '^owner-approved-staging-meta-[A-Za-z0-9_-]{6,100}$'
+    then raise exception 'invalid_test_configuration'; end if;
+  select * into c from public.ack_preview_owner_test_control where singleton for update;
+  select role into v_role from public.user_roles where id=v_owner for update;
+  if c.case_id is null or c.phase<>'finished' or c.enabled or c.finished_at is null
+    or c.operator_id<>v_owner or c.allowed_phone<>v_phone or c.lead_id=v_lead
+    or v_role is distinct from 'read_only'
+    or public.evaluate_execution_emergency_stop() is distinct from 'stopped'
+    or exists(select 1 from public.execution_authorisers where revoked_at is null)
+    or exists(select 1 from public.execution_authorizations where consumed_at is null)
+    or exists(select 1 from public.execution_dispatch_attempts where status<>'succeeded')
+    or exists(select 1 from public.execution_provider_adapters where status<>'disabled'
+      or adapter_key<>'TELNYX_FEH_CALLBACK_ACK_V1' or channel<>'SMS'
+      or approved_by is distinct from v_owner or approved_at is null)
+    or exists(select 1 from public.lead_acknowledgements where lead_id<>v_lead and status<>'claimed')
+    or not exists(select 1 from public.leads l join public.lead_acknowledgements q on q.lead_id=l.id
+      where l.id=v_lead and l.provider='meta' and l.lead_source='meta_ads' and l.organisation_id is null
+        and q.provider='meta' and q.page_id='100693684801233' and q.form_id='1788543365401126'
+        and l.external_lead_id=q.external_lead_id and l.provider_created_at=q.provider_created_at
+        and q.status='awaiting_authority' and q.execution_authorization_id is null and q.claimed_at is null
+        and q.provider_created_at between pg_catalog.statement_timestamp()-interval '24 hours'
+          and pg_catalog.statement_timestamp()+interval '5 minutes'
+        and pg_catalog.regexp_replace(pg_catalog.btrim(l.telephone),'[ ()-]','','g')
+          in (v_phone,'0'||pg_catalog.substr(v_phone,4),'00'||pg_catalog.substr(v_phone,2)))
+    then raise exception 'unexpected_staging_prestate'; end if;
+  insert into public.audit_log(actor_id,actor_role,action,entity_type,entity_id,correlation_id,result,metadata)
+    values(v_owner,'admin','ack_owner_test_control_archived','ack_owner_test',c.case_id::text,c.case_id,'success',
+      pg_catalog.to_jsonb(c)-'allowed_phone');
+  update public.user_roles set role='admin' where id=v_owner;
+  insert into public.execution_authorisers(user_id,capability,granted_by)
+    values(v_owner,'execution_authoriser',v_owner) returning id into v_authoriser;
+  insert into public.execution_authorisers(user_id,capability,granted_by)
+    values(v_owner,'execution_controller',v_owner) returning id into v_controller;
+  update public.ack_preview_owner_test_control set case_id=v_case,expires_at=pg_catalog.statement_timestamp()+interval '30 minutes',
+    enabled=true,approval_reference=v_evidence,authoriser_grant_id=v_authoriser,controller_grant_id=v_controller,
+    phase='setup',lead_id=v_lead,intent_id=null,authorization_id=null,adapter_id=null,
+    prepared_at=null,started_at=null,finished_at=null where singleton;
+  insert into public.audit_log(actor_id,actor_role,action,entity_type,entity_id,correlation_id,result,metadata)
+    values(v_owner,'admin','ack_owner_test_bootstrapped','lead',v_lead::text,v_case,'success',
+      pg_catalog.jsonb_build_object('approved_by_owner_reference',v_evidence,'executed_via','privileged_staging_operator',
+        'previous_role','read_only','scope','single_existing_meta_owner_test','mfa_required',true,'execution_allowed',false,
+        'authoriser_grant_id',v_authoriser,'controller_grant_id',v_controller,'previous_case_id',c.case_id));
+end;
+$$;

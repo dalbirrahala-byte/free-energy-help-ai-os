@@ -177,3 +177,86 @@ test('prepare refuses to approve over an existing adapter',()=>fixture(async h=>
   await h.tx.query("insert into execution_provider_adapters(adapter_key,channel,status) values('OTHER_ADAPTER','SMS','disabled')");
   assert.equal((await h.owner.rpc('prepare_ack_preview_owner_test')).data,'blocked');assert.equal((await h.state()).reservations,0);
 }));
+
+const metaBootstrap=await readFile(new URL('../../../../docs/staging/ACK_META_OWNER_CASE_BOOTSTRAP.sql.in',import.meta.url),'utf8');
+async function nextMetaCase(h,{bootstrapCase=true}={}){
+  assert.equal((await h.owner.rpc('prepare_ack_preview_owner_test')).data,'prepared');
+  assert.equal((await runOwnerAcknowledgementTest(h.owner,env,{database:()=>h.worker,transport:()=>h.transport})).status,'provider_accepted');
+  const previous=(await h.tx.query('select to_jsonb(c) as value from ack_preview_owner_test_control c')).rows[0].value;
+  const historical=(await h.tx.query(`select to_jsonb(a) as value from execution_dispatch_attempts a`)).rows;
+  const lead=(await h.tx.query("select * from ingest_meta_lead_with_acknowledgement('100693684801233','1788543365401126','987654321009',now(),'FEH staging test','Owner test',$1,null,null)",[phone])).rows[0].lead_id;
+  const provision=()=>h.tx.exec(metaBootstrap.replace('__OWNER_UUID__',actor).replace('__OWNER_PHONE__',phone)
+    .replace('__LEAD_ID__',String(lead)).replace('__APPROVAL_REFERENCE__','owner-approved-staging-meta-synthetic_fixture_only'));
+  if(bootstrapCase)await provision();
+  return {lead,previous,historical,provision};
+}
+
+test('separate Meta case preserves history, sends once, blocks replay and restores all controls',()=>fixture(async h=>{
+  const old=await nextMetaCase(h);
+  const archived=(await h.tx.query("select metadata from audit_log where action='ack_owner_test_control_archived'")).rows[0].metadata;
+  const {allowed_phone:omitted,...previous}=old.previous;
+  assert.equal(omitted,phone);assert.deepEqual(archived,previous);
+  assert.equal((await h.owner.rpc('prepare_ack_preview_owner_test')).data,'prepared');
+  assert.equal((await h.state()).control,'stopped');
+  const current=(await h.tx.query('select * from ack_preview_owner_test_control')).rows[0];
+  assert.notEqual(current.case_id,old.previous.case_id);assert.equal(current.lead_id,old.lead);
+  assert.equal((await runOwnerAcknowledgementTest(h.owner,env,{database:()=>h.worker,transport:()=>h.transport})).status,'provider_accepted');
+  assert.equal(h.sends.length,2);assert.equal(h.sends[1].to,phone);
+  assert.deepEqual(await h.state(),{phase:'finished',enabled:false,role:'read_only',active_grants:0,attempts:2,reservations:2,control:'stopped'});
+  assert.deepEqual((await h.tx.query('select to_jsonb(a) as value from execution_dispatch_attempts a order by id limit 1')).rows,old.historical);
+  assert.equal((await h.tx.query("select * from ingest_meta_lead_with_acknowledgement('100693684801233','1788543365401126','987654321009',now(),null,null,$1,null,null)",[phone])).rows[0].outcome,'duplicate');
+  assert.equal((await runOwnerAcknowledgementTest(h.owner,env,{database:()=>h.worker,transport:()=>h.transport})).status,'blocked');
+  assert.equal(h.sends.length,2);
+  await assert.rejects(old.provision(),/unexpected_staging_prestate/);
+}));
+
+for(const [name,change] of Object.entries({wrongOwner:{sub:other},wrongProject:{iss:'https://production.invalid/auth/v1'},weakSession:{aal:'aal1'},machine:{role:'service_role'}}))
+  test(`Meta case ${name}: remains blocked despite completed historical send`,()=>fixture(async h=>{
+    await nextMetaCase(h);await h.jwt(change);
+    assert.equal((await h.owner.rpc('prepare_ack_preview_owner_test')).data,'blocked');
+    assert.equal((await h.owner.rpc('begin_ack_preview_owner_test')).data[0].status,'blocked');
+    assert.equal(h.sends.length,1);assert.equal((await h.state()).control,'stopped');
+  }));
+
+for(const [name,sql] of Object.entries({
+  differentPhone:"update leads set telephone='+447700900009' where provider='meta'",
+  differentPage:"update lead_acknowledgements set page_id='123456' where provider='meta'",
+  differentForm:"update lead_acknowledgements set form_id='123456' where provider='meta'",
+  wrongSource:"update leads set lead_source='google_ads' where provider='meta'",
+  staleLead:"update leads set provider_created_at=now()-interval '25 hours' where provider='meta';update lead_acknowledgements set provider_created_at=now()-interval '25 hours' where provider='meta'",
+  expiredCase:"update ack_preview_owner_test_control set expires_at=now()-interval '1 second'",
+  unresolvedAttempt:"update execution_dispatch_attempts set status='indeterminate'",
+  reusedAuthorization:"update execution_authorizations set consumed_at=null",
+  unrelatedQueue:"select * from ingest_meta_lead_with_acknowledgement('100693684801233','1788543365401126','987654321008',now(),null,null,'+447700900004',null,null)",
+  unapprovedAdapter:"update execution_provider_adapters set approved_by=null",
+}))test(`Meta case refuses ${name}`,()=>fixture(async h=>{
+  await nextMetaCase(h);await h.tx.exec(sql);
+  assert.equal((await h.owner.rpc('prepare_ack_preview_owner_test')).data,'blocked');
+  assert.equal((await h.owner.rpc('begin_ack_preview_owner_test')).data[0].status,'blocked');
+  assert.equal(h.sends.length,1);assert.equal((await h.state()).control,'stopped');
+}));
+
+test('Meta bootstrap rejects wrong recipient before granting any temporary access',()=>fixture(async h=>{
+  const next=await nextMetaCase(h,{bootstrapCase:false});
+  await h.tx.exec("update leads set telephone='+447700900009' where provider='meta'");
+  await h.tx.exec('savepoint rejected_bootstrap');
+  await assert.rejects(next.provision(),/unexpected_staging_prestate/);
+  await h.tx.exec('rollback to savepoint rejected_bootstrap');
+  assert.equal((await h.state()).active_grants,0);assert.equal((await h.state()).role,'read_only');
+}));
+
+test('Meta prepare does not change the adapter original approval evidence',()=>fixture(async h=>{
+  await nextMetaCase(h);
+  const old=(await h.tx.query('select approved_by,approved_at from execution_provider_adapters')).rows;
+  assert.equal((await h.owner.rpc('prepare_ack_preview_owner_test')).data,'prepared');
+  assert.deepEqual((await h.tx.query('select approved_by,approved_at from execution_provider_adapters')).rows,old);
+}));
+
+
+test('missing preparation freshness cannot release STOP',()=>fixture(async h=>{
+  await h.owner.rpc('prepare_ack_preview_owner_test');
+  await h.tx.exec('update ack_preview_owner_test_control set prepared_at=null');
+  assert.equal((await h.owner.rpc('begin_ack_preview_owner_test')).data[0].status,'blocked');
+  assert.equal((await h.state()).control,'stopped');
+  assert.equal(h.sends.length,0);
+}));

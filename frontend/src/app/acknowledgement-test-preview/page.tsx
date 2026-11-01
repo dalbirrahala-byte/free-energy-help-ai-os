@@ -40,7 +40,7 @@ export default async function AcknowledgementOwnerTestPage({searchParams}:{searc
     <Link href="/" className="text-sm underline">Back to CRM</Link>
     <div><p className="text-sm font-semibold text-emerald-800">Free Energy Help · Staging</p>
       <h1 className="mt-2 text-3xl font-bold">One acknowledgement SMS test</h1>
-      <p className="mt-3 text-slate-700">Approve one test message to your own mobile, then check that the same enquiry cannot send it again. This creates a synthetic test enquiry; Meta and Google advertising connections are tested separately.</p></div>
+      <p className="mt-3 text-slate-700">Approve one test message to your own mobile, then check that the same enquiry cannot send it again. This uses the single enquiry selected for this test. Completing this screen alone does not prove the advertising connection.</p></div>
     <section className="rounded-xl border border-slate-200 bg-white p-6">
       <h2 className="font-semibold">Message for your approval</h2><p className="mt-3 leading-relaxed">{FEH_ADMINISTRATIVE_SMS_COPY}</p>
       <p className="mt-4 text-sm text-slate-600">{suffix?`Test mobile ending ${suffix}.`:'The approved test mobile has not been configured.'} Caller number in the message: 01332 605506.</p>
