@@ -12,7 +12,7 @@ const url='https://receiver.invalid/functions/v1/feh-staging-lead-intake/meta';
 const payload=()=>({object:'page',entry:[{id:'0',time:1793563200,changes:[{field:'leadgen',value:{page_id:'444444444444',form_id:'444444444444',leadgen_id:'444444444444',created_time:1447342022}}]}]});
 const signed=(raw,secret=env.FEH_META_APP_SECRET,headers={})=>new Request(url,{method:'POST',body:raw,headers:{'content-type':'application/json','x-hub-signature-256':'sha256='+createHmac('sha256',secret).update(raw).digest('hex'),...headers}});
 const req=(p=payload())=>signed(JSON.stringify(p));
-function db({outcome='accepted',error=null}={}){const calls=[];let closed=0;return {calls,closed:()=>closed,factory:()=>({async rpc(...args){calls.push(args);return {data:[{outcome,lead_id:7}],error};},async close(){closed++;}})};}
+function db({outcome='accepted',error=null,closeThrows=false}={}){const calls=[];let closed=0;return {calls,closed:()=>closed,factory:()=>({async rpc(...args){calls.push(args);return {data:[{outcome,lead_id:7}],error};},async close(){closed++;if(closeThrows)throw new Error('private shutdown credential');}})};}
 test('callback echoes challenge only for the exact configured token and unique parameters',async()=>{
  const h=db();const handler=createMetaWebhookTestHandlers(env,h.factory);
  const good=url+'?hub.mode=subscribe&hub.verify_token='+env.FEH_META_VERIFY_TOKEN+'&hub.challenge=123456789';
@@ -56,4 +56,12 @@ test('Meta route respects bounded receiver expiry, path, methods and project',as
  assert.equal((await handler(new Request(url+'/extra'))).status,404);assert.equal(calls,2);
  for(const changes of [{FEH_INTAKE_RECEIVER_EXPIRES_AT:'2026-11-01T19:59:59Z'},{FEH_INTAKE_RECEIVER_ENABLED:'false'}])assert.equal((await createIntakeReceiver({...env,...changes},{meta,now:()=>Date.parse('2026-11-01T20:00:00Z')})(new Request(url))).status,404);
  assert.equal(calls,2);
+});
+
+for(const [outcome,error,status] of [
+ ['accepted',null,200],['duplicate',null,200],['rejected',null,503],['accepted',new Error('private RPC credential'),503],
+])test(`dashboard preserves ${outcome}/${status} when cleanup throws`,async()=>{
+ const h=db({outcome,error,closeThrows:true});const r=await createMetaWebhookTestHandlers(env,h.factory).POST(req());
+ assert.equal(r.status,status);assert.ok(!(await r.text()).includes('private'));
+ assert.equal(h.calls.length,1);assert.equal(h.closed(),1);
 });

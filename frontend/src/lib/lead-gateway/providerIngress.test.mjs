@@ -15,7 +15,7 @@ const eventTime=1793360000;
 const metaBody=()=>({object:'page',entry:[{id:meta.FEH_META_PAGE_ID,changes:[{field:'leadgen',value:{page_id:meta.FEH_META_PAGE_ID,form_id:meta.FEH_META_FORM_ID,leadgen_id:'987654321',created_time:eventTime}}]}]});
 const details=()=>({id:'987654321',form_id:meta.FEH_META_FORM_ID,created_time:new Date(eventTime*1000).toISOString(),field_data:[{name:'phone_number',values:[base.FEH_ACK_PREVIEW_ALLOWED_PHONE]},{name:'company_name',values:['Synthetic Test']} ]});
 function metaRequest(body=metaBody(),signature){const raw=JSON.stringify(body);return new Request('https://preview.invalid/api/lead-intake/meta',{method:'POST',headers:{'content-type':'application/json','x-hub-signature-256':signature??'sha256='+createHmac('sha256',meta.FEH_META_APP_SECRET).update(raw).digest('hex')},body:raw});}
-function harness({graph=details(),outcome='accepted',error=null}={}){const calls={fetch:[],rpc:[],connections:0,closed:0};return {calls,dependencies:{now:()=>Date.parse('2026-11-01T20:00:00Z'),fetch:async(...args)=>{calls.fetch.push(args);return new Response(JSON.stringify(graph),{headers:{'content-type':'application/json'}});},database:()=>{calls.connections++;return {async rpc(...args){calls.rpc.push(args);return {data:[{outcome,lead_id:17,acknowledgement_reserved:outcome==='accepted'}],error};},async close(){calls.closed++;}};}}};}
+function harness({graph=details(),outcome='accepted',error=null,closeThrows=false}={}){const calls={fetch:[],rpc:[],connections:0,closed:0};return {calls,dependencies:{now:()=>Date.parse('2026-11-01T20:00:00Z'),fetch:async(...args)=>{calls.fetch.push(args);return new Response(JSON.stringify(graph),{headers:{'content-type':'application/json'}});},database:()=>{calls.connections++;return {async rpc(...args){calls.rpc.push(args);return {data:[{outcome,lead_id:17,acknowledgement_reserved:outcome==='accepted'}],error};},async close(){calls.closed++;if(closeThrows)throw new Error('private shutdown credential');}};}}};}
 test('Meta valid signature, matching Graph details and fixed test phone persist one receipt',async()=>{
  const h=harness();const r=await createMetaIngressHandlers(meta,h.dependencies).POST(metaRequest());assert.equal(r.status,200);assert.deepEqual(await r.json(),{});assert.equal(h.calls.rpc.length,1);assert.equal(h.calls.closed,1);
  const [url,options]=h.calls.fetch[0];assert.equal(new URL(url).origin,'https://graph.facebook.com');assert.equal(new URL(url).pathname,'/v26.0/987654321');assert.ok(!url.includes(meta.FEH_META_PAGE_TOKEN));assert.equal(options.headers.Authorization,`Bearer ${meta.FEH_META_PAGE_TOKEN}`);assert.equal(options.redirect,'error');assert.equal(options.cache,'no-store');
@@ -49,4 +49,14 @@ for(const [name,changes] of Object.entries({production:{VERCEL_ENV:'production'}
 test('only exact staging machine-intake paths bypass CRM login',()=>{
  for(const path of ['/api/lead-intake/meta','/api/lead-intake/google','/api/lead-intake/readiness','/api/lead-acknowledgements/run']){assert.equal(isPreviewIntakePath(path,base),true);assert.equal(isPreviewIntakePath(path,{...base,VERCEL_ENV:'production'}),false);}
  for(const path of ['/api/lead-intake/meta/extra','/api/lead-intake/google-admin','/leads','/api/sms/send','/api/lead-acknowledgements/run/extra'])assert.equal(isPreviewIntakePath(path,base),false);
+});
+
+for(const provider of ['Meta','Google'])for(const [outcome,error,status] of [
+ ['accepted',null,200],['duplicate',null,200],['rejected',null,400],['accepted',new Error('private RPC credential'),503],
+])test(`${provider} preserves ${outcome}/${status} when cleanup throws`,async()=>{
+ const h=harness({outcome,error,closeThrows:true});
+ const r=provider==='Meta'?await createMetaIngressHandlers(meta,h.dependencies).POST(metaRequest()):
+  await createGoogleIngressHandler(google,h.dependencies.database)(googleRequest());
+ assert.equal(r.status,status);assert.ok(!(await r.text()).includes('private'));
+ assert.equal(h.calls.rpc.length,1);assert.equal(h.calls.closed,1);
 });

@@ -9,7 +9,7 @@ hook.deregister();
 const env={FEH_INTAKE_RUNTIME:'supabase-edge',SUPABASE_URL:'https://vredwhyphrhsudggrsen.supabase.co',FEH_INTAKE_RECEIVER_ENABLED:'true',FEH_INTAKE_RECEIVER_EXPIRES_AT:'2026-11-06T23:59:59Z',FEH_GOOGLE_INGRESS_ENABLED:'true',FEH_ACK_DATABASE_ENABLED:'true',NEXT_PUBLIC_SUPABASE_URL:'https://vredwhyphrhsudggrsen.supabase.co',FEH_GOOGLE_FORM_ID:'402325113451',FEH_GOOGLE_CAMPAIGN_ID:'24096131756',FEH_GOOGLE_WEBHOOK_KEY:'synthetic-google-ui-key-01234567890123'};
 const body=()=>({lead_id:'google_dashboard_synthetic_123',form_id:402325113451,campaign_id:123456,is_test:true,google_key:env.FEH_GOOGLE_WEBHOOK_KEY,user_column_data:[{column_id:'FULL_NAME',string_value:'FirstName LastName'},{column_id:'PHONE_NUMBER',string_value:'1-650-555-0123'},{column_id:'EMAIL',string_value:'test@example.com'}]});
 const req=(p=body())=>new Request('https://receiver.invalid/functions/v1/feh-staging-lead-intake/google',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});
-function db({outcome='accepted',error=null}={}){const calls=[];let closed=0;return {calls,closed:()=>closed,factory:()=>({async rpc(...args){calls.push(args);return {data:[{outcome,lead_id:23}],error};},async close(){closed++;}})};}
+function db({outcome='accepted',error=null,closeThrows=false}={}){const calls=[];let closed=0;return {calls,closed:()=>closed,factory:()=>({async rpc(...args){calls.push(args);return {data:[{outcome,lead_id:23}],error};},async close(){closed++;if(closeThrows)throw new Error('private shutdown credential');}})};}
 test('documented Google UI fixture persists with absent provider time and no SMS reservation',async()=>{
  const h=db();const result=await createGoogleWebhookTestHandler(env,h.factory)(req());
  assert.equal(result.status,200);assert.deepEqual(await result.json(),{});assert.equal(h.closed(),1);
@@ -37,4 +37,12 @@ test('dedicated receiver connection cannot use admin, worker or original ingesto
  for(const login of ['postgres','feh_ack_preview_worker','feh_ack_preview_ingestor'])assert.equal(readPreviewDatabaseConfiguration('receiver',{...config,FEH_INTAKE_RECEIVER_DATABASE_URL:config.FEH_INTAKE_RECEIVER_DATABASE_URL.replace('feh_intake_preview_receiver',login)}),null);
  const client=createPreviewAcknowledgementDatabase('receiver',config,()=>({begin:async()=>assert.fail('unexpected transaction'),end:async()=>{}}));
  for(const rpc of ['create_execution_authorization','stop_execution','claim_meta_lead_acknowledgement','select_lead_acknowledgement_candidate','ingest_google_lead_with_acknowledgement','ingest_meta_lead_with_acknowledgement'])assert.ok((await client.rpc(rpc,{})).error);
+});
+
+for(const [outcome,error,status] of [
+ ['accepted',null,200],['duplicate',null,200],['rejected',null,503],['accepted',new Error('private RPC credential'),503],
+])test(`dashboard preserves ${outcome}/${status} when cleanup throws`,async()=>{
+ const h=db({outcome,error,closeThrows:true});const r=await createGoogleWebhookTestHandler(env,h.factory)(req());
+ assert.equal(r.status,status);assert.ok(!(await r.text()).includes('private'));
+ assert.equal(h.calls.length,1);assert.equal(h.closed(),1);
 });

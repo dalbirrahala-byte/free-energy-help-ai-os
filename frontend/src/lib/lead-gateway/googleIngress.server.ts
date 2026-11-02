@@ -70,6 +70,10 @@ export function createGoogleIngressHandler(environment:Environment=process.env,d
       if(!Number.isSafeInteger(row.lead_id) || (row.lead_id as number)<=0)return response(503);
       return response((row.outcome==='accepted' && row.acknowledgement_reserved===true) ||
         (row.outcome==='duplicate' && row.acknowledgement_reserved===false)?200:503);
-    }catch{return response(503);}finally{await database?.close();}
+    }catch{return response(503);}finally{
+        // Cleanup cannot change the confirmed RPC outcome or expose private
+        // connection diagnostics. A failed RPC still returns its generic 503.
+        try{await database?.close();}catch{/* Preserve the ingestion response; never retry here. */}
+      }
   };
 }

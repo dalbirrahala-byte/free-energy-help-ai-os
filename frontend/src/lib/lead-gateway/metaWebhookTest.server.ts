@@ -74,7 +74,11 @@ export function createMetaWebhookTestHandlers(environment:Environment=process.en
         if(receipt.error||!Array.isArray(receipt.data)||receipt.data.length!==1||!record(receipt.data[0]))return response(503);
         const row=receipt.data[0];
         return response(['accepted','duplicate'].includes(row.outcome as string)&&Number.isSafeInteger(row.lead_id)&&(row.lead_id as number)>0?200:503);
-      }catch{return response(503);}finally{await database?.close();}
+      }catch{return response(503);}finally{
+        // Cleanup cannot change the confirmed RPC outcome or expose private
+        // connection diagnostics. A failed RPC still returns its generic 503.
+        try{await database?.close();}catch{/* Preserve the ingestion response; never retry here. */}
+      }
     },
   };
 }

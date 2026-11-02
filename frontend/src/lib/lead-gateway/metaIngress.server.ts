@@ -63,7 +63,11 @@ export function createMetaIngressHandlers(environment:Environment=process.env,de
           return reader(reference);
         },lazy);
         return response(result.status==='persisted'?200:result.status==='rejected'?400:503);
-      }finally{await (database as {close():Promise<void>}|null)?.close();}
+      }finally{
+        // Cleanup cannot change the confirmed RPC outcome or expose private
+        // connection diagnostics. A failed RPC still returns its generic 503.
+        try{await (database as {close():Promise<void>}|null)?.close();}catch{/* Preserve the ingestion response; never retry here. */}
+      }
     },
   };
 }
