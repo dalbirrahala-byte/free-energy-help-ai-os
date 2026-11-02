@@ -15,7 +15,9 @@ Preflight local `56dddb5fa4e2d0012e348cd6ac7597e63c265f35`, remote `d895076071fd
 - The previous run established that no page WebMCP or available Google Ads connector action can update this lead-form delivery configuration. No unsupported private API, hidden application state or credential extraction was used.
 - The account's **Help → Contact us** control opened a private Google Ads chat surface. No message was typed or sent. Its generated campaign recommendations were not acted on. The help chat was closed again to preserve the editor.
 
-## Prepared private support report — NOT SENT
+## Approved private support report — submitted to Google Ads AI help
+
+The report below was initially prepared without submission. Owner requests `17bdccc9-6055-4dae-b57e-02783e3189c0` and `62c82690-7730-441b-9280-f408cb5bfc95` subsequently approved sending it. The substantive report was submitted through the account's private Google Ads help chat on 2 November 2026, with instructions not to change settings. This is a verified AI-help submission, **not a verified human support ticket**. See the follow-up below.
 
 **Subject:** Existing lead form passes webhook POST test but Apply is disabled with Invalid URL
 
@@ -47,4 +49,26 @@ The staging receiver is intentionally closed outside approved test windows; a cu
 - **External systems:** Google Ads editor/help read and reversible unsaved public-URL editing; official Google documentation; GitHub evidence publication. No message submitted to Google or others.
 - **Credentials accessed:** no values read or changed; existing user-entered credential remained in the UI. **Production/customer data touched:** no. **Real sends/ad activation/spend:** none.
 - **Tooling:** a read-only tablist locator initially matched three elements; narrowed to the Lead management stepper. No browser safety rejection occurred after the owner's exact Close approval.
-- **Remaining risk/gate:** root cause and permanent save unproven. Sending the prepared report through Google's private help/support channel needs explicit approval for that external communication; approval to close the form is already satisfied and must not be requested again.
+- **Remaining risk/gate at initial preparation:** root cause and permanent save unproven. Sending the prepared report required explicit external-communication approval; that approval was subsequently given and the report was sent as recorded below. Approval to close the form was already satisfied.
+
+## Support submission and human-escalation result
+
+Preflight: clean local `b05982b162566c43317de0d4471b81da6673643f`, remote `0a1e385194b64198fc8f7b70f611adc9abadb5a0`, matching tree `d4b8af6e4cafbb8757253a8b729f4539f81ebcea`. No concurrent changes were overwritten.
+
+The approved message was visibly submitted and Google Ads AI help responded. It suggested a frontend/backend validation mismatch, path formatting, hidden whitespace and a temporary description change followed by retesting. It also claimed a domain restriction check. These are **AI-generated suggestions/claims, not an independently verified root cause or confirmed product repair**. No dummy path, trailing-slash route, description change, new test, credential change or account mutation was made on that advice. The deployed receiver has exact path checks; changing the public URL without a reviewed compatible handler could break the working integration.
+
+The AI did not open a case or return a case reference. Its suggested Support and Verification link actually opened the account's Advertiser Verification page, which did not provide the claimed technical-support case flow. No verification or policy settings were changed.
+
+Google's official Help Center documentation identified `https://support.google.com/google-ads/gethelp` as the support-request entry point ([official Help Center guidance](https://support.google.com/google-ads/video/13478757?hl=en)). Opening it in a separate tab preserved the unsaved lead-form editor, but Google redirected this Cloud Browser to an unusual-traffic page requiring an **I'm not a robot** reCAPTCHA. No challenge was attempted, no alternate network or security bypass was used, and no public community post was made. Human support escalation remains **BLOCKED at this interactive verification step**; a support case number must not be invented or claimed.
+
+### Support follow-up Completion Evidence Block
+
+- **Completed:** sent the specifically approved secret-free report to private Google Ads AI help; read and classified its response; inspected its offered route; reached the documented support-request flow and identified the exact human-verification blocker.
+- **Files:** modified this evidence report only. No application/test/migration changes or deletions.
+- **Validation:** report text visible in chat and an associated AI response observed. No human case/reference observed. Private key field was excluded from browser observations. Prior HTTP 200/duplicate proof was reused, not repeated. Documentation whitespace check performed before publication.
+- **Typecheck/lint/build:** not applicable to this evidence-only change; no redundant suites run.
+- **Git:** narrow evidence commit and expected-head update to draft PR115; final hashes in PR publication record; local tree clean. No merge, force push or checkpoint change.
+- **Deployment/migration/runtime:** none this increment. Staging was not reopened, STOP not released, and no execution authority, provider dispatch, ad activation, budget or email-delivery change was made.
+- **External communication:** approved private Google Ads AI-help message sent with account/form/campaign identifiers, public staging endpoint, synthetic test timing/results and repair constraints. Human support request not yet filed. No secrets, raw headers, customer records or secret-bearing responses transmitted.
+- **Credentials accessed:** no values read or changed. **Production/customer data touched:** no. **Real SMS:** none.
+- **Remaining gate:** user completes Google's interactive verification in the prepared Cloud Browser support tab; then continue the already-approved private support request and seek an actual case reference or verified fix. Do not request the same report-submission approval again. Saving the permanent Google form and all downstream advertising acceptance gates remain unproven.
