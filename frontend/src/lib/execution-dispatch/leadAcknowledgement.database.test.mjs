@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { before, after, test } from 'node:test';
 import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
+import {generateKeyPairSync,sign} from 'node:crypto';
+import {registerHooks} from 'node:module';
 import { executeLeadAcknowledgement } from './executeLeadAcknowledgement.ts';
 import { runLeadAcknowledgementOnce } from './runLeadAcknowledgementOnce.ts';
 
@@ -409,4 +411,141 @@ test('STOP before candidate discovery returns idle without altering the reservat
     assert.equal((await runLeadAcknowledgementOnce(worker,{from,allowedPhone:runnerPhone},transport(sends))).status,'idle');assert.equal(sends.length,0);
     assert.equal((await db.query('select status from lead_acknowledgements where lead_id=$1',[f.leadId])).rows[0].status,'awaiting_authority');
   }finally{await db.query("select release_execution('synthetic release','local worker test')");}
+});
+
+let receiptNumber=10000;
+const receiptUuid=()=>`00000000-0000-4000-8000-${String(++receiptNumber).padStart(12,'0')}`;
+const receiptProfile='00000000-0000-4000-8000-000000000777';
+async function deliveredFixture(){
+  const f=await fixture();const message=receiptUuid();const sends=[];
+  const provider=transport(sends);
+  const sent=await executeLeadAcknowledgement(worker,f,{from:'+447427851020'},{async createMessage(req){
+    const response=await provider.createMessage(req);response.body.data.id=message;return response;
+  }});
+  assert.equal(sent.status,'succeeded');assert.equal(sends.length,1);
+  return {...f,message,attemptId:sent.attemptId};
+}
+const receiptFunction='public.record_acknowledgement_delivery_receipt(uuid,uuid,uuid,timestamptz,text,text,text,text)';
+async function receive(f,changes={}){
+  const v={event:receiptUuid(),message:f.message,profile:receiptProfile,time:new Date().toISOString(),
+    eventType:'message.finalized',status:'delivered',sender:'+447427851020',recipient:phone,...changes};
+  return (await db.query('select record_acknowledgement_delivery_receipt($1,$2,$3,$4,$5,$6,$7,$8) result',
+    [v.event,v.message,v.profile,v.time,v.eventType,v.status,v.sender,v.recipient])).rows[0].result;
+}
+
+test('delivery receipt is durable and duplicate/conflicting event IDs never mutate the attempt or create a send',async()=>{
+  const f=await deliveredFixture();const event=receiptUuid();const time=new Date().toISOString();
+  const before=(await db.query('select * from execution_dispatch_attempts where id=$1',[f.attemptId])).rows;
+  assert.equal(await receive(f,{event,time}),'recorded');
+  assert.equal(await receive(f,{event,time}),'duplicate');
+  assert.equal(await receive(f,{event,time,status:'delivery_failed'}),'conflict');
+  assert.equal((await db.query('select count(*)::int n from acknowledgement_delivery_receipts where provider_event_id=$1',[event])).rows[0].n,1);
+  assert.equal((await db.query("select count(*)::int n from audit_log where action='acknowledgement_delivery_received' and correlation_id=$1",[event])).rows[0].n,1);
+  assert.deepEqual((await db.query('select * from execution_dispatch_attempts where id=$1',[f.attemptId])).rows,before);
+  const sends=[];await executeLeadAcknowledgement(worker,f,{from},transport(sends));assert.equal(sends.length,0);
+});
+
+test('late and contradictory delivery events remain separate evidence; they cannot regress completed execution',async()=>{
+  const f=await deliveredFixture();
+  assert.equal(await receive(f),'recorded');
+  assert.equal(await receive(f,{eventType:'message.sent',status:'sent',time:new Date(Date.now()-1000).toISOString()}),'recorded');
+  assert.equal(await receive(f,{status:'delivery_failed'}),'recorded');
+  assert.equal((await db.query('select count(*)::int n from acknowledgement_delivery_receipts where execution_dispatch_attempt_id=$1',[f.attemptId])).rows[0].n,3);
+  assert.equal((await db.query('select status from execution_dispatch_attempts where id=$1',[f.attemptId])).rows[0].status,'succeeded');
+});
+
+for(const [name,changes,result] of [
+  ['unknown message',{message:'00000000-0000-4000-8000-000000000404'},'unmatched'],
+  ['wrong recipient',{recipient:'+447700900099'},'unmatched'],
+  ['wrong sender',{sender:'+447700900099'},'rejected'],
+  ['missing profile',{profile:null},'rejected'],
+  ['missing event',{event:null},'rejected'],
+  ['unknown status',{status:'queued'},'rejected'],
+  ['contradictory event',{eventType:'message.sent'},'rejected'],
+  ['before attempt',{time:'2000-01-01T00:00:00Z'},'unmatched'],
+  ['future event',{time:'2099-01-01T00:00:00Z'},'rejected'],
+])test(`delivery receipt rejects ${name} without recording evidence`,async()=>{
+  const f=await deliveredFixture();assert.equal(await receive(f,changes),result);
+  assert.equal((await db.query('select count(*)::int n from acknowledgement_delivery_receipts where execution_dispatch_attempt_id=$1',[f.attemptId])).rows[0].n,0);
+});
+
+test('ambiguous provider ID cannot correlate by destination alone',async()=>{
+  const first=await deliveredFixture();const second=await deliveredFixture();
+  await db.query('update execution_dispatch_attempts set provider_reference=$1 where id=$2',[first.message,second.attemptId]);
+  assert.equal(await receive(first),'unmatched');
+});
+test('changed destination cannot bypass the original commitment',async()=>{
+  const f=await deliveredFixture();
+  await db.query('update contacts set phone=$1 where id=$2',['+447700900099',f.contact]);
+  assert.equal(await receive(f),'unmatched');
+  assert.equal(await receive(f,{recipient:'+447700900099'}),'unmatched');
+});
+test('STOP, revoked grants and disabled adapter still allow historical evidence without reopening sending',async()=>{
+  const f=await deliveredFixture();
+  await db.exec('begin');
+  try{
+    await db.query("select stop_execution('synthetic stop','receipt test')");
+    await db.exec("update execution_authorisers set revoked_at=now();update execution_provider_adapters set status='disabled'");
+    assert.equal(await receive(f),'recorded');
+    assert.equal((await db.query('select evaluate_execution_emergency_stop() state')).rows[0].state,'stopped');
+    assert.equal((await db.query('select count(*)::int n from execution_authorisers where revoked_at is null')).rows[0].n,0);
+    assert.equal((await db.query("select count(*)::int n from execution_provider_adapters where status='approved'")).rows[0].n,0);
+  }finally{await db.exec('rollback');}
+});
+test('receipt and audit commit atomically',async()=>{
+  const f=await deliveredFixture();const event=receiptUuid();
+  await db.exec('begin');
+  try{
+    await db.exec("alter table audit_log add constraint reject_receipt_audit check(action<>'acknowledgement_delivery_received') not valid");
+    await assert.rejects(receive(f,{event}));
+  }finally{await db.exec('rollback');}
+  assert.equal((await db.query('select count(*)::int n from acknowledgement_delivery_receipts where provider_event_id=$1',[event])).rows[0].n,0);
+});
+test('dormant receipt table and writer grant no runtime access',async()=>{
+  for(const role of ['anon','authenticated','service_role','external_lead_ingestor','execution_dispatch_worker',
+    'feh_ack_preview_ingestor','feh_ack_preview_worker','feh_intake_preview_receiver']){
+    assert.equal((await db.query('select has_function_privilege($1,$2,\'EXECUTE\') allowed',[role,receiptFunction])).rows[0].allowed,false,role);
+    assert.equal((await db.query("select has_table_privilege($1,'public.acknowledgement_delivery_receipts','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') allowed",[role])).rows[0].allowed,false,role);
+  }
+});
+
+test('signed callback through real SQL records one receipt/audit and replay cannot trigger another send',async()=>{
+  const hook=registerHooks({resolve(specifier,context,next){
+    return specifier==='server-only'?{url:'data:text/javascript,export{}',shortCircuit:true}:next(specifier,context);
+  }});
+  let create;
+  try{({createTelnyxDeliveryCallback:create}=await import('./telnyxDeliveryCallback.server.ts'));}
+  finally{hook.deregister();}
+  const f=await deliveredFixture();const pair=generateKeyPairSync('ed25519');
+  const clock=Date.now();const timestamp=String(Math.floor(clock/1000));const event=receiptUuid();
+  const handler=create({enabled:true,projectId:'vredwhyphrhsudggrsen',allowedPhone:phone,
+    messagingProfileId:receiptProfile,publicKey:pair.publicKey.export({type:'spki',format:'der'}).subarray(-32).toString('base64')},
+  {async rpc(name,args){
+    assert.equal(name,'record_acknowledgement_delivery_receipt');
+    const ordered=['p_event_id','p_message_id','p_profile_id','p_occurred_at','p_event_type','p_delivery_status','p_from','p_to'];
+    return {error:null,data:(await db.query('select record_acknowledgement_delivery_receipt($1,$2,$3,$4,$5,$6,$7,$8) result',ordered.map(k=>args[k]))).rows[0].result};
+  }},()=>clock);
+  const body=JSON.stringify({data:{id:event,record_type:'event',event_type:'message.finalized',
+    occurred_at:new Date(clock).toISOString(),payload:{id:f.message,record_type:'message',type:'SMS',direction:'outbound',
+      messaging_profile_id:receiptProfile,from:{phone_number:'+447427851020'},to:[{phone_number:phone,status:'delivered'}],errors:[]}}});
+  const signature=sign(null,Buffer.from(`${timestamp}|${body}`),pair.privateKey).toString('base64');
+  const request=()=>new Request('https://example.invalid/receipt',{method:'POST',body,headers:{'content-type':'application/json',
+    'telnyx-timestamp':timestamp,'telnyx-signature-ed25519':signature}});
+  assert.equal((await handler(request())).status,200);assert.equal((await handler(request())).status,200);
+  assert.equal((await db.query('select count(*)::int n from acknowledgement_delivery_receipts where provider_event_id=$1',[event])).rows[0].n,1);
+  assert.equal((await db.query("select count(*)::int n from audit_log where action='acknowledgement_delivery_received' and correlation_id=$1",[event])).rows[0].n,1);
+  const sends=[];await executeLeadAcknowledgement(worker,f,{from},transport(sends));assert.equal(sends.length,0);
+});
+test('indeterminate attempt with known message identity stays indeterminate after receipt evidence',async()=>{
+  const f=await deliveredFixture();
+  await db.query("update execution_dispatch_attempts set status='indeterminate',failure_code='synthetic_uncertain' where id=$1",[f.attemptId]);
+  assert.equal(await receive(f),'recorded');
+  assert.equal((await db.query('select status from execution_dispatch_attempts where id=$1',[f.attemptId])).rows[0].status,'indeterminate');
+});
+test('receipt arriving before the provider message identity is saved is not silently acknowledged',async()=>{
+  const f=await deliveredFixture();
+  await db.query('update execution_dispatch_attempts set provider_reference=null where id=$1',[f.attemptId]);
+  assert.equal(await receive(f),'unmatched');
+  await db.query('update execution_dispatch_attempts set provider_reference=$1 where id=$2',[f.message,f.attemptId]);
+  assert.equal(await receive(f),'recorded');
 });
