@@ -117,6 +117,43 @@ test('atomic ingestion: replay creates one lead and one reservation with unknown
   assert.deepEqual(counts, { total: 1, unknown: true });
 });
 
+for (const provider of ['meta', 'google_ads']) {
+  test(`${provider}: accepted enquiry has review action without fabricated owner, date or consent`, async () => {
+    const f = await fixture(provider);
+    const row = (await db.query(`select lead_owner,next_action,follow_up_required,follow_up_date,
+      consent_status,consent_given from leads where id=$1`, [f.leadId])).rows[0];
+    assert.deepEqual(row, { lead_owner: null,
+      next_action: 'Review enquiry, verify contact permission and assign follow-up',
+      follow_up_required: true, follow_up_date: null, consent_status: 'unknown', consent_given: false });
+  });
+
+  test(`${provider}: replay preserves later staff review state without adding work`, async () => {
+    const f = await fixture(provider);
+    await db.query(`update leads set lead_owner='Synthetic reviewer',next_action='Review completed',
+      follow_up_required=false,follow_up_date='2026-12-01' where id=$1`, [f.leadId]);
+    const before = (await db.query('select count(*)::int as count from tasks')).rows[0];
+    const receipt = await db.transaction(async tx => {
+      await tx.exec('set local role external_lead_ingestor');
+      return (await tx.query(`select * from ingest_external_lead($1,$2,now(),'unknown',null,null,$3,null,null)`,
+        [provider, f.externalId, phone])).rows[0];
+    });
+    assert.equal(receipt.outcome, 'duplicate');
+    const row = (await db.query(`select lead_owner,next_action,follow_up_required,follow_up_date::text,
+      (select count(*)::int from lead_acknowledgements where lead_id=$1) as reservations from leads where id=$1`, [f.leadId])).rows[0];
+    assert.deepEqual(row, { lead_owner: 'Synthetic reviewer', next_action: 'Review completed',
+      follow_up_required: false, follow_up_date: '2026-12-01', reservations: 1 });
+    assert.deepEqual((await db.query('select count(*)::int as count from tasks')).rows[0], before);
+  });
+
+  test(`${provider}: rejected intake creates no follow-up lead or task`, async () => {
+    const before = (await db.query('select (select count(*)::int from leads) leads,(select count(*)::int from tasks) tasks')).rows[0];
+    const rejected = (await db.query(`select * from ingest_external_lead($1,$2,now(),'unknown',null,null,null,null,null)`,
+      [provider, `rejected_review_${++external}`])).rows[0];
+    assert.equal(rejected.outcome, 'rejected');
+    assert.deepEqual((await db.query('select (select count(*)::int from leads) leads,(select count(*)::int from tasks) tasks')).rows[0], before);
+  });
+}
+
 const qualificationSql = `select * from public.ingest_meta_lead_with_acknowledgement(
   '123456','654321',$1,now(),'Synthetic FEH test','Synthetic Contact',$2,
   'test@example.invalid',null,$3,$4)`;
