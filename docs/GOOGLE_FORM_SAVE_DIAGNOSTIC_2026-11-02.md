@@ -72,3 +72,39 @@ Google's official Help Center documentation identified `https://support.google.c
 - **External communication:** approved private Google Ads AI-help message sent with account/form/campaign identifiers, public staging endpoint, synthetic test timing/results and repair constraints. Human support request not yet filed. No secrets, raw headers, customer records or secret-bearing responses transmitted.
 - **Credentials accessed:** no values read or changed. **Production/customer data touched:** no. **Real SMS:** none.
 - **Remaining gate:** user completes Google's interactive verification in the prepared Cloud Browser support tab; then continue the already-approved private support request and seek an actual case reference or verified fix. Do not request the same report-submission approval again. Saving the permanent Google form and all downstream advertising acceptance gates remain unproven.
+
+## Verification cleared; support availability and fresh-editor comparison
+
+Owner request `ba0a28ad-dd38-4407-ab79-ef1b1e652faa` confirmed completion of the human check. The Help Center then loaded normally, and account **Free Energy Help 553-034-0666** was explicitly selected. The approved report was submitted again in this actual support-request flow, asking for human technical escalation. This was not another provider test.
+
+Google's Help Center displayed **Escalation Check — Status: Completed** and stated that no live chat, phone or email contact options were available for this account **at that time**. It supplied no case reference and offered a public community link instead. No community post was made. Its additional suggestions about shared domains, proxies, other form fields and terms remain AI-generated, unverified possibilities; they were not treated as a diagnosis or authority to alter controls. The prior CAPTCHA blocker is cleared. The human-support limitation is now account/channel availability.
+
+A separate fresh editor tab was opened on the same existing asset while preserving the original unsaved editor. This produced a useful comparison:
+
+| Check | Original draft | Fresh separate draft |
+| --- | --- | --- |
+| Exact staging URL | Present | Entered using normal browser typing; exact match verified |
+| Invalid URL message | Still visible | Not visible after URL entry/blur and email selection |
+| Apply control | Disabled | Enabled before key entry |
+| Private key | Owner-entered 40-character counter retained; value not read | Empty; no key copied or generated |
+| Owner email | Original draft preserved | `dalbirrahala@gmail.com` visibly selected in fresh unsaved draft |
+| Saved connection / new test | Neither | Neither |
+
+The fresh editor accepting the same URL is evidence against assuming the Supabase hostname or path is intrinsically invalid. A stale original draft is a plausible explanation, **not a confirmed root cause**. Enabled Apply with an empty key is not proof that a complete webhook configuration will save, and no Apply action was taken.
+
+To avoid another key handoff if possible, the original public URL was cleared and re-entered. Normal sequential typing timed out after the hostname; the partial value was inspected and restored to the full exact URL using the supported fill operation, then blurred. The key counter remained 40 and Invalid URL remained visible. No credentials were read or moved between tabs. The original editor was not reloaded or discarded.
+
+The fresh draft is prepared for the owner to paste the **existing saved 40-character integration key** into Key and return control. No new key generation is needed. Preserve its original email selection. Do not switch form tabs, reload, send a test or click Apply during this handoff. After entry, inspect only non-secret status and run a bounded staging validation if required by this fresh draft; preserve STOP and close intake again. The eventual saved/reopened webhook plus email readback remains mandatory.
+
+### Fresh-editor follow-up Completion Evidence Block
+
+- **Scope:** confirmed manual verification succeeded; submitted the approved private support escalation; captured the no-contact-options response; compared a fresh same-asset editor; prepared a non-secret URL/email draft and preserved the original populated-key draft.
+- **Preflight:** clean local `5ce52568a9252d67b6a5659dfbeecc81ae7c33a1`, remote `a0340ca0e6606ca122393353247adbd07314a487`, matching tree `c6c3a76d7abdca71652e1b547dd4280b121eab0e`; no unrelated changes overwritten.
+- **Files:** this evidence report only. No application/test/migration files changed or deleted.
+- **Checks:** support response observed; original/fresh UI comparison above verified; partial URL from a typing timeout restored and exact value checked; new key field remained empty. Documentation whitespace check before commit. No new provider test, reservation or SMS.
+- **Typecheck/lint/build:** not applicable to documentation-only work; not rerun.
+- **Git:** narrow commit and normal expected-head publication to draft PR115; final hashes in PR record; local tree clean. No merge, force push or accepted-checkpoint change.
+- **Deployment/migration/runtime:** none. No Supabase/Vercel changes or STOP/authority operations. Last verified closed staging configuration remains v8/v27 with zero active sending authority; campaign was not activated.
+- **External systems:** approved Google Help Center private message and response; reversible unsaved Google form preparation; GitHub evidence publication. No public outreach.
+- **Credentials accessed:** no values read/copied/changed. Owner entry into the fresh draft is pending under the browser credential-entry handoff requirement. No production/customer data touched.
+- **Remaining gates:** existing key entry, bounded validation if required, successful form save and webhook/email readback. Human case is unavailable at the observed time; none has been opened. Automatic SMS authority/invocation, STOP/delivery callbacks and final acceptance remain separate unfinished work.
