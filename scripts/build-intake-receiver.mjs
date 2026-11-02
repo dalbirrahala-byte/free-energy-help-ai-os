@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 // Explicit source manifest. Never bundle the CRM, worker, secrets or .env files.
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const destination=resolve(process.argv[2]??'/tmp/feh-intake-receiver');
-const names=['intakeReceiver.server','googleWebhookTest.server','metaWebhookTest.server','boundedBody.server','previewDatabase.server','supabaseCa.server',
+const names=['intakeReceiver.server','googleWebhookTest.server','googleReceiverConfiguration.server','metaWebhookTest.server','boundedBody.server','previewDatabase.server','supabaseCa.server',
  'metaIngress.server','metaGraph.server','ingestMetaLeadAcknowledgement.server','metaWebhookReview.server','adapters/meta'];
 const files=[];
 for(const name of names){

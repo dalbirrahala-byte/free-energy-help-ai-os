@@ -2,6 +2,7 @@ import 'server-only';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {readBoundedBody} from './boundedBody.server.ts';
 import {ACK_STAGING_PROJECT,createPreviewAcknowledgementDatabase} from './previewDatabase.server.ts';
+import {isGoogleReceiverEnabled} from './googleReceiverConfiguration.server.ts';
 import type {MetaIngestionRpc} from './ingestMetaLeadAcknowledgement.server.ts';
 
 type Environment=Readonly<Record<string,string|undefined>>;
@@ -16,7 +17,7 @@ const response=(status:number)=>Response.json(status===200?{}:{message:'Test lea
  * https://developers.google.com/google-ads/webhook/docs/testing */
 export function createGoogleWebhookTestHandler(environment:Environment=process.env,databaseFactory?:()=>MetaIngestionRpc & {close():Promise<void>}) {
   const key=environment.FEH_GOOGLE_WEBHOOK_KEY;
-  const enabled=environment.FEH_INTAKE_RUNTIME==='supabase-edge' && environment.SUPABASE_URL===`https://${ACK_STAGING_PROJECT}.supabase.co` && environment.FEH_INTAKE_RECEIVER_ENABLED==='true' &&
+  const enabled=(isGoogleReceiverEnabled(environment) || environment.FEH_INTAKE_RUNTIME==='supabase-edge' && environment.SUPABASE_URL===`https://${ACK_STAGING_PROJECT}.supabase.co` && environment.FEH_INTAKE_RECEIVER_ENABLED==='true') &&
     environment.FEH_GOOGLE_INGRESS_ENABLED==='true' && environment.FEH_ACK_DATABASE_ENABLED==='true' &&
     environment.NEXT_PUBLIC_SUPABASE_URL===`https://${ACK_STAGING_PROJECT}.supabase.co` &&
     environment.FEH_GOOGLE_FORM_ID==='402325113451' && environment.FEH_GOOGLE_CAMPAIGN_ID==='24096131756' &&

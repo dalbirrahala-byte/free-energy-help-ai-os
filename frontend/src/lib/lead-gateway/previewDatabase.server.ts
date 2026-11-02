@@ -1,6 +1,7 @@
 import 'server-only';
 import postgres from 'postgres';
 import {SUPABASE_DATABASE_CA} from './supabaseCa.server.ts';
+import {isGoogleReceiverEnabled} from './googleReceiverConfiguration.server.ts';
 
 export const ACK_STAGING_PROJECT = 'vredwhyphrhsudggrsen';
 type Kind = 'ingestor' | 'worker' | 'receiver';
@@ -40,15 +41,16 @@ export function readPreviewDatabaseConfiguration(kind: Kind, environment: Readon
   const edge = environment.VERCEL_ENV === undefined && environment.FEH_INTAKE_RUNTIME === 'supabase-edge' &&
     environment.SUPABASE_URL === `https://${ACK_STAGING_PROJECT}.supabase.co` && environment.FEH_INTAKE_RECEIVER_ENABLED === 'true';
   const preview = environment.FEH_INTAKE_RUNTIME === undefined && environment.VERCEL_ENV === 'preview';
+  const google = isGoogleReceiverEnabled(environment);
   // Edge form intake may use the EXISTING restricted ingestor identity. Never
   // admit the worker identity in this public receiver runtime.
-  const validRuntime = kind === 'receiver' ? edge
-    : preview || (kind === 'ingestor' && edge && environment.FEH_META_FORM_TEST_ENABLED === 'true');
+  const validRuntime = kind === 'receiver' ? edge || google
+    : preview || (kind === 'ingestor' && (google || edge && environment.FEH_META_FORM_TEST_ENABLED === 'true'));
   if (!Object.hasOwn(identities, kind) || !validRuntime ||
       environment.FEH_ACK_DATABASE_ENABLED !== 'true' ||
       environment.NEXT_PUBLIC_SUPABASE_URL !== `https://${ACK_STAGING_PROJECT}.supabase.co`) return null;
   try {
-    if (kind === 'receiver' && environment.FEH_INTAKE_RECEIVER_ENABLED !== 'true') return null;
+    if (kind === 'receiver' && !google && environment.FEH_INTAKE_RECEIVER_ENABLED !== 'true') return null;
     const value = environment[kind === 'receiver' ? 'FEH_INTAKE_RECEIVER_DATABASE_URL' : kind === 'ingestor' ? 'FEH_ACK_INGESTOR_DATABASE_URL' : 'FEH_ACK_WORKER_DATABASE_URL'];
     if (!value || value.length > 2048) return null;
     const url = new URL(value);
@@ -83,6 +85,7 @@ export function createPreviewAcknowledgementDatabase(
   const configuration = readPreviewDatabaseConfiguration(kind, environment);
   if (!configuration) return null;
   const identity = identities[kind];
+  const googleOnly = environment.FEH_INTAKE_RUNTIME === 'supabase-google';
   let pool: Pool;
   try { pool = connect(configuration); } catch { return null; }
   let verificationFailure: string | null = null;
@@ -118,6 +121,11 @@ export function createPreviewAcknowledgementDatabase(
     },
     verificationFailure() { return verificationFailure; },
     async rpc(name: string, args: Record<string,unknown> = {}) {
+      // The stable Google runtime cannot reuse this shared module for Meta,
+      // execution, approval, STOP or unrestricted provider attribution.
+      if (googleOnly &&
+          !(kind === 'ingestor' && name === 'ingest_google_lead_with_acknowledgement' ||
+            kind === 'receiver' && name === 'ingest_external_lead' && args?.p_provider === 'google_ads')) return unavailable();
       if (!Object.hasOwn(definitions,name)) return unavailable();
       const definition = definitions[name];
       if (definition.kind !== kind || !args || Object.keys(args).some(k => !definition.keys.includes(k))) return unavailable();

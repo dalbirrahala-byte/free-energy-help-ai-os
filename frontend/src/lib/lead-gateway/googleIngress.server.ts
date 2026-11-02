@@ -2,6 +2,7 @@ import 'server-only';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {readBoundedBody} from './boundedBody.server.ts';
 import {ACK_STAGING_PROJECT,createPreviewAcknowledgementDatabase} from './previewDatabase.server.ts';
+import {isGoogleReceiverEnabled} from './googleReceiverConfiguration.server.ts';
 import type {MetaIngestionRpc} from './ingestMetaLeadAcknowledgement.server.ts';
 
 type Environment=Readonly<Record<string,string|undefined>>;
@@ -25,13 +26,16 @@ function decode(bytes:Uint8Array):unknown {
 
 /** Native Google Ads lead-form webhook only. Website Google traffic continues
  * to use the website's separately verified intake; it is not a Google webhook.
- * Staging accepts Google test payloads for ONE configured test phone only. */
-export function createGoogleIngressHandler(environment:Environment=process.env,databaseFactory?:()=>MetaIngestionRpc & {close():Promise<void>}) {
+ * Preview accepts explicitly marked test payloads. The separate stable receiver
+ * exercises ordinary Google payload semantics for ONE configured test phone;
+ * it never widens the recipient scope or creates contact permission. */
+export function createGoogleIngressHandler(environment:Environment=process.env,databaseFactory?:()=>MetaIngestionRpc & {close():Promise<void>},reviewDatabaseFactory?:()=>MetaIngestionRpc & {close():Promise<void>}) {
   const key=environment.FEH_GOOGLE_WEBHOOK_KEY;
   const formId=environment.FEH_GOOGLE_FORM_ID;
   const campaignId=environment.FEH_GOOGLE_CAMPAIGN_ID;
   const allowedPhone=environment.FEH_ACK_PREVIEW_ALLOWED_PHONE;
-  const enabled=environment.VERCEL_ENV==='preview' && environment.FEH_GOOGLE_INGRESS_ENABLED==='true' &&
+  const stable=isGoogleReceiverEnabled(environment);
+  const enabled=(environment.VERCEL_ENV==='preview' || stable) && environment.FEH_GOOGLE_INGRESS_ENABLED==='true' &&
     environment.NEXT_PUBLIC_SUPABASE_URL===`https://${ACK_STAGING_PROJECT}.supabase.co` &&
     typeof key==='string' && /^[A-Za-z0-9_-]{32,128}$/.test(key) && decimal(formId) && decimal(campaignId) &&
     typeof allowedPhone==='string' && /^\+447[1-57-9]\d{8}$/.test(allowedPhone);
@@ -41,10 +45,12 @@ export function createGoogleIngressHandler(environment:Environment=process.env,d
     let payload:unknown;
     try{payload=decode(await readBoundedBody(request,128*1024));}catch{return response(400);}
     if(!record(payload) || typeof payload.google_key!=='string' || payload.google_key.length>128 || !equal(payload.google_key,key))return response(403);
-    if(payload.form_id!==formId || payload.campaign_id!==campaignId || payload.is_test!==true ||
+    if(payload.form_id!==formId || payload.campaign_id!==campaignId ||
+      (stable ? payload.is_test!==false && payload.is_test!==undefined : payload.is_test!==true) ||
       (payload.lead_source!==undefined && payload.lead_source!=='LEAD_FORM') ||
       typeof payload.lead_id!=='string' || !/^[A-Za-z0-9_-]{6,100}$/.test(payload.lead_id) ||
-      typeof payload.lead_submit_time!=='string' || !Number.isFinite(Date.parse(payload.lead_submit_time)) ||
+      (!(stable && payload.lead_submit_time===undefined) &&
+        (typeof payload.lead_submit_time!=='string' || !Number.isFinite(Date.parse(payload.lead_submit_time)))) ||
       !Array.isArray(payload.user_column_data) || payload.user_column_data.length>100)return response(400);
     const fields=new Map<string,string>();
     const selected=new Set(['FULL_NAME','EMAIL','PHONE_NUMBER','COMPANY_NAME']);
@@ -55,12 +61,22 @@ export function createGoogleIngressHandler(environment:Environment=process.env,d
       fields.set(field.column_id,field.string_value);
     }
     if(fields.get('PHONE_NUMBER')!==allowedPhone)return response(400);
+    // Google may omit submission time. Retain that enquiry for review through
+    // the existing intake-only primitive. Never fabricate freshness to satisfy
+    // the acknowledgement RPC's mandatory provider-time check.
+    const reviewOnly=stable && payload.lead_submit_time===undefined;
     let database:(MetaIngestionRpc & {close():Promise<void>})|null=null;
     try{
-      database=databaseFactory?.()??createPreviewAcknowledgementDatabase('ingestor',environment);
+      database=reviewOnly
+        ? reviewDatabaseFactory?.()??createPreviewAcknowledgementDatabase('receiver',environment)
+        : databaseFactory?.()??createPreviewAcknowledgementDatabase('ingestor',environment);
       if(!database)return response(503);
-      const receipt=await database.rpc('ingest_google_lead_with_acknowledgement',{
-        p_form_id:formId,p_campaign_id:campaignId,p_external_lead_id:payload.lead_id,p_provider_created_at:payload.lead_submit_time,
+      const receipt=reviewOnly?await database.rpc('ingest_external_lead',{
+        p_provider:'google_ads',p_external_lead_id:payload.lead_id,p_provider_created_at:null,p_consent_status:'unknown',
+        p_company_name:fields.get('COMPANY_NAME')??null,p_contact_name:fields.get('FULL_NAME')??null,
+        p_telephone:allowedPhone,p_email:fields.get('EMAIL')??null,p_utm_campaign:campaignId,
+      }):await database.rpc('ingest_google_lead_with_acknowledgement',{
+        p_form_id:formId,p_campaign_id:campaignId,p_external_lead_id:payload.lead_id,p_provider_created_at:payload.lead_submit_time??null,
         p_company_name:fields.get('COMPANY_NAME')??null,p_contact_name:fields.get('FULL_NAME')??null,
         p_telephone:allowedPhone,p_email:fields.get('EMAIL')??null,
       });
@@ -68,6 +84,7 @@ export function createGoogleIngressHandler(environment:Environment=process.env,d
       const row=receipt.data[0];
       if(row.outcome==='rejected')return response(400);
       if(!Number.isSafeInteger(row.lead_id) || (row.lead_id as number)<=0)return response(503);
+      if(reviewOnly)return response(['accepted','duplicate'].includes(row.outcome as string)?200:503);
       return response((row.outcome==='accepted' && row.acknowledgement_reserved===true) ||
         (row.outcome==='duplicate' && row.acknowledgement_reserved===false)?200:503);
     }catch{return response(503);}finally{
