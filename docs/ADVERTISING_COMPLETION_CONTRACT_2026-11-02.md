@@ -1,0 +1,55 @@
+# Advertising completion contract — 2 November 2026
+
+Prepared for Dalbir's request `39c93741-aa09-457f-86ff-0982a35c8e5e`: finish the permanent Google connection, automatic acknowledgement authorization, customer STOP handling and final acceptance. This is the concrete implementation/release plan. It does not assert that these outstanding components are complete or grant new live authority.
+
+## Baseline and ownership
+
+Local `14c704eebd57980c1477d316fcdaeb2c93cb3bfb`, remote `0831fbf2babeb6103b1ae23e8203861c1936048c`, matching tree `07259e84c26e58ea8381fdb9c7de9337a2dd25ce`; clean local tree. Draft PR115 remains open/unmerged. The five test enquiries and receipt-storage migration are already repaired/installed; do not repeat them or the delivered Meta SMS.
+
+Fresh exact-head checks: CRM Navigation Guard `41445908985` and FEH Loop Engineering `41445909018` passed. Factory041 `41445909049`, job `125278804139`, failed only **Reject migration or application-security drift from accepted checkpoint**. Its test/typecheck/lint steps passed. The accepted checkpoint is not to be changed merely to clear that failure.
+
+Implementation, configuration preparation, synthetic tests, narrow review-branch publication and acceptance evidence belong to the implementation agent under retained approvals. Neither Dalbir nor Dominic needs to relay local test output or manually build these components. Protected-path acceptance and the eventual production release remain distinct decisions; this document does not assign them to a person without evidence of their review authority.
+
+## Proposed customer acknowledgement rule — requires explicit adoption before activation
+
+1. Scope: one fixed FEH acknowledgement for a fresh enquiry from an explicitly approved FEH Meta/Instagram or Google form, to that enquiry's validated mobile number. The message identifies FEH and the callback number **01332 605506**, and provides a STOP instruction. It contains no promotion or follow-up sequence.
+2. Evidence: persist the provider/form identity, provider lead ID, received/submitted time, approved form/notice version, customer's recorded request to be contacted, the applicable contact-permission evidence and the owner's versioned rule approval. A phone number or a caller-supplied `approved=true` is insufficient. Marketing consent remains unchanged. Missing, refused, conflicting or stale evidence sends the enquiry to human review without an SMS.
+3. Authority: the owner approves the narrow rule once, using attributable authenticated controls. A separate restricted process evaluates each enquiry and creates only its existing Factory041 intent, compliance decision, approval and single-use authorization. The saved rule never bypasses suppression, expiry, adapter approval, destination binding or emergency STOP. No historical test approval is reused.
+4. Deduplication: use the existing provider lead identity, reservation and durable attempt. Repeated webhooks, worker overlap, restart and delayed callbacks must not produce another acknowledgement. An uncertain provider outcome requires reconciliation; never a blind resend.
+5. Customer STOP: authenticated inbound opt-out evidence blocks subsequent automated FEH SMS to that telephone number, including queued acknowledgements, using the existing SMS suppression system. Preserve an audit. A later START does not automatically restore permission. Customer STOP does not operate the global emergency RELEASE control.
+
+This is a proposed operational rule, not fabricated customer permission or a legal-basis conclusion. Retained approvals already cover dormant implementation and bounded staging tests; another blanket approval is not needed to build those. The final rule must be persisted and attributable before activation, and consumed individual-test authority cannot be reused. Repository `AGENTS.md` section 5 requires explicit owner approval for **"Creation, grant, revocation, or weakening of authority"** and **"Changes to GDPR, consent, retention, compliance, or security policy."** Apply those requirements to the actual activation delta after implementation and review, not as a reason to pause safe independent coding. Production deployment, ad spend, a new real SMS and removal of the sending stop remain excluded from current implementation work.
+
+## Implementation order and completion evidence
+
+| Work item | Implementation | Evidence required to call it complete |
+| --- | --- | --- |
+| Permanent Google intake | Stable FEH-owned webhook endpoint independent of a developer's Preview login; exact form/campaign/key verification; durable provider-ID deduplication; separate ingress-only identity; monitored credential renewal; preserve the existing owner email in Google Ads. Keep the current temporary test receiver unchanged. | Google dashboard test accepted and parsed in CRM; a controlled realistic fixture reserves one acknowledgement; replay adds neither lead nor reservation; owner email remains selected after saving/reopening; account/campaign paused. No claim of a permanent production connection until its final target is approved and verified. |
+| Automatic acknowledgement | Persist the approved rule and source evidence; use existing Factory041 primitives to create attributable per-enquiry authority; add durable worker invocation/recovery; keep the public intake receiver unable to send. | Eligible synthetic enquiry progresses without an individual approval click, while missing authority/permission, suppression and emergency STOP all block it. One durable attempt and one mock provider invocation; no new real SMS under current scope. |
+| Delivery and customer STOP | Connect the existing signature verifier/receipt writer through a restricted callback identity; validate profile and sender/recipient; implement the adopted SMS suppression rule; add deadlines, replay protection and monitoring. | Authentic delivery receipts correlate and deduplicate; wrong signatures/profiles/destinations cannot write; STOP blocks queued/future sends; repeated STOP does not create repeated effects; START cannot silently reauthorize. |
+| Final acceptance and release preparation | Run the five groups below on the exact reviewed head, verify authenticated Inbox/access behavior, inspect all protected diffs and compile a release/rollback packet. | Every required group passes with links to evidence; exact head/tree, installed migrations, closed controls and remaining launch actions recorded. No change to the accepted baseline without actual protected-path acceptance. |
+
+Google's official schema treats `is_test=true` as test data and `false` or absence as an ordinary lead. That distinction must be deliberate in the permanent receiver: current test-only gates cannot be removed casually. Preserve exact int64 identifiers, deduplicate on `lead_id`, reject the wrong key/form/campaign and tolerate unrelated future fields. Its dashboard fixture uses fictional contact data and is not proof of a customer-to-SMS journey. Sources: [implementation](https://developers.google.com/google-ads/webhook/docs/implementation), [testing](https://developers.google.com/google-ads/webhook/docs/testing).
+
+## Five final staging acceptance groups
+
+These are new end-to-end acceptance groups, **not** the five existing enquiries that have already been repaired.
+
+1. **New eligible enquiry:** exercise both Google and Meta intake with controlled fixtures; one Inbox record, expected source/answers, review defaults, one reservation, attributable authority and one mock dispatch. Check the retained Google owner-email configuration independently.
+2. **Replay, overlap and restart:** repeat the same provider event and worker trigger, including overlap and recovery after restart; one enquiry/reservation/attempt and no second dispatch. Distinguish actual concurrent staging proof from single-connection unit tests.
+3. **Customer and emergency STOP:** verified customer opt-out blocks an already queued and a later acknowledgement for that number; duplicate opt-out is harmless; START does not reopen; emergency STOP separately blocks all dispatch and is restored after any specifically approved bounded test.
+4. **Invalid or uncertain permission:** invalid key/signature, wrong form/profile, wrong recipient, missing request/permission evidence, expired authority and unauthorized staff access all fail closed. No route can select production or acquire broad database privileges.
+5. **Provider/transport failure and reconciliation:** simulate timeout, late/out-of-order callback, ambiguous provider reference, callback-before-message-ID persistence and audit failure. Preserve durable attempt/receipt history, do not silently claim delivery and do not create another SMS. Verify clean shutdown, logs without credentials, and unchanged email notification settings.
+
+## Final approval packet
+
+After implementation and acceptance, present one concrete launch packet: exact reviewed head/tree; protected-path acceptance; production target and migration/configuration delta; approved forms and rule version; worker/callback permissions; message text and cap; paused campaign settings; monitoring and rollback/STOP procedure. Request the actual release actions together at that point. Do not request a speculative merge or send now, and do not reactivate advertising as a side effect of connecting intake.
+
+## Completion Evidence Block
+
+- Completed this increment: reconciled current branch/clean tree and exact-head CI; reviewed Google official schema and existing test receiver/permission architecture; prepared the specific standing-rule proposal, implementation order and five acceptance groups.
+- Created: this document only. Modified/deleted code, migrations and settings: none.
+- Tests: no new product test run; documentation-only change. Typecheck/lint/build not repeated. Diff whitespace check run before publication. Prior 728 acknowledgement / 177 Factory041 local results remain historical evidence, not newly rerun tests.
+- Git: one narrow documentation publication to existing draft PR115 with expected remote head `0831fbf2babeb6103b1ae23e8203861c1936048c`; final hashes and clean state recorded in PR. No merge, reset, force push or accepted-checkpoint change.
+- External systems: GitHub read/publication and official Google documentation. Browser, Supabase and provider configuration not changed in this increment. Credentials accessed: no. Production/customer data touched: no. No deployment/migration, SMS, ad activation/spend or STOP operation performed.
+- Remaining work: implement and verify the four deliverables above under retained routine staging engineering approval. Before actual activation, reconcile the final rule and permission changes with retained approvals and obtain any genuinely missing, specific release approval using the completed packet. No additional approval is requested for this document or routine construction.
