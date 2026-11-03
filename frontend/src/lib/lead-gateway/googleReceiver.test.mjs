@@ -8,11 +8,13 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 const hook=registerHooks({resolve(s,c,next){return s==='server-only'?{url:'data:text/javascript,export{}',shortCircuit:true}:next(s,c);}});
 const {createGoogleReceiver}=await import('./googleReceiver.server.ts');
+const {isGoogleReceiverEnabled}=await import('./googleReceiverConfiguration.server.ts');
 const {createPreviewAcknowledgementDatabase,readPreviewDatabaseConfiguration}=await import('./previewDatabase.server.ts');
 hook.deregister();
 const project='vredwhyphrhsudggrsen';
 const env=()=>({FEH_INTAKE_RUNTIME:'supabase-google',SUPABASE_URL:`https://${project}.supabase.co`,NEXT_PUBLIC_SUPABASE_URL:`https://${project}.supabase.co`,
  FEH_GOOGLE_RECEIVER_ENABLED:'true',FEH_GOOGLE_RECEIVER_SCOPE:'owner-test',FEH_GOOGLE_INGRESS_ENABLED:'true',FEH_ACK_DATABASE_ENABLED:'true',
+ FEH_GOOGLE_RECEIVER_TEST_STARTED_AT:new Date(Date.now()-1000).toISOString(),FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT:new Date(Date.now()+14*60*1000).toISOString(),
  FEH_GOOGLE_FORM_ID:'402325113451',FEH_GOOGLE_CAMPAIGN_ID:'24096131756',FEH_GOOGLE_WEBHOOK_KEY:'synthetic-google-key-0123456789012345',FEH_ACK_PREVIEW_ALLOWED_PHONE:'+447700900001'});
 const body=()=>({lead_id:'synthetic_google_owner_123',google_key:env().FEH_GOOGLE_WEBHOOK_KEY,form_id:402325113451,campaign_id:24096131756,is_test:false,
  lead_submit_time:'2026-11-02T12:00:00Z',user_column_data:[{column_id:'PHONE_NUMBER',string_value:'+447700900001'},
@@ -73,6 +75,37 @@ test('configuration is snapshotted; caller mutation cannot activate a closed rec
  const configuration={...env(),FEH_GOOGLE_RECEIVER_ENABLED:'false'};const h=harness(configuration);configuration.FEH_GOOGLE_RECEIVER_ENABLED='true';
  assert.equal((await h.handler(request())).status,404);assert.equal(h.opened(),0);
 });
+test('test window uses exact UTC bounds, closes at expiry, and lasts at most fifteen minutes',()=>{
+ const start=Date.parse('2026-11-03T00:00:00.000Z'),end=start+15*60*1000;
+ const configuration={...env(),FEH_GOOGLE_RECEIVER_TEST_STARTED_AT:new Date(start).toISOString(),FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT:new Date(end).toISOString()};
+ assert.equal(isGoogleReceiverEnabled(configuration,start-1),false);
+ assert.equal(isGoogleReceiverEnabled(configuration,start),true);
+ assert.equal(isGoogleReceiverEnabled(configuration,end-1),true);
+ assert.equal(isGoogleReceiverEnabled(configuration,end),false);
+ assert.equal(isGoogleReceiverEnabled(configuration,NaN),false);
+ for(const invalid of [undefined,'','not-a-date','2026-11-03','2026-11-03T00:15:00+00:00','2026-02-30T00:15:00.000Z',new Date(end+1).toISOString(),new Date(start).toISOString()]){
+  assert.equal(isGoogleReceiverEnabled({...configuration,FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT:invalid},start),false);
+ }
+ assert.equal(isGoogleReceiverEnabled({...configuration,FEH_GOOGLE_RECEIVER_TEST_STARTED_AT:undefined},start),false);
+});
+test('a warm handler and a fresh cold handler both reject the expired window without database access',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-11-03T00:00:00.000Z')});
+ const configuration=env(),h=harness(configuration);
+ assert.equal((await h.handler(request())).status,200);const opened=h.opened();
+ t.mock.timers.setTime(Date.parse(configuration.FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT));
+ assert.equal((await h.handler(request())).status,404);assert.equal(h.opened(),opened);
+ const cold=harness(configuration);assert.equal((await cold.handler(request())).status,404);assert.equal(cold.opened(),0);
+});
+test('expiry during body streaming rejects the request before either ingestion factory opens',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-11-03T00:00:00.000Z')});
+ const configuration=env(),h=harness(configuration);
+ const stream=new ReadableStream({pull(controller){
+  t.mock.timers.setTime(Date.parse(configuration.FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT));
+  controller.enqueue(new TextEncoder().encode(JSON.stringify(body())));controller.close();
+ }});
+ const r=await h.handler(new Request('https://staging.invalid/feh-google-lead-intake',{method:'POST',headers:{'content-type':'application/json'},body:stream,duplex:'half'}));
+ assert.equal(r.status,404);assert.equal(h.opened(),0);
+});
 for(const path of ['/','/api/lead-acknowledgements/run','/feh-google-lead-intake/extra','/functions/v1/feh-google-lead-intake/'])test(`unexposed path ${path}`,async()=>{
  const h=harness();assert.equal((await h.handler(request(body(),{url:'https://staging.invalid'+path}))).status,404);assert.equal(h.opened(),0);
 });
@@ -124,6 +157,7 @@ test('both Edge manifests have resolved local imports and the new entry reads no
     assert.equal(files.length,9);const entry=files.find(f=>f.file==='index.ts').data;
     assert.doesNotMatch(entry,/WORKER|TELNYX|META_|SERVICE_ROLE|SECRET_KEY|STOP|RELEASE/);
     assert.match(entry,/FEH_GOOGLE_RECEIVER_ENABLED/);assert.match(entry,/FEH_GOOGLE_RECEIVER_SCOPE/);
+    assert.match(entry,/FEH_GOOGLE_RECEIVER_TEST_STARTED_AT/);assert.match(entry,/FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT/);
     assert.ok(!files.some(f=>/worker|execution|metaIngress|telnyx/i.test(f.file)));
    }
   }

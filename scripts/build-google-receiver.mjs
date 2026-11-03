@@ -16,6 +16,7 @@ for(const name of names){
 }
 // No administrator secret, worker token, SMS credential or Meta token is read.
 const settings=['SUPABASE_URL','FEH_GOOGLE_RECEIVER_ENABLED','FEH_GOOGLE_RECEIVER_SCOPE',
+  'FEH_GOOGLE_RECEIVER_TEST_STARTED_AT','FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT',
   'FEH_GOOGLE_INGRESS_ENABLED','FEH_ACK_DATABASE_ENABLED','FEH_GOOGLE_FORM_ID','FEH_GOOGLE_CAMPAIGN_ID',
   'FEH_GOOGLE_WEBHOOK_KEY','FEH_ACK_PREVIEW_ALLOWED_PHONE','FEH_ACK_INGESTOR_DATABASE_URL','FEH_INTAKE_RECEIVER_DATABASE_URL'];
 files.push({file:'index.ts',data:`import {createGoogleReceiver} from './lib/googleReceiver.server.mjs';

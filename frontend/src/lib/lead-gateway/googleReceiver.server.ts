@@ -31,6 +31,8 @@ export function createGoogleReceiver(environment:Environment=process.env,depende
       bytes=await readBoundedBody(request,128*1024);
       payload=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
     }catch{return new Response(null,{status:400});}
+    // A slow request must not cross the test deadline and then enter ingestion.
+    if(!isGoogleReceiverEnabled(snapshot))return new Response(null,{status:404});
     if(!payload || typeof payload!=='object' || Array.isArray(payload))return new Response(null,{status:400});
     const marker=(payload as Record<string,unknown>).is_test;
     if(marker!==undefined && typeof marker!=='boolean')return new Response(null,{status:400});
