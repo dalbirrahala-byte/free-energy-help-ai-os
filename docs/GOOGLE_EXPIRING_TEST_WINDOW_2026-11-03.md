@@ -42,3 +42,15 @@ After the reply, correlate the provider request/audit, verify persisted webhook 
 - **Credentials:** no private values read, changed, printed or placed in the report. Existing key and restricted logins remain in platform environment; test probes used no credentials.
 - **Runtime at this evidence checkpoint:** receiving closed by expired interval despite enabled flag; sending STOP unchanged with zero active authority. A subsequent bounded owner window must be explicitly recorded in PR115 and restored to disabled after the reply.
 - **Remaining gates:** local Google test/save and persistent email/webhook readback, ordinary reservation/replay proof, Preview key alignment and credential renewal, automatic attributable authority/invocation, signed delivery/customer STOP handling, five staging acceptance groups and protected-path review. No advertising launch readiness is claimed.
+
+## 08:05 UK follow-up — Completion Evidence Block
+
+The interval from 01:04:02.993 through 01:19:02.993 UTC expired. The Google receiver log contained exactly two requests in that interval, matching our documented readiness probes (one GET 405 and one POST 403). There was no HTTP 200. The staging audit recorded zero duplicate events for fictional lead 6 during the interval. Its latest duplicate was 2 November at 19:56:07.579899 UTC.
+
+A fresh read of Google asset 402325113451 under account 553-034-0666 showed a blank webhook URL and empty key. The owner email notification was selected and the account showed no ads running. This read reflects the saved asset. The owner's local draft is separate.
+
+At 08:04:26 UTC staging showed STOP, zero active grants, zero approved adapters, zero unconsumed authorised records, two total reservations and two total attempts. Lead 6 had zero reservations. At 08:05:12 UTC we restored `FEH_GOOGLE_RECEIVER_ENABLED=false` and verified its digest. Hosted GET and empty POST both returned 404. Final configuration revisions were Google 13 and legacy 31. The receiver code was unchanged.
+
+Code-head `3080e30ba70f568ed1e1c2bb3a631532676c01c5` passed Navigation (41557287228), Engineering (41557287090) and Vercel status. Factory 041 (41557287084) passed its focused tests, execution-dispatch tests, typecheck and lint. Its only failed step was the protected migration/application-security comparison against the accepted checkpoint. That comparison remains pending review.
+
+Only this evidence file was edited. The local tree was clean before the check at `75652d2522e36cfa3faba8f632629bce29ab7d80`, with the previously reconciled code-head tree `b4bb71f22e1e7ffb8e2fec8f089297f974ea5197`. The evidence commit and normal expected-head publication are identified in draft PR115. Validation for the documentation change was the staged diff and whitespace check. No code build or migration was required. No credential values, real SMS or production systems were involved. The next gate is a new bounded window when the owner has their populated local form open and **Send test data** available, followed by a successful provider test, Apply, and independent readback of both webhook and email delivery.
