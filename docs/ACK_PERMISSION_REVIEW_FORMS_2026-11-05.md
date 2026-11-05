@@ -49,7 +49,7 @@ This is review evidence, not a parallel execution-authorization system: no write
 | Targeted ESLint on all changed frontend files | PASS |
 | `NEXT_TELEMETRY_DISABLED=1 npm run build` | PASS, new dynamic route included |
 | Staging post-install structural and closed-state verification | PASS as above |
-| Actual authenticated owner review/recording in deployed UI | Pending owner's review/sign-in; no approval fabricated |
+| Actual authenticated owner review/recording in deployed UI | PASS on 5 November at 13:13–13:20 UK; owner approval and six fictional cases verified below |
 
 The initial test fixture used an incorrect role name; corrected it to the existing ingress/runtime roles and reran. Initial local build failed because the worktree dependency symlink pointed outside Turbopack's root; copied the existing dependency installation locally and rebuilt successfully. These were local tooling/fixture defects, not staging failures. The existing Next middleware-deprecation and npm proxy warnings remain.
 
@@ -75,3 +75,34 @@ Automatic approval review blocked the Supabase CLI's attempted PostHog telemetry
 - Code-head CI: [Navigation](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/actions/runs/42032540188) PASS; [Engineering](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/actions/runs/42032540114) PASS. [Factory041](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/actions/runs/42032540110) failed only its protected migration/application-security drift comparison (job `127262331292`, step 12). Its focused tests, full dispatch tests, typecheck and lint passed. The accepted baseline is unchanged; an actual protected-path review is still required.
 - This publication note is a documentation-only follow-up. No product code, remote configuration or test authority changed after the validated code commit. The original checkout remains clean and the review worktree is clean after its narrow evidence commit. PR115 remains draft/open/unmerged.
 - Owner's Google screenshots received during the work show the existing lead-form editor and paused-ad banner. The visible disclosure permits contact about the request but does not explicitly mention an acknowledgement SMS. They are not evidence of adopted SMS wording or recorded customer permission. No edit or test was performed in Google during this increment.
+
+## Owner approval and hosted fictional form results — 13:20 UK
+
+After Dalbir reported "ok approved CRM", a fresh staging read verified review **1** at **2026-11-05 13:13:46.822142 UTC**. It belongs to the existing bound owner, matches the entire current proposal `feh-ack-permission-review-v1`, and has exactly one successful review audit. Its scope remains `fictional_staging_test_only`. The live page independently showed this saved approval and the unlocked fictional form. The implementation agent did not submit the owner-approval action or impersonate an owner through SQL.
+
+Two yes records were already present on first inspection and were preserved. Four new no/not-sure cases were submitted through the authenticated deployed form. Each result was then checked in the UI and independently in the staging database:
+
+| Simulated source | Answer | Recorded time (UTC / UK) | Verified result |
+| --- | --- | --- | --- |
+| Meta / Instagram | yes | 13:14:28.413476 | PASS — fictional permission recorded |
+| Google | yes | 13:14:43.509087 | PASS — fictional permission recorded |
+| Meta / Instagram | no | 13:17:57.013758 | PASS — refusal recorded; UI shows hold |
+| Meta / Instagram | not sure | 13:18:43.171262 | PASS — uncertainty recorded; UI shows hold |
+| Google | no | 13:19:12.894478 | PASS — refusal recorded; UI shows hold |
+| Google | not sure | 13:19:49.918909 | PASS — uncertainty recorded; UI shows hold |
+
+Final readback: **one review / one review audit; six synthetic fixtures / six matching successful audits; one of each source/answer combination**. Every fixture is marked `synthetic_fixture` and linked to the reviewed wording. STOP remains stopped, active execution grants **0**, approved adapters **0**, existing reservations **3**, existing dispatch attempts **2**. The latter controls/counts match the pre-review installation checkpoint. No real SMS or lead reservation was created.
+
+This PASS covers authenticated private form recording and its displayed outcomes. It does not prove a real provider form delivers matching permission, or that a live acknowledgement authorizer/worker correctly consumes it. No actual provider intake, hosted replay/concurrency, customer STOP callback, SMS or production test was performed in this follow-up. Prior local replay/security results remain valid historical evidence and were not rerun for a documentation-only change. The five end-to-end acceptance groups and protected-path review remain open.
+
+### Follow-up Completion Evidence Block
+
+- Scope completed: verified the owner's actual saved review and the two existing yes cases; recorded and checked the four remaining fictional answers through the deployed form; independently checked audits and closed sending controls.
+- Files modified: this existing evidence document only. No code/migration changes. A screenshot of all six synthetic results was captured for the owner's handoff; no secret or real customer data is included.
+- Hosted UI/database result: **6/6 PASS** for permission recording, as scoped above. Approval **CONFIRMED**. Owner approval was not repeated. No real action authority was granted.
+- Typecheck/lint/build: not rerun, documentation only; validated code remains `c8c893e33a8e11d8ed52d0e40a3f510b8972188d`. `git diff --check` passed for this follow-up.
+- Git: reconciled clean local tree with current remote `59aea9efd457c99ab1adc48ec68a98855e95acb8`, tree `98adbf3018ae69909404444f7bf220ec6fdcd9e2`; preserved earlier local branches and original checkout. Narrow one-file expected-head publication to existing draft PR115, no force push or merge. Final local working tree clean after the evidence commit.
+- Deployment/migration: unchanged. Existing Preview `dpl_38h74UWVTaax27PA9N6o9Twj1ARm` used. No manual deployment; a docs publication may trigger the existing Preview integration.
+- External systems: Cloud Browser authenticated staging UI (four synthetic record submissions), Supabase staging read-only verification, GitHub evidence publication. No Google Ads, Meta, Telnyx, production or campaign changes.
+- Credentials accessed: no credential values read or entered. Existing signed-in owner browser session used. Production/real customer data touched: no. User's real authenticated review and synthetic record/audit metadata only.
+- Remaining gate: connect the adopted source-form wording and genuine permission provenance to the existing Factory041 authorizer/invocation, finish delivery/customer STOP handling, prove the full five acceptance groups, obtain protected-path acceptance and present a separate production launch packet. This fictional-test review must never be promoted to live sending authority.
