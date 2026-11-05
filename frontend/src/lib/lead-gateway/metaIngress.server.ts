@@ -1,3 +1,4 @@
+import {createFormPermissionCapture,type FormPermissionCapture} from './formPermissionCapture.server.ts';
 import 'server-only';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {readBoundedBody} from './boundedBody.server.ts';
@@ -11,7 +12,8 @@ type Environment=Readonly<Record<string,string|undefined>>;
 
 /** Default disabled. GET verifies Meta's callback; POST authenticates raw bytes
  * before Graph or DB access. This endpoint only reserves, never authorizes SMS. */
-export function createMetaIngressHandlers(environment:Environment=process.env,dependencies:{fetch?:typeof fetch;database?:()=>MetaIngestionRpc & {close():Promise<void>};now?:()=>number}={}) {
+export function createMetaIngressHandlers(environment:Environment=process.env,dependencies:{permissionCapture?:FormPermissionCapture;fetch?:typeof fetch;database?:()=>MetaIngestionRpc & {close():Promise<void>};now?:()=>number}={}) {
+  const capture=dependencies.permissionCapture??createFormPermissionCapture(environment,'meta');
   const pageId=environment.FEH_META_PAGE_ID;
   const formId=environment.FEH_META_FORM_ID;
   const appSecret=environment.FEH_META_APP_SECRET;
@@ -34,7 +36,7 @@ export function createMetaIngressHandlers(environment:Environment=process.env,de
     typeof allowedPhone==='string' && /^\+447[1-57-9]\d{8}$/.test(allowedPhone) &&
     allowedPhone!=='+447427851020'&&
     /^[A-Za-z0-9_-]{32,128}$/.test(verifyToken);
-  const reader=enabled?createMetaGraphReader({pageId,formId,appSecret,pageToken},dependencies.fetch):null;
+  const reader=enabled?createMetaGraphReader({pageId,formId,appSecret,pageToken,includeCampaign:!!capture},dependencies.fetch):null;
   return {
     async GET(request:Request) {
       if(!enabled || !reader || !withinWindow())return response(404);
@@ -61,7 +63,7 @@ export function createMetaIngressHandlers(environment:Environment=process.env,de
         const result=await ingestMetaLeadAcknowledgements(bytes,request.headers.get('x-hub-signature-256'),{appSecret,pageId,formId,allowedPhone,allowedLeadId},async reference=>{
           if(!withinWindow())throw new Error('test_expired');
           return reader(reference);
-        },lazy);
+        },lazy,capture);
         return response(result.status==='persisted'?200:result.status==='rejected'?400:503);
       }finally{
         // Cleanup cannot change the confirmed RPC outcome or expose private

@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import {before, after, beforeEach, afterEach, test} from 'node:test';
 import {readFile, readdir} from 'node:fs/promises';
 import {PGlite} from '@electric-sql/pglite';
-import {runAutomaticAcknowledgementOnce} from '../execution-dispatch/runAutomaticAcknowledgementOnce.ts';
+import {runAutomaticAcknowledgementOnce,runNextAutomaticAcknowledgementOnce} from '../execution-dispatch/runAutomaticAcknowledgementOnce.ts';
+import {registerHooks} from 'node:module';
+import {createHmac} from 'node:crypto';
+const hook=registerHooks({resolve(s,c,next){return s==='server-only'?{url:'data:text/javascript,export{}',shortCircuit:true}:next(s,c);}});
+const {createFormPermissionCapture}=await import('./formPermissionCapture.server.ts');
+const {createGoogleIngressHandler}=await import('./googleIngress.server.ts');
+const {ingestMetaLeadAcknowledgements}=await import('./ingestMetaLeadAcknowledgement.server.ts');
+hook.deregister();
 import {FEH_ACKNOWLEDGEMENT_V2_COPY} from '../execution-dispatch/telnyxAcknowledgementAdapter.ts';
 
 // Every actor/phone/permission/grant is synthetic in a local WASM PostgreSQL.
@@ -31,7 +38,7 @@ before(async () => {
   await db.query('insert into auth.users(id) values($1)',[actor]);
   await db.query("insert into user_roles(id,role) values($1,'admin')",[actor]);
   await db.query("select set_config('request.jwt.claim.sub',$1,false)",[actor]);
-  await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({sub:actor,aal:'aal2',is_anonymous:false})]);
+  await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({sub:actor,aal:'aal2',is_anonymous:false,iss:'https://vredwhyphrhsudggrsen.supabase.co/auth/v1'})]);
   const grants=(await db.query(`insert into execution_authorisers(user_id,capability,granted_by)
     values($1,'execution_authoriser',$1),($1,'execution_controller',$1) returning id,capability`,[actor])).rows;
   grant=grants.find(g=>g.capability==='execution_authoriser').id;
@@ -82,6 +89,8 @@ async function record(f,answer='Yes',key='synthetic_sms_permission') {
     [f.binding,f.leadId,f.timestamp,key,answer])).rows[0].result;
 }
 const authority={async rpc(name,args){
+  if(name==='select_enquiry') return {data:(await scoped('feh_ack_rule_authorizer',
+    'select * from feh_ack_authority_private.select_enquiry($1)',[args.p_allowed_phone])).rows,error:null};
   assert.equal(name,'authorize_enquiry');
   const rows=(await scoped('feh_ack_rule_authorizer','select * from feh_ack_authority_private.authorize_enquiry($1,$2)',
     [args.p_lead_id,args.p_allowed_phone])).rows;
@@ -352,4 +361,135 @@ test('v2 callback-before-ID, delivery failure, out-of-order receipt and replay p
   await run(f,sends); assert.equal(sends.length,1);
   assert.equal((await db.query('select count(*)::int n from acknowledgement_delivery_receipts')).rows[0].n,2);
   assert.equal((await counts()).attempts,1);
+});
+
+// New public owner boundary is exercised as authenticated, not as DB owner.
+const ownerRpc={async rpc(name,a={}){
+ const sql=name==='get_ack_automatic_rule_review'?'select public.get_ack_automatic_rule_review() as value':
+   'select public.approve_ack_automatic_rule($1,$2,$3) as value';
+ const args=name==='get_ack_automatic_rule_review'?[]:[a.p_binding_id,a.p_fingerprint,a.p_reference];
+ return {data:(await scoped('authenticated',sql,args)).rows[0].value,error:null};
+}};
+async function ownerBinding(f){const r=await ownerRpc.rpc('get_ack_automatic_rule_review');return r.data.bindings.find(b=>b.id===f.binding);}
+async function adopt(f,fingerprint){const b=await ownerBinding(f);return (await ownerRpc.rpc('approve_ack_automatic_rule',{
+ p_binding_id:f.binding,p_fingerprint:fingerprint??b.fingerprint,p_reference:'00000000-0000-4000-8000-000000000111',
+})).data;}
+test('authenticated owner reads exact notice and adopts once with audit; repeated approval cannot renew',async()=>{
+ const f=await fixture('google_ads','Yes',{approve:false,record:false});const b=await ownerBinding(f);
+ assert.equal(b.can_approve,true);assert.equal(b.notice_text,notice);assert.equal(b.message,FEH_ACKNOWLEDGEMENT_V2_COPY);
+ assert.equal(await adopt(f),'approved');const saved=await ownerBinding(f);assert.equal(saved.can_approve,false);
+ assert.equal(await adopt(f),'blocked');assert.equal((await ownerBinding(f)).expires_at,saved.expires_at);
+ assert.equal((await db.query("select count(*)::int n from audit_log where action='ack_staging_rule_adopted'")).rows[0].n,1);
+ assert.deepEqual(await counts(),{intents:0,authorizations:0,attempts:0,bridges:0});
+});
+test('tampered fingerprint, stale notice and missing grant fail owner adoption',async()=>{
+ const f=await fixture('meta','Yes',{approve:false,record:false});const b=await ownerBinding(f);
+ assert.equal(await adopt(f,'f'.repeat(64)),'blocked');
+ await db.query("update feh_ack_authority_private.bindings set notice_text='changed approved notice' where id=$1",[f.binding]);
+ assert.equal(await adopt(f,b.fingerprint),'blocked');
+ await db.query('update execution_authorisers set revoked_at=clock_timestamp(),revoked_by=$1 where id=$2',[actor,grant]);
+ assert.equal((await ownerBinding(f)).can_approve,false);assert.equal(await adopt(f),'blocked');
+});
+for(const claims of [{aal:'aal1',is_anonymous:false,iss:'https://vredwhyphrhsudggrsen.supabase.co/auth/v1'},
+ {aal:'aal2',is_anonymous:true,iss:'https://vredwhyphrhsudggrsen.supabase.co/auth/v1'},
+ {aal:'aal2',is_anonymous:false,iss:'https://kupuswwutonsagftivkv.supabase.co/auth/v1'}])test(`owner endpoint rejects ${JSON.stringify(claims)}`,async()=>{
+ const f=await fixture('meta','Yes',{approve:false,record:false});const b=await ownerBinding(f);
+ await db.query("select set_config('request.jwt.claims',$1,true)",[JSON.stringify(claims)]);
+ assert.equal((await ownerRpc.rpc('get_ack_automatic_rule_review')).data.status,'blocked');
+ assert.equal((await ownerRpc.rpc('approve_ack_automatic_rule',{p_binding_id:f.binding,p_fingerprint:b.fingerprint,p_reference:'00000000-0000-4000-8000-000000000111'})).data,'blocked');
+});
+test('another authenticated user sees no bindings and cannot approve someone else\'s rule',async()=>{
+ const f=await fixture('meta','Yes',{approve:false,record:false});const b=await ownerBinding(f);
+ await db.exec("select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000000222',true)");
+ assert.deepEqual((await ownerRpc.rpc('get_ack_automatic_rule_review')).data.bindings,[]);
+ assert.equal((await ownerRpc.rpc('approve_ack_automatic_rule',{p_binding_id:f.binding,p_fingerprint:b.fingerprint,p_reference:'00000000-0000-4000-8000-000000000111'})).data,'blocked');
+});
+test('owner approval audit failure rolls the rule back atomically',async()=>{
+ const f=await fixture('meta','Yes',{approve:false,record:false});
+ await db.exec("create function reject_rule_audit() returns trigger language plpgsql as $$begin if new.action='ack_staging_rule_adopted' then raise exception 'synthetic audit failure'; end if; return new; end$$; create trigger reject_rule_audit before insert on audit_log for each row execute function reject_rule_audit()");
+ await assert.rejects(()=>adopt(f));assert.equal((await ownerBinding(f)).rule_id,null);
+});
+
+// Recovery across the real provider parser, separate recorder role and durable
+// worker selector. The initial intake committed before the process interruption;
+// its provider replay supplies the permission without another CRM/queue row.
+for(const provider of ['meta','google_ads']) for(const answer of ['Yes','No','not sure']) {
+  test(`${provider}: verified replay recovers ${answer} after intake interruption; worker restart is duplicate-safe`,async()=>{
+    const f=await fixture(provider,answer,{record:false});
+    const timestamp=new Date(Math.ceil(Date.now()/1000)*1000).toISOString();
+    await db.query('update leads set provider_created_at=$1 where id=$2',[timestamp,f.leadId]);
+    await db.query('update lead_acknowledgements set provider_created_at=$1 where lead_id=$2',[timestamp,f.leadId]);
+    const prefix=provider==='meta'?'FEH_ACK_META_PERMISSION':'FEH_ACK_GOOGLE_PERMISSION';
+    const capture=createFormPermissionCapture({FEH_ACK_PERMISSION_CAPTURE_ENABLED:'true',
+      [`${prefix}_BINDING_ID`]:f.binding,[`${prefix}_QUESTION_KEY`]:'synthetic_sms_permission'},provider,()=>({
+      async rpc(name,args){assert.equal(name,'record_permission');return {data:await record({...f,timestamp:args.p_submitted_at},args.p_answer,args.p_question_key),error:null};},
+      async close(){},
+    }));
+    const keys=provider==='meta'?['p_page_id','p_form_id','p_external_lead_id','p_provider_created_at','p_company_name','p_contact_name','p_telephone','p_email','p_campaign_id','p_contract_end_answer','p_monthly_spend_answer']:
+      ['p_form_id','p_campaign_id','p_external_lead_id','p_provider_created_at','p_company_name','p_contact_name','p_telephone','p_email'];
+    const ingestor={async rpc(name,args){
+      assert.equal(name,provider==='meta'?'ingest_meta_lead_with_acknowledgement':'ingest_google_lead_with_acknowledgement');
+      assert.equal(args.p_campaign_id,'123456');
+      return {data:(await scoped('external_lead_ingestor',`select * from public.${name}(${keys.map((_,i)=>`$${i+1}`).join(',')})`,keys.map(k=>args[k]??null))).rows,error:null};
+    },async close(){}};
+    let replay;
+    if(provider==='meta') {
+      const c={appSecret:'synthetic-only',pageId:'123456',formId:'654321',allowedPhone:phone};
+      const raw=Buffer.from(JSON.stringify({object:'page',entry:[{id:c.pageId,changes:[{field:'leadgen',
+        value:{page_id:c.pageId,form_id:c.formId,leadgen_id:f.id,created_time:Date.parse(timestamp)/1000}}]}]}));
+      const signature=`sha256=${createHmac('sha256',c.appSecret).update(raw).digest('hex')}`;
+      const details={id:f.id,form_id:c.formId,campaign_id:'123456',created_time:timestamp,
+        field_data:[{name:'phone_number',values:[phone]},{name:'synthetic_sms_permission',values:[answer]}]};
+      const bad=await ingestMetaLeadAcknowledgements(raw,'sha256='+'0'.repeat(64),c,()=>assert.fail('unverified Graph access'),ingestor,capture);
+      assert.equal(bad.status,'rejected');
+      replay=async()=>assert.equal((await ingestMetaLeadAcknowledgements(raw,signature,c,async()=>details,ingestor,capture)).status,'persisted');
+    } else {
+      const env={VERCEL_ENV:'preview',NEXT_PUBLIC_SUPABASE_URL:'https://vredwhyphrhsudggrsen.supabase.co',
+        FEH_GOOGLE_INGRESS_ENABLED:'true',FEH_GOOGLE_WEBHOOK_KEY:'synthetic-key-'.repeat(3),FEH_GOOGLE_FORM_ID:'654321',FEH_GOOGLE_CAMPAIGN_ID:'123456',FEH_ACK_PREVIEW_ALLOWED_PHONE:phone};
+      const payload={google_key:env.FEH_GOOGLE_WEBHOOK_KEY,form_id:654321,campaign_id:123456,lead_id:f.id,is_test:true,
+        lead_submit_time:timestamp,user_column_data:[{column_id:'PHONE_NUMBER',string_value:phone},{column_id:'synthetic_sms_permission',string_value:answer}]};
+      const handler=createGoogleIngressHandler(env,()=>ingestor,undefined,capture);
+      const request=p=>new Request('https://preview.invalid/intake',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)});
+      assert.equal((await handler(request({...payload,google_key:'incorrect'}))).status,403);
+      replay=async()=>assert.equal((await handler(request(payload))).status,200);
+    }
+    assert.equal((await db.query('select count(*)::int n from feh_ack_authority_private.permissions')).rows[0].n,0);
+    await replay(); await replay();
+    assert.equal((await db.query('select count(*)::int n from lead_acknowledgements')).rows[0].n,1);
+    assert.equal((await db.query('select count(*)::int n from feh_ack_authority_private.permissions')).rows[0].n,1);
+    const sends=[];
+    const selected=()=>runNextAutomaticAcknowledgementOnce({...authority},{...worker},config,mockTransport(sends));
+    assert.equal((await selected()).status,answer==='Yes'?'succeeded':'idle');
+    assert.equal((await selected()).status,'idle');
+    assert.equal(sends.length,answer==='Yes'?1:0);
+    assert.equal((await counts()).attempts,answer==='Yes'?1:0);
+  });
+}
+test('durable discovery resumes committed authority but excludes a claimed or uncertain attempt',async()=>{
+  const f=await fixture();await authorize(f);const sends=[];
+  assert.equal((await runNextAutomaticAcknowledgementOnce(authority,worker,config,mockTransport(sends,'timeout'))).status,'indeterminate');
+  assert.equal((await runNextAutomaticAcknowledgementOnce({...authority},{...worker},config,mockTransport(sends))).status,'idle');
+  assert.equal(sends.length,1);
+  assert.equal((await counts()).attempts,1);
+});
+test('durable discovery holds after claim interruption rather than resetting it',async()=>{
+  const f=await fixture();const a=(await authorize(f)).data[0];
+  await worker.rpc('claim_meta_lead_acknowledgement',{p_lead_id:f.leadId,p_execution_authorization_id:a.authorization_id,p_provider_adapter_id:a.provider_adapter_id});
+  const sends=[];
+  assert.equal((await runNextAutomaticAcknowledgementOnce(authority,worker,config,mockTransport(sends))).status,'idle');
+  assert.equal(sends.length,0);assert.equal((await counts()).attempts,0);
+});
+
+test('owner recovery view distinguishes saved authority, interrupted claim and uncertain outcome without retry controls',async()=>{
+  const f=await fixture();
+  const state=async()=>((await scoped('authenticated','select public.get_ack_automatic_rule_review() as result')).rows[0].result.bindings.find(b=>b.id===f.binding));
+  assert.equal((await state()).execution_state,'not_authorised');
+  await authorize(f);
+  assert.equal((await state()).execution_state,'authorised_unclaimed');
+  const sends=[];
+  assert.equal((await run(f,sends,'timeout')).status,'indeterminate');
+  assert.equal((await state()).execution_state,'indeterminate');
+  assert.equal((await state()).used,true);
+  assert.equal((await state()).can_approve,false);
+  assert.equal((await counts()).attempts,1);assert.equal(sends.length,1);
 });

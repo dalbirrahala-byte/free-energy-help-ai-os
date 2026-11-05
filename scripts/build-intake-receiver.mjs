@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 // Explicit source manifest. Never bundle the CRM, worker, secrets or .env files.
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const destination=resolve(process.argv[2]??'/tmp/feh-intake-receiver');
-const names=['intakeReceiver.server','googleWebhookTest.server','googleReceiverConfiguration.server','metaWebhookTest.server','boundedBody.server','previewDatabase.server','supabaseCa.server',
+const names=['formPermissionCapture.server','intakeReceiver.server','googleWebhookTest.server','googleReceiverConfiguration.server','metaWebhookTest.server','boundedBody.server','previewDatabase.server','supabaseCa.server',
  'metaIngress.server','metaGraph.server','ingestMetaLeadAcknowledgement.server','metaWebhookReview.server','adapters/meta'];
 const files=[];
 for(const name of names){
@@ -18,7 +18,7 @@ for(const name of names){
 }
 // Copy only named, restricted settings. Supabase injects administrator secrets
 // into Edge environments; this receiver deliberately never reads any of them.
-const settings=['SUPABASE_URL','FEH_INTAKE_RECEIVER_ENABLED','FEH_INTAKE_RECEIVER_EXPIRES_AT',
+const settings=['FEH_ACK_PERMISSION_CAPTURE_ENABLED','FEH_ACK_PERMISSION_DATABASE_URL','FEH_ACK_META_PERMISSION_BINDING_ID','FEH_ACK_META_PERMISSION_QUESTION_KEY','SUPABASE_URL','FEH_INTAKE_RECEIVER_ENABLED','FEH_INTAKE_RECEIVER_EXPIRES_AT',
  'FEH_GOOGLE_INGRESS_ENABLED','FEH_ACK_DATABASE_ENABLED','FEH_GOOGLE_FORM_ID',
  'FEH_GOOGLE_CAMPAIGN_ID','FEH_GOOGLE_WEBHOOK_KEY','FEH_INTAKE_RECEIVER_DATABASE_URL',
  'FEH_META_APP_SECRET','FEH_META_VERIFY_TOKEN','FEH_META_DASHBOARD_TEST_ENABLED',

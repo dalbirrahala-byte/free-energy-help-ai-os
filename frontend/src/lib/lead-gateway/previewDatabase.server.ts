@@ -4,7 +4,7 @@ import {SUPABASE_DATABASE_CA} from './supabaseCa.server.ts';
 import {isGoogleReceiverEnabled} from './googleReceiverConfiguration.server.ts';
 
 export const ACK_STAGING_PROJECT = 'vredwhyphrhsudggrsen';
-type Kind = 'ingestor' | 'worker' | 'receiver' | 'callback';
+type Kind = 'ingestor' | 'worker' | 'receiver' | 'callback' | 'permission' | 'authorizer';
 type Value = string | number | null;
 type Row = Record<string, unknown>;
 type Transaction = { unsafe(query: string, args?: Value[]): PromiseLike<Row[]> };
@@ -14,8 +14,11 @@ type Configuration = Readonly<{
   ssl: { rejectUnauthorized: true; ca: string; servername: string }; prepare: false; max: 1; connect_timeout: 10;
   idle_timeout: 10; max_lifetime: 60; debug: false; onnotice: () => void;
 }>;
-type Definition = { kind: Kind; keys: readonly string[]; types: readonly string[]; rows: boolean };
+type Definition = { kind: Kind; keys: readonly string[]; types: readonly string[]; rows: boolean; schema?: 'feh_ack_authority_private' };
 const definitions: Record<string, Definition> = {
+  select_enquiry: { kind: 'authorizer', schema: 'feh_ack_authority_private', keys: ['p_allowed_phone'], types: ['text'], rows: true },
+  record_permission: { kind: 'permission', schema: 'feh_ack_authority_private', keys: ['p_binding_id','p_lead_id','p_submitted_at','p_question_key','p_answer'], types: ['uuid','bigint','timestamptz','text','text'], rows: false },
+  authorize_enquiry: { kind: 'authorizer', schema: 'feh_ack_authority_private', keys: ['p_lead_id','p_allowed_phone'], types: ['bigint','text'], rows: true },
   record_acknowledgement_callback: { kind: 'callback', keys: ['p_event_id','p_message_id','p_profile_id','p_occurred_at','p_event_type','p_delivery_status','p_from','p_to'], types: ['uuid','uuid','uuid','timestamptz','text','text','text','text'], rows: false },
   ingest_external_lead: { kind: 'receiver', keys: ['p_provider','p_external_lead_id','p_provider_created_at','p_consent_status','p_company_name','p_contact_name','p_telephone','p_email','p_utm_campaign'], types: ['text','text','timestamptz','text','text','text','text','text','text'], rows: true },
   select_lead_acknowledgement_candidate: { kind: 'worker', keys: ['p_allowed_phone'], types: ['text'], rows: true },
@@ -30,6 +33,8 @@ const definitions: Record<string, Definition> = {
   complete_execution_dispatch_indeterminate: { kind: 'worker', keys: ['p_execution_dispatch_attempt_id','p_failure_code'], types: ['bigint','text'], rows: false },
 };
 const identities = {
+  permission: { login: 'feh_ack_permission_recorder', role: 'feh_ack_permission_recorder' },
+  authorizer: { login: 'feh_ack_rule_authorizer', role: 'feh_ack_rule_authorizer' },
   callback: { login: 'feh_ack_preview_callback', role: 'feh_ack_preview_callback' },
   ingestor: { login: 'feh_ack_preview_ingestor', role: 'external_lead_ingestor' },
   worker: { login: 'feh_ack_preview_worker', role: 'execution_dispatch_worker' },
@@ -47,14 +52,16 @@ export function readPreviewDatabaseConfiguration(kind: Kind, environment: Readon
   // Edge form intake may use the EXISTING restricted ingestor identity. Never
   // admit the worker identity in this public receiver runtime.
   const validRuntime = kind === 'receiver' ? edge || google
-    : preview || (kind === 'ingestor' && (google || edge && environment.FEH_META_FORM_TEST_ENABLED === 'true'));
+    : preview || (['ingestor','permission'].includes(kind) && (google || edge && environment.FEH_META_FORM_TEST_ENABLED === 'true'));
   if (!Object.hasOwn(identities, kind) || !validRuntime ||
       environment.FEH_ACK_DATABASE_ENABLED !== 'true' ||
       environment.NEXT_PUBLIC_SUPABASE_URL !== `https://${ACK_STAGING_PROJECT}.supabase.co`) return null;
   try {
     if (kind === 'receiver' && !google && environment.FEH_INTAKE_RECEIVER_ENABLED !== 'true') return null;
     if (kind === 'callback' && environment.FEH_ACK_CALLBACK_ENABLED !== 'true') return null;
-    const value = environment[kind === 'callback' ? 'FEH_ACK_CALLBACK_DATABASE_URL' : kind === 'receiver' ? 'FEH_INTAKE_RECEIVER_DATABASE_URL' : kind === 'ingestor' ? 'FEH_ACK_INGESTOR_DATABASE_URL' : 'FEH_ACK_WORKER_DATABASE_URL'];
+    if (kind === 'permission' && environment.FEH_ACK_PERMISSION_CAPTURE_ENABLED !== 'true') return null;
+    if (kind === 'authorizer' && environment.FEH_ACK_AUTOMATIC_ENABLED !== 'true') return null;
+    const value = environment[kind === 'permission' ? 'FEH_ACK_PERMISSION_DATABASE_URL' : kind === 'authorizer' ? 'FEH_ACK_AUTHORIZER_DATABASE_URL' : kind === 'callback' ? 'FEH_ACK_CALLBACK_DATABASE_URL' : kind === 'receiver' ? 'FEH_INTAKE_RECEIVER_DATABASE_URL' : kind === 'ingestor' ? 'FEH_ACK_INGESTOR_DATABASE_URL' : 'FEH_ACK_WORKER_DATABASE_URL'];
     if (!value || value.length > 2048) return null;
     const url = new URL(value);
     const login = identities[kind].login;
@@ -129,7 +136,7 @@ export function createPreviewAcknowledgementDatabase(
       // The stable Google runtime cannot reuse this shared module for Meta,
       // execution, approval, STOP or unrestricted provider attribution.
       if (googleOnly &&
-          !(kind === 'ingestor' && name === 'ingest_google_lead_with_acknowledgement' ||
+          !(kind === 'permission' && name === 'record_permission' || kind === 'ingestor' && name === 'ingest_google_lead_with_acknowledgement' ||
             kind === 'receiver' && name === 'ingest_external_lead' && args?.p_provider === 'google_ads')) return unavailable();
       if (!Object.hasOwn(definitions,name)) return unavailable();
       const definition = definitions[name];
@@ -148,8 +155,8 @@ export function createPreviewAcknowledgementDatabase(
           const parameters = definition.types.map((type,index) => `$${index+1}::${type}`).join(',');
           // Function and types were selected from a closed source allowlist.
           const statement = definition.rows
-            ? `select to_jsonb(result) as result from public.${name}(${parameters}) as result`
-            : `select to_jsonb(public.${name}(${parameters})) as result`;
+            ? `select to_jsonb(result) as result from ${definition.schema ?? 'public'}.${name}(${parameters}) as result`
+            : `select to_jsonb(${definition.schema ?? 'public'}.${name}(${parameters})) as result`;
           const rows = await tx.unsafe(statement,values);
           if (definition.rows) return rows.map(row => row.result);
           if (rows.length !== 1) throw new Error('result');

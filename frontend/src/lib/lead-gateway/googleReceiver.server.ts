@@ -8,6 +8,7 @@ import {createGoogleWebhookTestHandler} from './googleWebhookTest.server.ts';
 type Environment=Readonly<Record<string,string|undefined>>;
 type Dependencies=Readonly<{
   ingestor?:Parameters<typeof createGoogleIngressHandler>[1];
+  permissionCapture?:Parameters<typeof createGoogleIngressHandler>[3];
   receiver?:Parameters<typeof createGoogleWebhookTestHandler>[1];
 }>;
 /** Stable Google-only edge entry point. No worker, CRM pages, auth session,
@@ -16,7 +17,7 @@ type Dependencies=Readonly<{
  */
 export function createGoogleReceiver(environment:Environment=process.env,dependencies:Dependencies={}){
   const snapshot=Object.freeze({...environment});
-  const ordinary=createGoogleIngressHandler(snapshot,dependencies.ingestor,dependencies.receiver);
+  const ordinary=createGoogleIngressHandler(snapshot,dependencies.ingestor,dependencies.receiver,dependencies.permissionCapture);
   const demonstration=createGoogleWebhookTestHandler(snapshot,dependencies.receiver);
   return async(request:Request):Promise<Response>=>{
     const url=new URL(request.url);

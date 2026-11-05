@@ -1,3 +1,4 @@
+import {createFormPermissionCapture,type FormPermissionCapture} from './formPermissionCapture.server.ts';
 import 'server-only';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {readBoundedBody} from './boundedBody.server.ts';
@@ -29,7 +30,8 @@ function decode(bytes:Uint8Array):unknown {
  * Preview accepts explicitly marked test payloads. The separate stable receiver
  * exercises ordinary Google payload semantics for ONE configured test phone;
  * it never widens the recipient scope or creates contact permission. */
-export function createGoogleIngressHandler(environment:Environment=process.env,databaseFactory?:()=>MetaIngestionRpc & {close():Promise<void>},reviewDatabaseFactory?:()=>MetaIngestionRpc & {close():Promise<void>}) {
+export function createGoogleIngressHandler(environment:Environment=process.env,databaseFactory?:()=>MetaIngestionRpc & {close():Promise<void>},reviewDatabaseFactory?:()=>MetaIngestionRpc & {close():Promise<void>},permissionCapture?:FormPermissionCapture) {
+  const capture=permissionCapture??createFormPermissionCapture(environment,'google_ads');
   const key=environment.FEH_GOOGLE_WEBHOOK_KEY;
   const formId=environment.FEH_GOOGLE_FORM_ID;
   const campaignId=environment.FEH_GOOGLE_CAMPAIGN_ID;
@@ -85,8 +87,11 @@ export function createGoogleIngressHandler(environment:Environment=process.env,d
       if(row.outcome==='rejected')return response(400);
       if(!Number.isSafeInteger(row.lead_id) || (row.lead_id as number)<=0)return response(503);
       if(reviewOnly)return response(['accepted','duplicate'].includes(row.outcome as string)?200:503);
-      return response((row.outcome==='accepted' && row.acknowledgement_reserved===true) ||
-        (row.outcome==='duplicate' && row.acknowledgement_reserved===false)?200:503);
+      const saved=(row.outcome==='accepted' && row.acknowledgement_reserved===true) ||
+        (row.outcome==='duplicate' && row.acknowledgement_reserved===false);
+      if(!saved) return response(503);
+      if(capture && !await capture({leadId:row.lead_id as number,submittedAt:payload.lead_submit_time as string,fields:payload.user_column_data})) return response(503);
+      return response(200);
     }catch{return response(503);}finally{
         // Cleanup cannot change the confirmed RPC outcome or expose private
         // connection diagnostics. A failed RPC still returns its generic 503.

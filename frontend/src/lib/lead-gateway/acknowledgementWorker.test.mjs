@@ -64,3 +64,24 @@ test('runner rejects invalid/sender destination before database access',async()=
     assert.equal((await runLeadAcknowledgementOnce(h.dependencies.database(),{from:env.TELNYX_MESSAGING_FROM,allowedPhone:phone},h.dependencies.transport())).status,'blocked');
   assert.equal(h.calls.rpc.length,0);
 });
+
+test('automatic mode uses separate authority discovery, no legacy fallback or caller IDs',async()=>{
+  const h=harness();const seen=[];let closed=0;
+  const handler=createAcknowledgementWorkerHandler({...env,FEH_ACK_AUTOMATIC_ENABLED:'true'},{...h.dependencies,
+    authority:()=>({async rpc(name,args){seen.push({name,args});return {data:[],error:null};},async close(){closed++;}})});
+  const result=await handler(request());assert.equal(result.status,200);
+  assert.equal((await result.json()).status,'idle');
+  assert.deepEqual(seen,[{name:'select_enquiry',args:{p_allowed_phone:env.FEH_ACK_PREVIEW_ALLOWED_PHONE}}]);
+  assert.equal(h.calls.rpc.length,0);assert.equal(h.calls.closed,1);assert.equal(closed,1);assert.equal(h.calls.sends,0);
+});
+test('automatic authority connection unavailable never falls back to previously supplied authorizations',async()=>{
+  const h=harness();const result=await createAcknowledgementWorkerHandler({...env,FEH_ACK_AUTOMATIC_ENABLED:'true'},
+    {...h.dependencies,authority:()=>null})(request());
+  assert.equal(result.status,503);assert.equal(h.calls.rpc.length,0);assert.equal(h.calls.closed,1);assert.equal(h.calls.sends,0);
+});
+for(const data of [null,{},[{},{}],[{lead_id:'42'}],[{lead_id:-1}]])test('ambiguous automatic candidate remains held without dispatch',async()=>{
+  const h=harness();let calls=0;
+  const result=await createAcknowledgementWorkerHandler({...env,FEH_ACK_AUTOMATIC_ENABLED:'true'},{...h.dependencies,
+    authority:()=>({async rpc(){calls++;return {data,error:null};},async close(){}})})(request());
+  assert.equal((await result.json()).status,'evaluation_failed');assert.equal(calls,1);assert.equal(h.calls.rpc.length,0);assert.equal(h.calls.sends,0);
+});

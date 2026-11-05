@@ -73,7 +73,8 @@ create function feh_ack_authority_private.approve_rule(
 ) returns uuid language plpgsql volatile security definer set search_path='' as $$
 declare b feh_ack_authority_private.bindings%rowtype; g bigint; r uuid; t timestamptz;
 begin
-  if auth.uid() is null or auth.jwt()->>'aal' is distinct from 'aal2' or
+  if auth.uid() is null or auth.jwt()->>'iss' is distinct from 'https://vredwhyphrhsudggrsen.supabase.co/auth/v1' or
+    auth.jwt()->>'aal' is distinct from 'aal2' or
     auth.jwt()->>'is_anonymous' is distinct from 'false' then return null; end if;
   select * into b from feh_ack_authority_private.bindings where id=p_binding_id for share;
   if not found or b.owner_id is distinct from auth.uid() or
@@ -441,3 +442,83 @@ begin
   return 'recorded';
 end;
 $$;
+
+
+-- Authenticated owner surface. No binding editor, grant creator, STOP release,
+-- dispatcher or implicit adoption of the old fictional review is exposed.
+create function public.get_ack_automatic_rule_review()
+returns jsonb language plpgsql stable security definer set search_path='' as $$
+begin
+  if auth.uid() is null or auth.jwt()->>'iss' is distinct from 'https://vredwhyphrhsudggrsen.supabase.co/auth/v1' or
+    auth.jwt()->>'aal' is distinct from 'aal2' or auth.jwt()->>'is_anonymous' is distinct from 'false'
+    then return '{"status":"blocked"}'::jsonb; end if;
+  return pg_catalog.jsonb_build_object('status','ready','bindings',coalesce((select pg_catalog.jsonb_agg(x.record) from (
+    select pg_catalog.jsonb_build_object(
+      'id',b.id,'fingerprint',pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.to_jsonb(b)::text,'UTF8')),'hex'),
+      'provider',b.provider,'form_id',b.form_id,'page_id',b.page_id,'campaign_id',b.campaign_id,
+      'question_key',b.question_key,'yes_answer',b.affirmative_answer,'no_answer',b.negative_answer,
+      'notice_version',b.notice_version,'notice_text',b.notice_text,'review_reference',b.form_review_reference,
+      'phone',b.allowed_phone,'cap',1,'window_minutes',15,
+      'can_approve',r.id is null and exists(select 1 from public.execution_authorisers g where
+        g.user_id=b.owner_id and g.capability='execution_authoriser' and g.revoked_at is null),
+      'rule_id',r.id,'approved_at',r.approved_at,'expires_at',r.expires_at,
+      'expired',coalesce(r.expires_at<=pg_catalog.statement_timestamp(),false),
+      'used',exists(select 1 from feh_ack_authority_private.authorizations a where a.rule_id=r.id),
+      'execution_state',coalesce((select case
+        when d.status='succeeded' then 'provider_accepted'
+        when d.status='failed' then 'provider_failed'
+        when d.status='indeterminate' then 'indeterminate'
+        when d.id is not null then 'prepared_review_required'
+        when q.status='claimed' then 'claimed_review_required'
+        else 'authorised_unclaimed' end
+        from feh_ack_authority_private.authorizations a
+        join public.lead_acknowledgements q on q.lead_id=a.lead_id
+        left join public.execution_dispatch_attempts d on d.execution_authorization_id=a.authorization_id
+        where a.rule_id=r.id),'not_authorised'),
+      'message','Free Energy Help: Thanks for your enquiry. Dalbir will call from 01332 605506 during business hours. Reply STOP to stop automated texts.'
+    ) record from feh_ack_authority_private.bindings b left join feh_ack_authority_private.rules r on r.binding_id=b.id
+    where b.owner_id=auth.uid() order by b.id limit 20
+  ) x),'[]'::jsonb));
+end;
+$$;
+create function public.approve_ack_automatic_rule(p_binding_id uuid,p_fingerprint text,p_reference uuid)
+returns text language plpgsql volatile security definer set search_path='' as $$
+declare b feh_ack_authority_private.bindings%rowtype; r uuid;
+begin
+  if auth.uid() is null or auth.jwt()->>'iss' is distinct from 'https://vredwhyphrhsudggrsen.supabase.co/auth/v1' or
+    auth.jwt()->>'aal' is distinct from 'aal2' or auth.jwt()->>'is_anonymous' is distinct from 'false' or p_reference is null
+    then return 'blocked'; end if;
+  select * into b from feh_ack_authority_private.bindings where id=p_binding_id and owner_id=auth.uid() for share;
+  if not found or p_fingerprint is distinct from pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(pg_catalog.to_jsonb(b)::text,'UTF8')),'hex')
+    then return 'blocked'; end if;
+  r:=feh_ack_authority_private.approve_rule(b.id,b.notice_text,
+    'Free Energy Help: Thanks for your enquiry. Dalbir will call from 01332 605506 during business hours. Reply STOP to stop automated texts.',
+    'owner-screen:'||p_reference::text);
+  if r is null then return 'blocked'; end if;
+  insert into public.audit_log(action,actor_id,entity_type,entity_id,correlation_id,result,metadata)
+    values('ack_staging_rule_adopted',auth.uid(),'ack_rule',r::text,p_reference,'success',
+      pg_catalog.jsonb_build_object('binding_id',b.id,'fingerprint',p_fingerprint,'cap',1,'window_minutes',15,'dispatch_performed',false));
+  return 'approved';
+end;
+$$;
+revoke all on function public.get_ack_automatic_rule_review(),public.approve_ack_automatic_rule(uuid,text,uuid)
+  from public,anon,authenticated,service_role;
+grant execute on function public.get_ack_automatic_rule_review(),public.approve_ack_automatic_rule(uuid,text,uuid) to authenticated;
+
+-- Durable discovery after process restart; never resets a claim or attempt.
+-- Selection is advisory. authorize_enquiry and existing claim recheck all gates.
+create function feh_ack_authority_private.select_enquiry(p_allowed_phone text)
+returns table(lead_id bigint) language sql stable security definer set search_path='' as $$
+select p.lead_id from feh_ack_authority_private.permissions p
+join feh_ack_authority_private.bindings b on b.id=p.binding_id
+join feh_ack_authority_private.rules r on r.binding_id=b.id
+join public.lead_acknowledgements q on q.lead_id=p.lead_id
+join public.execution_authorisers g on g.id=r.grant_id and g.user_id=r.owner_id and g.revoked_at is null and g.capability='execution_authoriser'
+where b.allowed_phone=p_allowed_phone and p.answer='yes' and not p.conflicted
+  and r.expires_at>pg_catalog.statement_timestamp() and p.submitted_at between r.approved_at and r.expires_at
+  and q.status='awaiting_authority' and q.template_version='feh-callback-ack-v2'
+  and not exists(select 1 from feh_ack_authority_private.authorizations a where a.rule_id=r.id and a.lead_id<>p.lead_id)
+order by p.recorded_at,p.lead_id limit 1;
+$$;
+revoke all on function feh_ack_authority_private.select_enquiry(text) from public,anon,authenticated,service_role;
+grant execute on function feh_ack_authority_private.select_enquiry(text) to feh_ack_rule_authorizer;

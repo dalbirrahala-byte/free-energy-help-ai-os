@@ -136,3 +136,40 @@ test('callback database exposes only one parameterized receipt RPC with short lo
   assert.equal(calls.at(-1).sql,'select to_jsonb(public.record_acknowledgement_callback($1::uuid,$2::uuid,$3::uuid,$4::timestamptz,$5::text,$6::text,$7::text,$8::text)) as result');
   assert.equal(calls.at(-1).args.length,8);
 });
+
+const authorityEnv=()=>({...env(),FEH_ACK_PERMISSION_CAPTURE_ENABLED:'true',FEH_ACK_AUTOMATIC_ENABLED:'true',
+  FEH_ACK_PERMISSION_DATABASE_URL:url('worker').replace('feh_ack_preview_worker','feh_ack_permission_recorder'),
+  FEH_ACK_AUTHORIZER_DATABASE_URL:url('worker').replace('feh_ack_preview_worker','feh_ack_rule_authorizer')});
+for(const kind of ['permission','authorizer']) {
+  const flag=kind==='permission'?'FEH_ACK_PERMISSION_CAPTURE_ENABLED':'FEH_ACK_AUTOMATIC_ENABLED';
+  const credential=kind==='permission'?'FEH_ACK_PERMISSION_DATABASE_URL':'FEH_ACK_AUTHORIZER_DATABASE_URL';
+  test(`${kind}: no production, substituted identity or absent explicit enablement`,()=>{
+    assert.ok(readPreviewDatabaseConfiguration(kind,authorityEnv()));
+    for(const changes of [{[flag]:'false'},{[credential]:url('worker')},{[credential]:url('ingestor')},
+      {VERCEL_ENV:'production'},{NEXT_PUBLIC_SUPABASE_URL:'https://kupuswwutonsagftivkv.supabase.co'}])
+      assert.equal(createPreviewAcknowledgementDatabase(kind,{...authorityEnv(),...changes},()=>assert.fail('must not connect')),null);
+  });
+  test(`${kind}: fixed private RPC boundary cannot approve rules, change STOP or use the other identity`,async()=>{
+    const calls=[];const login=kind==='permission'?'feh_ack_permission_recorder':'feh_ack_rule_authorizer';
+    const client=createPreviewAcknowledgementDatabase(kind,authorityEnv(),()=>({async begin(work){return work({async unsafe(sql,args=[]){
+      calls.push({sql,args});
+      if(sql.startsWith('select current_user'))return [{role:login,login,database:'postgres',elevated:false,raw_queue_access:false}];
+      if(sql.startsWith('select to_jsonb'))return [{result:kind==='permission'?'recorded':{lead_id:42}}];return [];
+    }});},async end(){}}));
+    for(const name of ['approve_ack_automatic_rule','get_ack_automatic_rule_review','stop_execution','release_execution','prepare_execution_dispatch',
+      kind==='permission'?'authorize_enquiry':'record_permission',kind==='permission'?'select_enquiry':'ingest_google_lead_with_acknowledgement'])
+      assert.ok((await client.rpc(name,{})).error);
+    assert.equal(calls.length,0);
+    const name=kind==='permission'?'record_permission':'select_enquiry';
+    const args=kind==='permission'?{p_binding_id:'00000000-0000-4000-8000-000000000001',p_lead_id:42,p_submitted_at:'2026-11-05T23:00:00Z',p_question_key:'synthetic',p_answer:'Yes'}:{p_allowed_phone:'+447700900001'};
+    assert.equal((await client.rpc(name,args)).error,null);
+    assert.ok(calls.at(-1).sql.includes(`feh_ack_authority_private.${name}(`));
+    assert.ok(!calls.at(-1).sql.includes('synthetic'));assert.deepEqual(calls.at(-1).args,Object.values(args));
+  });
+}
+test('public intake runtime cannot obtain authorizer even when its flag and credential are present',()=>{
+  const edge={...authorityEnv(),VERCEL_ENV:undefined,FEH_INTAKE_RUNTIME:'supabase-edge',SUPABASE_URL:`https://${ref}.supabase.co`,
+    FEH_INTAKE_RECEIVER_ENABLED:'true',FEH_META_FORM_TEST_ENABLED:'true'};
+  assert.ok(readPreviewDatabaseConfiguration('permission',edge));
+  assert.equal(createPreviewAcknowledgementDatabase('authorizer',edge,()=>assert.fail('must not connect')),null);
+});

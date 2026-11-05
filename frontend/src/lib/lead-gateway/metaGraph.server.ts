@@ -5,7 +5,7 @@ import type {MetaLeadDetailsReader} from './ingestMetaLeadAcknowledgement.server
 
 /** One authenticated, fixed-origin GET for an already HMAC-verified lead
  * reference. No listings, advertising writes, redirects or token in the URL. */
-export function createMetaGraphReader(config: Readonly<{pageId:string;formId:string;appSecret:string;pageToken:string}>,fetchImpl:typeof fetch=fetch): MetaLeadDetailsReader | null {
+export function createMetaGraphReader(config: Readonly<{pageId:string;formId:string;appSecret:string;pageToken:string;includeCampaign?:boolean}>,fetchImpl:typeof fetch=fetch): MetaLeadDetailsReader | null {
   const {pageId,formId,appSecret,pageToken}=config;
   if (!/^\d{1,100}$/.test(pageId) || !/^\d{1,100}$/.test(formId) ||
       !/^[\x21-\x7e]{16,4096}$/.test(appSecret) || !/^[\x21-\x7e]{16,8192}$/.test(pageToken)) return null;
@@ -13,7 +13,7 @@ export function createMetaGraphReader(config: Readonly<{pageId:string;formId:str
   return async reference => {
     if(reference.pageId!==pageId || reference.formId!==formId || !/^\d{6,100}$/.test(reference.leadId)) throw new Error('meta_reference');
     const url=new URL(`https://graph.facebook.com/v26.0/${reference.leadId}`);
-    url.searchParams.set('fields','id,form_id,created_time,field_data');
+    url.searchParams.set('fields',config.includeCampaign?'id,form_id,created_time,field_data,campaign_id':'id,form_id,created_time,field_data');
     url.searchParams.set('appsecret_proof',proof);
     try {
       const response=await fetchImpl(url.toString(),{method:'GET',headers:{Authorization:`Bearer ${pageToken}`,Accept:'application/json'},

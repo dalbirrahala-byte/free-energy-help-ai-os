@@ -1,3 +1,4 @@
+import type {FormPermissionCapture} from './formPermissionCapture.server.ts';
 // Server composition: signature + configured scope -> matching Graph details
 // -> atomic CRM receipt/reservation. This never grants permission or sends SMS.
 import { reviewMetaWebhook, type MetaLeadReference } from './metaWebhookReview.server.ts';
@@ -42,6 +43,7 @@ function extractDetails(raw: unknown, ref: MetaLeadReference) {
   }
   const normalized = normalizeMetaLead({
     leadId: ref.leadId, formId: ref.formId, createdTime: raw.created_time,
+    campaignId: typeof raw.campaign_id==='string' && /^[1-9]\d{0,99}$/.test(raw.campaign_id)?raw.campaign_id:null,
     email: selected.get('email'), phoneNumber: selected.get('phone_number'),
     fullName: selected.get('full_name'), companyName: selected.get('company_name'),
     // Submission is not marketing consent. No arbitrary payload flag is used.
@@ -59,6 +61,7 @@ export async function ingestMetaLeadAcknowledgements(
   config: Readonly<{ appSecret: string; pageId: string; formId: string; allowedPhone?: string; allowedLeadId?: string }>,
   readDetails: MetaLeadDetailsReader,
   ingestor: MetaIngestionRpc,
+  permissionCapture?: FormPermissionCapture,
 ): Promise<MetaAcknowledgementIngressResult> {
   let accepted = 0;
   let duplicates = 0;
@@ -73,7 +76,8 @@ export async function ingestMetaLeadAcknowledgements(
        reviewed.references.some(reference => reference.leadId !== config.allowedLeadId))) return result('rejected');
   try {
     for (const reference of reviewed.references) {
-      const normalized = extractDetails(await readDetails(reference), reference);
+      const details=await readDetails(reference);
+      const normalized = extractDetails(details, reference);
       if (!normalized?.success) return result('rejected');
       const lead = normalized.lead;
       if (config.allowedPhone !== undefined) {
@@ -98,6 +102,8 @@ export async function ingestMetaLeadAcknowledgements(
       if (row.outcome === 'accepted' && row.acknowledgement_reserved === true) accepted++;
       else if (row.outcome === 'duplicate' && row.acknowledgement_reserved === false) duplicates++;
       else return result('retry_required');
+      if(permissionCapture && !await permissionCapture({leadId:row.lead_id as number,submittedAt:lead.receivedAt,
+        fields:record(details)?details.field_data:undefined})) return result('retry_required');
     }
     return result('persisted');
   } catch {

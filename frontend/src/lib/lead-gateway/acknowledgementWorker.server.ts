@@ -1,3 +1,4 @@
+import {runNextAutomaticAcknowledgementOnce} from '../execution-dispatch/runAutomaticAcknowledgementOnce.ts';
 import 'server-only';
 import {createHash, timingSafeEqual} from 'node:crypto';
 import {ACK_STAGING_PROJECT, createPreviewAcknowledgementDatabase} from './previewDatabase.server.ts';
@@ -8,7 +9,7 @@ import type {TelnyxSmsTransport} from '../execution-dispatch/telnyxSmsResult.ts'
 
 type Environment = Readonly<Record<string, string | undefined>>;
 type Database = AcknowledgementWorkerDatabase & {close(): Promise<void>};
-type Dependencies = {database?: () => Database | null; transport?: () => TelnyxSmsTransport | null};
+type Dependencies = {authority?: () => Database | null; database?: () => Database | null; transport?: () => TelnyxSmsTransport | null};
 const response = (status: number, body: Record<string, unknown>) =>
   Response.json(body, {status, headers: {'Cache-Control': 'no-store'}});
 const error = (status: number) => response(status, {status: 'unavailable'});
@@ -43,17 +44,26 @@ export function createAcknowledgementWorkerHandler(environment: Environment = pr
       if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).length) return error(400);
     } catch { return error(400); }
     let database: Database | null = null;
+    let authority: Database | null = null;
     try {
       const transport = dependencies.transport ? dependencies.transport() : createPreviewTelnyxAcknowledgementTransport(snapshot);
       if (!transport) return error(503);
       database = dependencies.database ? dependencies.database() : createPreviewAcknowledgementDatabase('worker', snapshot);
       if (!database) return error(503);
-      const result = await runLeadAcknowledgementOnce(database, {from, allowedPhone}, transport);
+      const automatic=snapshot.FEH_ACK_AUTOMATIC_ENABLED==='true';
+      if(automatic) {
+        authority=dependencies.authority?dependencies.authority():createPreviewAcknowledgementDatabase('authorizer',snapshot);
+        if(!authority) return error(503);
+      }
+      const result = automatic && authority
+        ? await runNextAutomaticAcknowledgementOnce(authority,database,{enabled:true,projectRef:ACK_STAGING_PROJECT,allowedPhone},transport)
+        : await runLeadAcknowledgementOnce(database, {from, allowedPhone}, transport);
       // 200 means this invocation finished, not that delivery was confirmed.
       // Do not emit retryable status codes after a potentially committed claim.
       return response(200, {status: result.status === 'succeeded' ? 'provider_accepted' : result.status,
         attemptId: result.attemptId, automaticRetry: false, deliveryConfirmed: false});
     } catch { return response(200, {status: 'evaluation_failed', automaticRetry: false, deliveryConfirmed: false}); }
-    finally { try { await database?.close(); } catch { /* no private diagnostics */ } }
+    finally { try { await database?.close(); } catch { /* no private diagnostics */ }
+      try { await authority?.close(); } catch { /* no private diagnostics */ } }
   };
 }

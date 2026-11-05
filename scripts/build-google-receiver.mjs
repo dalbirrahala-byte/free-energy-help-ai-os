@@ -5,7 +5,7 @@ import {stripTypeScriptTypes} from 'node:module';
 import {createHash} from 'node:crypto';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const destination=resolve(process.argv[2]??'/tmp/feh-google-receiver');
-const names=['googleReceiver.server','googleReceiverConfiguration.server','googleIngress.server',
+const names=['formPermissionCapture.server','googleReceiver.server','googleReceiverConfiguration.server','googleIngress.server',
   'googleWebhookTest.server','boundedBody.server','previewDatabase.server','supabaseCa.server'];
 const files=[];
 for(const name of names){
@@ -15,7 +15,7 @@ for(const name of names){
   files.push({file:`lib/${name}.mjs`,data});
 }
 // No administrator secret, worker token, SMS credential or Meta token is read.
-const settings=['SUPABASE_URL','FEH_GOOGLE_RECEIVER_ENABLED','FEH_GOOGLE_RECEIVER_SCOPE',
+const settings=['FEH_ACK_PERMISSION_CAPTURE_ENABLED','FEH_ACK_PERMISSION_DATABASE_URL','FEH_ACK_GOOGLE_PERMISSION_BINDING_ID','FEH_ACK_GOOGLE_PERMISSION_QUESTION_KEY','SUPABASE_URL','FEH_GOOGLE_RECEIVER_ENABLED','FEH_GOOGLE_RECEIVER_SCOPE',
   'FEH_GOOGLE_RECEIVER_TEST_STARTED_AT','FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT',
   'FEH_GOOGLE_INGRESS_ENABLED','FEH_ACK_DATABASE_ENABLED','FEH_GOOGLE_FORM_ID','FEH_GOOGLE_CAMPAIGN_ID',
   'FEH_GOOGLE_WEBHOOK_KEY','FEH_ACK_PREVIEW_ALLOWED_PHONE','FEH_ACK_INGESTOR_DATABASE_URL','FEH_INTAKE_RECEIVER_DATABASE_URL'];

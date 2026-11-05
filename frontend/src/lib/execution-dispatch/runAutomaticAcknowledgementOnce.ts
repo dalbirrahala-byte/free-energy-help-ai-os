@@ -6,8 +6,8 @@ type Config = Readonly<{enabled: boolean; projectRef: string; allowedPhone: stri
 const mobile = /^\+447[1-57-9]\d{8}$/;
 const positive = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
 
-/** Dormant composition: no route, timer, credentials or real transport. The
- * authority client maps ONLY to private.authorize_enquiry; the independent
+/** Transport-injected composition: no timer, credentials or HTTP calls here. The
+ * authority client maps only to private discovery/authorization; the independent
  * worker client retains ONLY claim/consume/prepare/precall/finalize rights.
  * A fresh invocation after restart receives the same persisted authorization.
  * No retries inside this operation, and no expiry/claim/attempt reset. */
@@ -41,4 +41,20 @@ export async function runAutomaticAcknowledgementOnce(
     // Database/transport might have committed. Durable reconciliation only.
     return {status: 'evaluation_failed', attemptId: null};
   }
+}
+
+/** Restart-safe discovery from durable permission/rule state. No in-memory job
+ * is required, no claim is reset, and no loop follows a held or uncertain result. */
+export async function runNextAutomaticAcknowledgementOnce(
+  authority:AcknowledgementWorkerDatabase,worker:AcknowledgementWorkerDatabase,config:Config,transport:TelnyxSmsTransport,
+):Promise<LeadAcknowledgementResult | {status:'idle';attemptId:null}> {
+  if(config.enabled!==true || config.projectRef!=='vredwhyphrhsudggrsen' || !mobile.test(config.allowedPhone) ||
+    config.allowedPhone==='+447427851020') return {status:'blocked',attemptId:null};
+  try {
+    const result=await authority.rpc('select_enquiry',{p_allowed_phone:config.allowedPhone});
+    if(result.error || !Array.isArray(result.data) || result.data.length>1) return {status:'evaluation_failed',attemptId:null};
+    if(result.data.length===0) return {status:'idle',attemptId:null};
+    if(!result.data[0] || !positive(result.data[0].lead_id)) return {status:'evaluation_failed',attemptId:null};
+    return runAutomaticAcknowledgementOnce(authority,worker,result.data[0].lead_id,config,transport);
+  } catch {return {status:'evaluation_failed',attemptId:null};}
 }
