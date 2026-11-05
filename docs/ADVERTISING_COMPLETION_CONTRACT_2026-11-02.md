@@ -1,6 +1,6 @@
 # Advertising completion contract — 2 November 2026
 
-Latest implementation evidence (5 November): [SMS callback construction and local verification](SMS_CALLBACK_COMPLETION_2026-11-05.md). Customer STOP/delivery wiring is constructed and locally tested; hosted installation and the overall five-group acceptance remain pending. Automatic authority is not complete. This pointer does not alter the acceptance requirements below.
+Latest implementation evidence (5 November): [Automatic SMS authority first build and local verification](SMS_AUTOMATIC_AUTHORITY_BUILD_2026-11-05.md), following [SMS callback construction](SMS_CALLBACK_COMPLETION_2026-11-05.md). A bounded rule/permission-to-authority bridge now reaches the existing worker in isolated mock tests. Real source capture, owner/runtime wiring, hosted installation and the overall five-group acceptance remain pending. This pointer does not alter the acceptance requirements below or approve launch.
 
 Prepared for Dalbir's request `39c93741-aa09-457f-86ff-0982a35c8e5e`: finish the permanent Google connection, automatic acknowledgement authorization, customer STOP handling and final acceptance. This is the concrete implementation/release plan. It does not assert that these outstanding components are complete or grant new live authority.
 
