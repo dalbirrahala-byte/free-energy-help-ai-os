@@ -4,7 +4,7 @@ import {SUPABASE_DATABASE_CA} from './supabaseCa.server.ts';
 import {isGoogleReceiverEnabled} from './googleReceiverConfiguration.server.ts';
 
 export const ACK_STAGING_PROJECT = 'vredwhyphrhsudggrsen';
-type Kind = 'ingestor' | 'worker' | 'receiver';
+type Kind = 'ingestor' | 'worker' | 'receiver' | 'callback';
 type Value = string | number | null;
 type Row = Record<string, unknown>;
 type Transaction = { unsafe(query: string, args?: Value[]): PromiseLike<Row[]> };
@@ -16,6 +16,7 @@ type Configuration = Readonly<{
 }>;
 type Definition = { kind: Kind; keys: readonly string[]; types: readonly string[]; rows: boolean };
 const definitions: Record<string, Definition> = {
+  record_acknowledgement_callback: { kind: 'callback', keys: ['p_event_id','p_message_id','p_profile_id','p_occurred_at','p_event_type','p_delivery_status','p_from','p_to'], types: ['uuid','uuid','uuid','timestamptz','text','text','text','text'], rows: false },
   ingest_external_lead: { kind: 'receiver', keys: ['p_provider','p_external_lead_id','p_provider_created_at','p_consent_status','p_company_name','p_contact_name','p_telephone','p_email','p_utm_campaign'], types: ['text','text','timestamptz','text','text','text','text','text','text'], rows: true },
   select_lead_acknowledgement_candidate: { kind: 'worker', keys: ['p_allowed_phone'], types: ['text'], rows: true },
   ingest_google_lead_with_acknowledgement: { kind: 'ingestor', keys: ['p_form_id','p_campaign_id','p_external_lead_id','p_provider_created_at','p_company_name','p_contact_name','p_telephone','p_email'], types: ['text','text','text','timestamptz','text','text','text','text'], rows: true },
@@ -29,6 +30,7 @@ const definitions: Record<string, Definition> = {
   complete_execution_dispatch_indeterminate: { kind: 'worker', keys: ['p_execution_dispatch_attempt_id','p_failure_code'], types: ['bigint','text'], rows: false },
 };
 const identities = {
+  callback: { login: 'feh_ack_preview_callback', role: 'feh_ack_preview_callback' },
   ingestor: { login: 'feh_ack_preview_ingestor', role: 'external_lead_ingestor' },
   worker: { login: 'feh_ack_preview_worker', role: 'execution_dispatch_worker' },
   receiver: { login: 'feh_intake_preview_receiver', role: 'feh_intake_preview_receiver' },
@@ -51,7 +53,8 @@ export function readPreviewDatabaseConfiguration(kind: Kind, environment: Readon
       environment.NEXT_PUBLIC_SUPABASE_URL !== `https://${ACK_STAGING_PROJECT}.supabase.co`) return null;
   try {
     if (kind === 'receiver' && !google && environment.FEH_INTAKE_RECEIVER_ENABLED !== 'true') return null;
-    const value = environment[kind === 'receiver' ? 'FEH_INTAKE_RECEIVER_DATABASE_URL' : kind === 'ingestor' ? 'FEH_ACK_INGESTOR_DATABASE_URL' : 'FEH_ACK_WORKER_DATABASE_URL'];
+    if (kind === 'callback' && environment.FEH_ACK_CALLBACK_ENABLED !== 'true') return null;
+    const value = environment[kind === 'callback' ? 'FEH_ACK_CALLBACK_DATABASE_URL' : kind === 'receiver' ? 'FEH_INTAKE_RECEIVER_DATABASE_URL' : kind === 'ingestor' ? 'FEH_ACK_INGESTOR_DATABASE_URL' : 'FEH_ACK_WORKER_DATABASE_URL'];
     if (!value || value.length > 2048) return null;
     const url = new URL(value);
     const login = identities[kind].login;
@@ -90,15 +93,17 @@ export function createPreviewAcknowledgementDatabase(
   try { pool = connect(configuration); } catch { return null; }
   let verificationFailure: string | null = null;
   async function bindIdentity(tx: Transaction) {
-    await tx.unsafe("set local statement_timeout = '10s'");
-    await tx.unsafe("set local lock_timeout = '3s'");
+    await tx.unsafe(kind === 'callback' ? "set local statement_timeout = '1500ms'" : "set local statement_timeout = '10s'");
+    await tx.unsafe(kind === 'callback' ? "set local lock_timeout = '750ms'" : "set local lock_timeout = '3s'");
     await tx.unsafe(`set local role ${identity.role}`);
     const check = await tx.unsafe(`select current_user as role, session_user as login, current_database() as database,
       r.rolsuper or r.rolbypassrls or r.rolcreaterole as elevated,
       has_table_privilege(current_user,'public.lead_acknowledgements','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') as raw_queue_access
+      ${kind === 'callback' ? ", has_table_privilege(current_user,'public.suppression_records','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') as raw_suppression_access" : ''}
       from pg_catalog.pg_roles r where r.rolname=current_user`);
     if (check.length !== 1 || check[0].role !== identity.role || check[0].login !== identity.login ||
         check[0].database !== 'postgres' || check[0].elevated !== false || check[0].raw_queue_access !== false) throw new Error('identity');
+    if (kind === 'callback' && check[0].raw_suppression_access !== false) throw new Error('identity');
   }
   return Object.freeze({
     /** Read-only connection proof; returns no credentials, records or SQL errors. */

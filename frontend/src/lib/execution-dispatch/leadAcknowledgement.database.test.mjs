@@ -549,3 +549,160 @@ test('receipt arriving before the provider message identity is saved is not sile
   await db.query('update execution_dispatch_attempts set provider_reference=$1 where id=$2',[f.message,f.attemptId]);
   assert.equal(await receive(f),'recorded');
 });
+
+// Full signed HTTP -> restricted callback RPC -> real suppression -> existing
+// dispatch pipeline. All contact/approval fixtures below are fictional/local.
+async function callbackFixture(recipient){
+  const hook=registerHooks({resolve(s,c,next){return s==='server-only'?{url:'data:text/javascript,export{}',shortCircuit:true}:next(s,c);}});
+  let create;
+  try{({createTelnyxAcknowledgementCallback:create}=await import('./telnyxDeliveryCallback.server.ts'));}
+  finally{hook.deregister();}
+  await db.query(`insert into feh_ack_callback_private.scope(id,profile_id,allowed_phone,approval_reference)
+    values(true,$1,$2,'synthetic local callback scope - not live authority')
+    on conflict(id) do update set allowed_phone=excluded.allowed_phone`,[receiptProfile,recipient]);
+  const pair=generateKeyPairSync('ed25519');const clock=Date.now();
+  const handler=create({enabled:true,projectId:'vredwhyphrhsudggrsen',messagingProfileId:receiptProfile,allowedPhone:recipient,
+    publicKey:pair.publicKey.export({format:'der',type:'spki'}).subarray(-32).toString('base64')},{async rpc(name,args){
+      assert.equal(name,'record_acknowledgement_callback');
+      const keys=['p_event_id','p_message_id','p_profile_id','p_occurred_at','p_event_type','p_delivery_status','p_from','p_to'];
+      try{
+        const data=await db.transaction(async tx=>{
+          await tx.exec('set local role feh_ack_preview_callback');
+          return (await tx.query('select public.record_acknowledgement_callback($1,$2,$3,$4,$5,$6,$7,$8) result',keys.map(k=>args[k]))).rows[0].result;
+        });
+        return {data,error:null};
+      }catch{return {data:null,error:{code:'LOCAL_CALLBACK_FAILED'}};}
+    }},()=>clock);
+  function input(kind='STOP',overrides={}){
+    return {event:receiptUuid(),message:receiptUuid(),time:new Date(clock).toISOString(),kind,...overrides};
+  }
+  async function send(value=input()){
+    const timestamp=String(Math.floor(clock/1000));
+    const body=JSON.stringify({data:{id:value.event,record_type:'event',event_type:'message.received',occurred_at:value.time,
+      payload:{id:value.message,record_type:'message',type:'SMS',direction:'inbound',messaging_profile_id:receiptProfile,
+        from:{phone_number:recipient},to:[{phone_number:'+447427851020'}],text:value.kind,errors:[]}}});
+    return handler(new Request('https://example.invalid/callback',{method:'POST',body,headers:{'content-type':'application/json',
+      'telnyx-timestamp':timestamp,'telnyx-signature-ed25519':sign(null,Buffer.from(`${timestamp}|${body}`),pair.privateKey).toString('base64')}}));
+  }
+  return {input,send};
+}
+const replyCount=async()=> (await db.query('select count(*)::int n from feh_ack_callback_private.customer_replies')).rows[0].n;
+const suppressionCount=async(recipient)=> (await db.query(`select count(*)::int n from suppression_records where
+  telephone=any($1) and evidence_reference like 'telnyx-sms-stop:%'`,[[recipient,'0'+recipient.slice(3),'00'+recipient.slice(1)]])).rows[0].n;
+
+test('signed customer STOP blocks a queued acknowledgement and replay/restart never sends',async()=>{
+  const recipient='+447700900051';const f=await fixture('meta',recipient);const callback=await callbackFixture(recipient);
+  const event=callback.input();const before=await replyCount();
+  assert.equal((await callback.send(event)).status,200);
+  assert.equal((await callback.send(event)).status,200);
+  const restarted=await callbackFixture(recipient);assert.equal((await restarted.send(event)).status,200);
+  assert.equal(await replyCount(),before+1);assert.equal(await suppressionCount(recipient),3);
+  assert.equal((await db.query("select evaluate_suppression_live($1) state",[f.intent])).rows[0].state,'suppressed');
+  const sends=[];assert.equal((await executeLeadAcknowledgement(worker,f,{from},transport(sends))).status,'blocked');
+  assert.equal(sends.length,0);
+  assert.equal((await db.query('select status from lead_acknowledgements where lead_id=$1',[f.leadId])).rows[0].status,'awaiting_authority');
+  assert.equal((await db.query("select count(*)::int n from audit_log where action='acknowledgement_customer_reply' and correlation_id=$1",[event.event])).rows[0].n,1);
+});
+test('STOP covers future contacts and UK phone representations; repeated STOP reuses suppression and START never reopens',async()=>{
+  const recipient='+447700900052';const callback=await callbackFixture(recipient);
+  assert.equal((await callback.send()).status,200);
+  assert.equal((await callback.send()).status,200);assert.equal(await suppressionCount(recipient),3);
+  assert.equal((await callback.send(callback.input('START'))).status,200);
+  for(const telephone of [recipient,'07700 900052','0044 7700 900052']){
+    const org=(await db.query("insert into organisations(legal_name) values('Synthetic future enquiry') returning id")).rows[0].id;
+    const contact=(await db.query('insert into contacts(organisation_id,phone) values($1,$2) returning id',[org,telephone])).rows[0].id;
+    const intent=(await db.query("select * from create_execution_intent($1,'SMS',$2)",[contact,'synthetic_future_'+(++external)])).rows[0].execution_intent_id;
+    assert.equal((await db.query('select evaluate_suppression_live($1) state',[intent])).rows[0].state,'suppressed');
+    assert.equal((await db.query('select create_execution_authorization($1) state',[intent])).rows[0].state,'blocked');
+  }
+  assert.equal(await suppressionCount(recipient),3);
+});
+test('STOP after preparation is rechecked at the final provider boundary',async()=>{
+  const recipient='+447700900053';const f=await fixture('google_ads',recipient);const callback=await callbackFixture(recipient);const sends=[];
+  const client={async rpc(name,args){const result=await worker.rpc(name,args);
+    if(name==='prepare_execution_dispatch')assert.equal((await callback.send()).status,200);
+    return result;
+  }};
+  assert.equal((await executeLeadAcknowledgement(client,f,{from},transport(sends))).status,'blocked');assert.equal(sends.length,0);
+  const before=(await db.query('select * from execution_dispatch_attempts where execution_authorization_id=$1',[f.authorizationId])).rows;
+  assert.equal(before.length,1);
+  assert.equal((await executeLeadAcknowledgement(worker,f,{from},transport(sends))).status,'blocked');assert.equal(sends.length,0);
+  assert.deepEqual((await db.query('select * from execution_dispatch_attempts where execution_authorization_id=$1',[f.authorizationId])).rows,before);
+});
+test('customer STOP/START preserve global STOP, grants, adapters, claims and authority',async()=>{
+  const recipient='+447700900054';const callback=await callbackFixture(recipient);
+  const snapshot=async()=> (await db.query(`select
+    (select count(*)::int from execution_authorisers) grants,
+    (select count(*)::int from execution_authorizations) authorizations,
+    (select count(*)::int from execution_dispatch_attempts) attempts,
+    (select count(*)::int from execution_provider_adapters where status='approved') adapters`)).rows[0];
+  assert.equal((await db.query("select stop_execution('synthetic closed callback test','local only') state")).rows[0].state,'stopped');
+  try{
+    const before=await snapshot();
+    assert.equal((await callback.send()).status,200);assert.equal((await callback.send(callback.input('START'))).status,200);
+    assert.deepEqual(await snapshot(),before);
+    assert.equal((await db.query('select evaluate_execution_emergency_stop() state')).rows[0].state,'stopped');
+  }finally{await db.query("select release_execution('synthetic cleanup','local only')");}
+});
+test('conflicting event/message replay cannot remove suppression or add repeated effects',async()=>{
+  const recipient='+447700900055';const callback=await callbackFixture(recipient);const event=callback.input();
+  assert.equal((await callback.send(event)).status,200);const before=await replyCount();
+  assert.equal((await callback.send({...event,kind:'START'})).status,503);
+  assert.equal((await callback.send({...event,event:receiptUuid()})).status,200);
+  assert.equal((await callback.send({...event,event:receiptUuid(),kind:'START'})).status,503);
+  assert.equal(await replyCount(),before);assert.equal(await suppressionCount(recipient),3);
+});
+test('callback audit failure rolls back opt-out and receipt; provider receipt retry then succeeds once',async()=>{
+  const recipient='+447700900056';const callback=await callbackFixture(recipient);const event=callback.input();const before=await replyCount();
+  await db.exec("alter table audit_log add constraint synthetic_reply_audit_failure check(action<>'acknowledgement_customer_reply') not valid");
+  try{assert.equal((await callback.send(event)).status,503);}finally{await db.exec('alter table audit_log drop constraint synthetic_reply_audit_failure');}
+  assert.equal(await replyCount(),before);assert.equal(await suppressionCount(recipient),0);
+  assert.equal((await callback.send(event)).status,200);assert.equal(await suppressionCount(recipient),3);
+});
+test('installed scope independently rejects wrong profile/destination and fails closed without coordination lock',async()=>{
+  const callback=await callbackFixture('+447700900057');
+  await db.query("update feh_ack_callback_private.scope set allowed_phone='+447700900058'");
+  assert.equal((await callback.send()).status,503);
+  await db.query("update feh_ack_callback_private.scope set allowed_phone='+447700900057',profile_id='00000000-0000-4000-8000-000000000099'");
+  assert.equal((await callback.send()).status,503);
+  await db.query('update feh_ack_callback_private.scope set profile_id=$1',[receiptProfile]);
+  await db.exec('delete from execution_control_lock');
+  try{assert.equal((await callback.send()).status,503);}finally{await db.exec('insert into execution_control_lock(id) overriding system value values(1)');}
+  assert.equal(await suppressionCount('+447700900057'),0);
+});
+test('callback role can only execute the scoped receipt wrapper; login and raw data remain closed',async()=>{
+  const signature='public.record_acknowledgement_callback(uuid,uuid,uuid,timestamptz,text,text,text,text)';
+  assert.equal((await db.query("select rolcanlogin from pg_roles where rolname='feh_ack_preview_callback'")).rows[0].rolcanlogin,false);
+  assert.equal((await db.query("select has_function_privilege('feh_ack_preview_callback',$1,'EXECUTE') allowed",[signature])).rows[0].allowed,true);
+  for(const role of ['anon','authenticated','service_role','external_lead_ingestor','execution_dispatch_worker'])
+    assert.equal((await db.query("select has_function_privilege($1,$2,'EXECUTE') allowed",[role,signature])).rows[0].allowed,false);
+  for(const table of ['suppression_records','leads','execution_authorizations','lead_acknowledgements','acknowledgement_delivery_receipts'])
+    assert.equal((await db.query("select has_table_privilege('feh_ack_preview_callback',$1,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE') allowed",['public.'+table])).rows[0].allowed,false);
+  for(const fn of ['public.create_execution_authorization(bigint)','public.stop_execution(text,text)','public.release_execution(text,text)',receiptFunction,
+    'public.claim_meta_lead_acknowledgement(bigint,bigint,bigint)'])
+    assert.equal((await db.query("select has_function_privilege('feh_ack_preview_callback',$1,'EXECUTE') allowed",[fn])).rows[0].allowed,false);
+});
+
+test('restricted unified callback records delivery once and rejects an unbound profile',async()=>{
+  const f=await deliveredFixture();await callbackFixture(phone);
+  const event=receiptUuid();const time=new Date().toISOString();
+  const record=async(profile)=>db.transaction(async tx=>{
+    await tx.exec('set local role feh_ack_preview_callback');
+    return (await tx.query(`select record_acknowledgement_callback($1,$2,$3,$4,'message.finalized','delivered','+447427851020',$5) result`,
+      [event,f.message,profile,time,phone])).rows[0].result;
+  });
+  assert.equal(await record('00000000-0000-4000-8000-000000000099'),'rejected');
+  assert.equal(await record(receiptProfile),'recorded');assert.equal(await record(receiptProfile),'duplicate');
+  assert.equal((await db.query('select count(*)::int n from acknowledgement_delivery_receipts where provider_event_id=$1',[event])).rows[0].n,1);
+});
+
+test('live suppression uses current time even when an older transaction crosses the opt-out effective time',async()=>{
+  const f=await fixture('meta','+447700900059');
+  await db.exec('begin');
+  try{
+    await db.query(`insert into suppression_records(telephone,channel,reason,requested_by,scope,starts_at)
+      values('+447700900059','SMS','CONSENT_WITHDRAWN','ORGANISATION','PERMANENT',transaction_timestamp()+interval '20 milliseconds')`);
+    await new Promise(resolve=>setTimeout(resolve,40));
+    assert.equal((await db.query('select evaluate_suppression_live($1) state',[f.intent])).rows[0].state,'suppressed');
+  }finally{await db.exec('rollback');}
+});

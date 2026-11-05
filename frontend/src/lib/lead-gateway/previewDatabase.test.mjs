@@ -103,3 +103,36 @@ test('staging trusts the official CA while retaining full hostname verification'
  assert.ok(Date.parse(cert.validTo)>Date.now());
  assert.equal(Object.hasOwn(config.ssl,'checkServerIdentity'),false);
 });
+
+const callbackEnv=()=>({...env(),FEH_ACK_CALLBACK_ENABLED:'true',FEH_ACK_CALLBACK_DATABASE_URL:url('callback')});
+test('callback identity accepts only staging Preview with its own enabled credential',()=>{
+  assert.ok(readPreviewDatabaseConfiguration('callback',callbackEnv()));
+  for(const changes of [{FEH_ACK_CALLBACK_ENABLED:'false'},{FEH_ACK_CALLBACK_ENABLED:undefined},
+    {FEH_ACK_CALLBACK_DATABASE_URL:url('worker')},{FEH_ACK_CALLBACK_DATABASE_URL:url('ingestor')},
+    {VERCEL_ENV:'production'},{VERCEL_ENV:undefined,FEH_INTAKE_RUNTIME:'supabase-google'},
+    {NEXT_PUBLIC_SUPABASE_URL:'https://kupuswwutonsagftivkv.supabase.co'}]){
+    assert.equal(createPreviewAcknowledgementDatabase('callback',{...callbackEnv(),...changes},()=>assert.fail('must not connect')),null);
+  }
+});
+test('callback database exposes only one parameterized receipt RPC with short lock timeout',async()=>{
+  const calls=[];
+  const client=createPreviewAcknowledgementDatabase('callback',callbackEnv(),()=>({async begin(work){return work({async unsafe(sql,args=[]){
+    calls.push({sql,args});
+    if(sql.startsWith('select current_user'))return [{role:'feh_ack_preview_callback',login:'feh_ack_preview_callback',
+      database:'postgres',elevated:false,raw_queue_access:false,raw_suppression_access:false}];
+    if(sql.startsWith('select to_jsonb'))return [{result:'recorded'}];return [];
+  }});},async end(){}}));
+  for(const name of ['create_execution_authorization','stop_execution','release_execution','record_acknowledgement_delivery_receipt',
+    'select_lead_acknowledgement_candidate','ingest_external_lead','prepare_execution_dispatch']){
+    assert.ok((await client.rpc(name,{})).error);
+  }
+  assert.equal(calls.length,0);
+  const result=await client.rpc('record_acknowledgement_callback',{p_event_id:'00000000-0000-4000-8000-000000000001',
+    p_message_id:'00000000-0000-4000-8000-000000000002',p_profile_id:'00000000-0000-4000-8000-000000000003',
+    p_occurred_at:'2026-11-05T16:00:00Z',p_event_type:'message.received',p_delivery_status:'STOP',p_from:'+447700900001',p_to:'+447427851020'});
+  assert.deepEqual(result,{data:'recorded',error:null});
+  assert.equal(calls[0].sql,"set local statement_timeout = '1500ms'");
+  assert.equal(calls[1].sql,"set local lock_timeout = '750ms'");
+  assert.equal(calls.at(-1).sql,'select to_jsonb(public.record_acknowledgement_callback($1::uuid,$2::uuid,$3::uuid,$4::timestamptz,$5::text,$6::text,$7::text,$8::text)) as result');
+  assert.equal(calls.at(-1).args.length,8);
+});

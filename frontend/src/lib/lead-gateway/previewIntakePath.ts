@@ -5,5 +5,6 @@ export function isPreviewIntakePath(path:string,environment:Readonly<Record<stri
   return environment.VERCEL_ENV==='preview' &&
     environment.NEXT_PUBLIC_SUPABASE_URL==='https://vredwhyphrhsudggrsen.supabase.co' &&
     (path==='/api/lead-intake/meta' || path==='/api/lead-intake/google' || path==='/api/lead-intake/readiness' ||
-      path==='/api/lead-acknowledgements/run');
+      path==='/api/lead-acknowledgements/run' ||
+      path==='/api/lead-acknowledgements/callback' && environment.FEH_ACK_CALLBACK_ENABLED==='true');
 }
