@@ -68,3 +68,13 @@ No further blanket approval is needed to construct the remaining dormant impleme
 - Recommended next gate: finish automatic permission/standing-rule authorisation construction, then review the complete bounded staging installation/test packet. Not a production launch approval.
 
 Official sources inspected: [Telnyx callback envelope](https://developers.telnyx.com/docs/messaging/messages/receiving-webhooks), [Telnyx opt-out classifications](https://developers.telnyx.com/docs/messaging/messages/advanced-opt-in-out), [Supabase database functions](https://supabase.com/docs/guides/database/functions), [Supabase changelog](https://supabase.com/changelog).
+
+## Publication and hosted build evidence
+
+Published normally with expected-head comparison from `b095f62d6d7def99b68a4178d2c05e1816bbb79d` to **`b3897c25efc199fa285f9eda065e42b70c3c2f19`**, tree **`8becdf41629be292a2c9ec973bbbdefafb79d532`**. Local construction commits `8b28854326969566030d462d28c81cd753866909` and `4395c4efd55162d8c1dcaaa84b53921f8bb98476` culminated in the identical tree. Fresh fetch verified the match and a clean local checkout. No force push, merge, PR-setting change or accepted-checkpoint change.
+
+The existing Git integration created Preview **`dpl_HH9v5U4JeTwprrANCYrQ2BYGY2VA`**, which is **READY** on this code commit; its target is Preview (`target:null`), not production. [Build record](https://vercel.com/free-energy-help/free-energy-help-ai-os/HH9v5U4JeTwprrANCYrQ2BYGY2VA). This is code delivery only: the new database migration, callback login/binding/credentials and callback activation remain unapplied.
+
+On that exact code head, [FEH Loop Engineering 42063823342](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/actions/runs/42063823342) passed. [Factory041 42063823649](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/actions/runs/42063823649), job `127372361461`, passed its tests/typecheck/lint and failed only **Reject migration or application-security drift from accepted checkpoint**. This is a remaining protected-path acceptance gate, not an SMS test failure or a reason to replace the accepted checkpoint. The new diff still needs appropriate acceptance despite the earlier reviewer approval.
+
+This final publication addendum changes documentation only. The source and migration tested above are unchanged. The final evidence-only commit containing this addendum is identifiable directly in Git history; it does not claim its own future checks have already passed.
