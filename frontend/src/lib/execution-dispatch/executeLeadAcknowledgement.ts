@@ -1,7 +1,7 @@
 // No caller-supplied destination/message/evidence booleans. Only the dedicated
 // worker's atomic database claim can provide the existing Factory 041 intent.
 import { executeDormantExecutionDispatchWorker } from './executionDispatchWorkerRuntime.ts';
-import { createTelnyxAcknowledgementAdapter, TELNYX_ACKNOWLEDGEMENT_ADAPTER_KEY } from './telnyxAcknowledgementAdapter.ts';
+import { createTelnyxAcknowledgementAdapter, TELNYX_ACKNOWLEDGEMENT_ADAPTER_KEY, TELNYX_ACKNOWLEDGEMENT_V2_ADAPTER_KEY } from './telnyxAcknowledgementAdapter.ts';
 import type { TelnyxSmsTransport } from './telnyxSmsResult.ts';
 import type { ExecutionIntentEnvelope } from './evaluateExecutionPreflight.ts';
 
@@ -20,7 +20,7 @@ function claimIntent(data: unknown, authorizationId: number, adapterId: number):
   const r = data[0] as Record<string, unknown>;
   if (r.claim_status !== 'claimed' || r.authorization_id !== authorizationId ||
       r.provider_adapter_id !== adapterId || !positive(r.contact_id) ||
-      !token(r.action_id) || !/^(?:meta:feh-callback-ack-v1:[0-9]{6,100}|google_ads:feh-callback-ack-v1:[A-Za-z0-9_-]{6,100})$/.test(r.action_id) ||
+      !token(r.action_id) || !/^(?:meta:feh-callback-ack-v[12]:[0-9]{6,100}|google_ads:feh-callback-ack-v[12]:[A-Za-z0-9_-]{6,100})$/.test(r.action_id) ||
       !token(r.idempotency_key) || !token(r.policy_version) ||
       typeof r.destination !== 'string' || !/^\+447[1-57-9]\d{8}$/.test(r.destination) ||
       typeof r.authorization_expires_at !== 'string' || !Number.isFinite(Date.parse(r.authorization_expires_at)) ||
@@ -29,7 +29,8 @@ function claimIntent(data: unknown, authorizationId: number, adapterId: number):
   return Object.freeze({
     authorizationRecordId: authorizationId, actionId: r.action_id, idempotencyKey: r.idempotency_key,
     contactId: r.contact_id, channel: 'SMS', destination: r.destination,
-    adapterKind: TELNYX_ACKNOWLEDGEMENT_ADAPTER_KEY, policyVersion: r.policy_version,
+    adapterKind: r.action_id.includes(':feh-callback-ack-v2:') ? TELNYX_ACKNOWLEDGEMENT_V2_ADAPTER_KEY : TELNYX_ACKNOWLEDGEMENT_ADAPTER_KEY,
+    policyVersion: r.policy_version,
     authorizationExpiresAt: r.authorization_expires_at, preflightEvaluatedAt: r.claimed_at,
     executionPerformed: false,
   });
@@ -58,11 +59,12 @@ export async function executeLeadAcknowledgement(
     const intent = claimIntent(receipt.data, ids.authorizationId, ids.providerAdapterId);
     if (!intent) return { status: 'evaluation_failed', attemptId: null };
     if (intent.destination === config.from) return { status: 'blocked', attemptId: null };
-    const adapter = createTelnyxAcknowledgementAdapter(config, transport);
+    const version = intent.adapterKind === TELNYX_ACKNOWLEDGEMENT_V2_ADAPTER_KEY ? 'v2' : 'v1';
+    const adapter = createTelnyxAcknowledgementAdapter({...config, version}, transport);
     return await executeDormantExecutionDispatchWorker(client, {
       executionAuthorizationId: ids.authorizationId, providerAdapterId: ids.providerAdapterId, intent,
       selectImplementation: binding => binding.providerAdapterId === ids.providerAdapterId &&
-        binding.providerAdapterKey === TELNYX_ACKNOWLEDGEMENT_ADAPTER_KEY && binding.channel === 'SMS'
+        binding.providerAdapterKey === intent.adapterKind && binding.channel === 'SMS'
         ? { providerAdapterId: ids.providerAdapterId, identity: adapter, adapter } : null,
       createContext: (committedIntent, preparedDispatch) => ({ intent: committedIntent, preparedDispatch }),
     });

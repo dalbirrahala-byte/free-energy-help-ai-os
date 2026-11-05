@@ -16,6 +16,9 @@ import type { ProviderDispatchAdapter } from "./providerDispatchAdapter.ts";
 import { classifyTelnyxSmsResult, type TelnyxSmsTransport } from "./telnyxSmsResult.ts";
 
 export const TELNYX_ACKNOWLEDGEMENT_ADAPTER_KEY = "TELNYX_FEH_CALLBACK_ACK_V1";
+export const TELNYX_ACKNOWLEDGEMENT_V2_ADAPTER_KEY = "TELNYX_FEH_CALLBACK_ACK_V2";
+export const FEH_ACKNOWLEDGEMENT_V2_COPY =
+  "Free Energy Help: Thanks for your enquiry. Dalbir will call from 01332 605506 during business hours. Reply STOP to stop automated texts.";
 export type TelnyxAcknowledgementContext = Readonly<{
   intent: ExecutionIntentEnvelope;
   preparedDispatch: PreparedExecutionDispatchEnvelope;
@@ -26,29 +29,33 @@ export type TelnyxAcknowledgementContext = Readonly<{
 const UK_MOBILE = /^\+447[1-57-9]\d{8}$/;
 
 export function createTelnyxAcknowledgementAdapter(
-  config: Readonly<{ from: string }>,
+  config: Readonly<{ from: string; version?: 'v1' | 'v2' }>,
   transport: TelnyxSmsTransport,
 ): ProviderDispatchAdapter<TelnyxAcknowledgementContext> {
   // Snapshot primitive config so mutation after construction cannot swap sender.
   const from = config.from;
+  const version = config.version ?? 'v1';
+  const adapterKey = version === 'v2' ? TELNYX_ACKNOWLEDGEMENT_V2_ADAPTER_KEY : TELNYX_ACKNOWLEDGEMENT_ADAPTER_KEY;
+  const message = version === 'v2' ? FEH_ACKNOWLEDGEMENT_V2_COPY : FEH_ADMINISTRATIVE_SMS_COPY;
   return Object.freeze({
     provider: "TELNYX",
     channel: "SMS",
-    adapterKey: TELNYX_ACKNOWLEDGEMENT_ADAPTER_KEY,
+    adapterKey,
     async dispatch(context: TelnyxAcknowledgementContext): Promise<ProviderDispatchResult> {
       const { intent, preparedDispatch: prepared } = context;
       if (!isUsablePreparedExecutionDispatchEnvelope(prepared) ||
           prepared.channel !== "SMS" || intent.channel !== "SMS" ||
           intent.authorizationRecordId !== prepared.executionAuthorizationId ||
-          intent.adapterKind !== TELNYX_ACKNOWLEDGEMENT_ADAPTER_KEY ||
-          prepared.providerAdapterKey !== TELNYX_ACKNOWLEDGEMENT_ADAPTER_KEY ||
+          intent.adapterKind !== adapterKey ||
+          prepared.providerAdapterKey !== adapterKey ||
+          (version !== 'v1' && version !== 'v2') ||
           intent.executionPerformed !== false || intent.destination !== prepared.destination) {
         return { status: "definitive_failure", failureCode: "invalid_sms_dispatch_context" };
       }
       if (!UK_MOBILE.test(from) || !UK_MOBILE.test(prepared.destination) || from === prepared.destination) {
         return { status: "definitive_failure", failureCode: "invalid_sms_address" };
       }
-      const request = Object.freeze({ from, to: prepared.destination, text: FEH_ADMINISTRATIVE_SMS_COPY, type: "SMS" as const });
+      const request = Object.freeze({ from, to: prepared.destination, text: message, type: "SMS" as const });
       try {
         // One CREATE call, no retries, no invented provider idempotency field.
         // Provider message ID is persisted by the controlled finalizer.
