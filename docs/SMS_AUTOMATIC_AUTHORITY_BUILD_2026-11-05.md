@@ -64,6 +64,13 @@ No owner needs to manually enter SQL, identifiers or per-enquiry approvals. The 
 - **External systems:** GitHub read/publication, Supabase staging migration metadata and aggregate closed-control read, Google Ads read-only form inspection, official documentation lookup. No production Supabase project or real lead/contact records accessed. **Credential values:** no API/CLI credential retrieval; the Google accessibility incident above surfaced one stored webhook key unintentionally, without reuse or repository persistence. **Customer data touched:** none.
 - **Material remaining gates:** actual source permission mapping, Google key replacement, new-diff security acceptance, migration-history reconciliation, closed staging installation, bounded identity/configuration provisioning, hosted five-group proof, operational reconciliation/monitoring, and separate production launch approval.
 
+
+### Publication verification — second increment
+
+Normal expected-head publication succeeded from `5e474d4785535c1f0e70f44fe7e0897437c4c83a` to **`7f3aca08d0b4055b939a51a75bf10ded81ae3e94`**, tree **`ab9c9a89e2e4ea297341cc18232d013fcd340a3c`**, exactly matching the tested local code plus evidence. Fresh GitHub and `git fetch` readback agreed. A clean publication checkout was created at that remote head; the original construction commits were preserved on their own branch. No concurrent work was replaced.
+
+Vercel reports successful [Preview A9TQVTnA5J45qMzkjEekkgaAcyW3](https://vercel.com/free-energy-help/free-energy-help-ai-os/A9TQVTnA5J45qMzkjEekkgaAcyW3) for that publication. [Navigation 42132298359](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/actions/runs/42132298359), [Engineering 42132298462](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/actions/runs/42132298462) and [Factory041 42132298358](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/actions/runs/42132298358) were still running at this readback; no green final CI claim is made. The fixed protected-path baseline still differs, is unchanged, and requires its recorded acceptance process. This publication note is documentation only and does not change the validated code. PR115's title/body were updated to point to the current evidence and distinguish the new review delta from Dominic's earlier approval. No review was requested by message and no merge occurred.
+
 ---
 
 ## Historical first increment (preserved)
