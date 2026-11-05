@@ -1,0 +1,68 @@
+# Owner wording review and fictional permission forms — 5 November 2026
+
+## Result and scope
+
+Implemented the owner's request to finish the forms for review before a fictional customer records an answer. The staging route is `/acknowledgement-permission-preview`. It shows the exact proposed contact notice, acknowledgement text and sending rule, records an attributable owner review for **fictional staging testing only**, then unlocks a mock enquiry form with explicit **yes / no / not sure** answers. No answer is preselected. Source selection is simulated Meta/Instagram or Google, not an actual provider submission.
+
+This increment completes review/recording controls. It does **not** implement the remaining automatic per-enquiry Factory041 authorizer, automatic dispatch invocation, customer STOP callback integration, concurrent staging acceptance or production launch. It does not close the five groups in [the completion contract](ADVERTISING_COMPLETION_CONTRACT_2026-11-02.md). The earlier delivered Meta message and Google queue tests were not repeated.
+
+## Review flow and boundaries
+
+1. Owner signs into the existing staging account and completes MFA.
+2. Read the proposed wording and rule. Only the owner may check the confirmation box and approve it. The agent has not done this on the owner's behalf.
+3. After that recorded approval, select a fictional source and explicit fictional customer answer. No real name, phone, email or bill is collected. The UUID, source, answer, timestamp, actor and reviewed wording version are retained.
+4. Yes is a synthetic permission record, not permission to send. No and not sure are shown as held. All records remain separate from real leads, SMS reservations and execution authority. Marketing consent is unchanged.
+
+The wording proposes a STOP instruction; it must not be used with customers until the corresponding STOP handling is verified. Provider forms must be separately checked to present the adopted notice and deliver attributable matching evidence. The saved fictional approval does not imply that this mapping already exists.
+
+The existing completed one-message test page links to the new review page. Its consumed authority is not reused. The persistent owner binding is reused solely to identify the owner; role promotion and execution grants are unnecessary for this review. RPCs require a verified staging issuer, bound owner, authenticated nonanonymous identity and AAL2. The page and actions additionally require the exact staging URL and Vercel Preview environment.
+
+## Storage and security review
+
+Two RLS-enabled private tables store immutable review snapshots and synthetic fixtures. No direct schema/table privileges are given to public, anonymous, authenticated, service or restricted ingress/worker roles. Three narrow security-definer RPCs have empty search paths and fully qualified objects. Authenticated callers can invoke them, but each checks the bound owner and MFA. Anonymous and service roles cannot execute them.
+
+The full displayed proposal is pinned, not just its version. Changed snapshot, invalid/missing answer, unexpected source, wrong owner/project/session, absent review or failed audit blocks recording. UUID identity makes identical replay a no-op; changed data under the same identity is rejected. Review and audit insertion are transactional. Success is reconstructed from persisted records, never a query-string success flag. Form buttons show saving state.
+
+This is review evidence, not a parallel execution-authorization system: no writes to Factory041 approval/authority tables, no provider imports or calls, no customer queue writes and no STOP/RELEASE operation occur.
+
+## Staging installation and verification
+
+- Project: `vredwhyphrhsudggrsen` only. Production excluded.
+- Source migration: `20261105124723_ack_preview_permission_review.sql`.
+- Hosted migration ledger version: `20261105125919`, name `ack_preview_permission_review` (the connected migration tool assigned the applied timestamp).
+- SQL SHA-256: `d7df66f60a1fcf34ebbd4d147e6fd179b1330babbf28f93de49a4e70d80088a9`.
+- Before applying: inspected migration history, affected table columns and exact existing owner-identity function; schema absent; live owner identity matched the reviewed definition. Full local migration-chain application passed.
+- After applying: unbound read returned blocked; zero owner reviews and zero mock records. STOP remained stopped, active execution grants zero, approved adapters zero, reservations three, attempts two, unchanged from prestate.
+- Verified all three RPCs deny anonymous/service execution, allow authenticated invocation and pin the empty search path.
+- Security advisor delta: two intentional deny-by-default RLS/no-policy informational notices and three authenticated security-definer notices for the owner-checked RPCs. No anonymous callable function or mutable search path added. Existing unrelated advisories remain. References: [RLS no-policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), [authenticated security-definer](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable).
+- Recovery if a review defect is discovered: disable access to the three new RPCs or withdraw the Preview route under the appropriate operator approval; retain review/audit records. No destructive rollback or execution-control change is needed.
+
+## Validation
+
+| Check | Result |
+| --- | --- |
+| Focused local PGlite recording/security tests | PASS, 17/17 |
+| `npm run test:lead-acknowledgement` | PASS, 813/813, including the new 17 |
+| `npm run test:auth` | PASS, 33/33 |
+| `npm run test:factory-041` | PASS, 177/177 |
+| `npm run typecheck` | PASS |
+| Targeted ESLint on all changed frontend files | PASS |
+| `NEXT_TELEMETRY_DISABLED=1 npm run build` | PASS, new dynamic route included |
+| Staging post-install structural and closed-state verification | PASS as above |
+| Actual authenticated owner review/recording in deployed UI | Pending owner's review/sign-in; no approval fabricated |
+
+The initial test fixture used an incorrect role name; corrected it to the existing ingress/runtime roles and reran. Initial local build failed because the worktree dependency symlink pointed outside Turbopack's root; copied the existing dependency installation locally and rebuilt successfully. These were local tooling/fixture defects, not staging failures. The existing Next middleware-deprecation and npm proxy warnings remain.
+
+Automatic approval review blocked the Supabase CLI's attempted PostHog telemetry after it had created the local migration file. No telemetry exception was requested; local editing and the connected staging migration tool completed the work. The helper was not rerun to bypass that block.
+
+## Completion Evidence Block
+
+- Completed: staging owner wording review controls, synthetic permission recording form, pinned evidence, replay protection, error handling and focused/regression validation.
+- Created: this document; `frontend/src/app/acknowledgement-permission-preview/{page.tsx,actions.ts,session.ts,SubmitButton.tsx}`; `frontend/src/lib/lead-gateway/acknowledgementPermissionReview{.ts,.server.ts,.database.test.mjs}`; the migration above.
+- Modified: `frontend/src/app/acknowledgement-test-preview/page.tsx` (review link only). Deleted: none.
+- Baseline: remote `6acc7f586f2a914a1535ba70c4ff92dfc1b9840f`, tree `20b4fc06257ca246a3d94771bdf6f92f68d89cec`; fresh isolated worktree. Original checkout preserved. Publication targets only draft PR115 branch `work/telnyx-otp-lead-sms-20261030` using normal expected-head push. No merge or accepted-checkpoint changes.
+- Tests/typecheck/lint/build: exact results above. PGlite tests use local synthetic actors; they are not concurrent hosted staging or real provider proof.
+- Migration: installed and verified in staging only. Preview publication/final hashes and deployed browser status are recorded in the publication note below.
+- External systems: GitHub reads and authorized narrow publication; Supabase staging metadata/aggregate reads and the review-only migration; Vercel deployment metadata; Cloud Browser CRM login inspection. No Google/Meta form or provider configuration changes.
+- Credentials accessed: no secret values read, printed or copied. Existing connected-tool authentication used. Production/customer data touched: no. Only owner-bound metadata, schema and aggregate counts inspected; no real customer payloads processed.
+- Remaining gates: owner's wording review; authenticated UI recording verification; source-form/notice mapping; automatic attributable Factory041 authority/invocation; delivery and customer STOP callbacks; all outstanding staging acceptance groups; protected-path acceptance; separate production launch decision. No real SMS, ad spend, execution grant or STOP release is authorised by this page.

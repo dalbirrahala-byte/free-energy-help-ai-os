@@ -38,6 +38,7 @@ export default async function AcknowledgementOwnerTestPage({searchParams}:{searc
   const button='rounded-lg bg-emerald-700 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400';
   return <main className="min-h-screen bg-slate-50 px-6 py-10 text-slate-950"><div className="mx-auto max-w-2xl space-y-6">
     <Link href="/" className="text-sm underline">Back to CRM</Link>
+    <p><Link href="/acknowledgement-permission-preview" className="font-semibold text-emerald-800 underline">Review the new fictional enquiry permission form</Link></p>
     <div><p className="text-sm font-semibold text-emerald-800">Free Energy Help · Staging</p>
       <h1 className="mt-2 text-3xl font-bold">One acknowledgement SMS test</h1>
       <p className="mt-3 text-slate-700">Approve one test message to your own mobile, then check that the same enquiry cannot send it again. This uses the single enquiry selected for this test. Completing this screen alone does not prove the advertising connection.</p></div>
