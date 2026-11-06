@@ -7,7 +7,7 @@ type ReadinessDatabase=Pick<NonNullable<ReturnType<typeof createPreviewAcknowled
 /** Connection/candidate health only, never sending authority or launch readiness.
  * The only RPC is read-only candidate selection. Probe failures are isolated so
  * one broken identity cannot conceal the other identity's health. */
-export function createIntakeReadinessHandler(environment:Environment=process.env,
+export function createIntakeReadinessHandler(authorize:()=>Promise<boolean>, environment:Environment=process.env,
  databaseFactory?:(kind:'ingestor'|'worker')=>ReadinessDatabase|null){
  const snapshot=Object.freeze({...environment});
  const factory=databaseFactory??(kind=>createPreviewAcknowledgementDatabase(kind,snapshot));
@@ -15,6 +15,12 @@ export function createIntakeReadinessHandler(environment:Environment=process.env
   if(snapshot.VERCEL_ENV!=='preview' || snapshot.FEH_ACK_DATABASE_ENABLED!=='true' ||
     snapshot.NEXT_PUBLIC_SUPABASE_URL!==`https://${ACK_STAGING_PROJECT}.supabase.co`)
     return new Response(null,{status:404});
+  // Verify operator access before constructing either privileged database client.
+  try {
+    if (await authorize() !== true) return new Response(null,{status:403});
+  } catch {
+    return new Response(null,{status:403});
+  }
   const result={ingestor:false,worker:false,workerCandidateLookup:false,workerCandidateAvailable:false};
   const failures: Partial<Record<'ingestor'|'worker',string|null>>={};
   for(const kind of ['ingestor','worker'] as const) {

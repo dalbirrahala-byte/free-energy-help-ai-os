@@ -382,11 +382,11 @@ test('authenticated owner reads exact notice and adopts once with audit; repeate
  assert.equal((await db.query("select count(*)::int n from audit_log where action='ack_staging_rule_adopted'")).rows[0].n,1);
  assert.deepEqual(await counts(),{intents:0,authorizations:0,attempts:0,bridges:0});
 });
-test('tampered fingerprint, stale notice and missing grant fail owner adoption',async()=>{
+test('tampered fingerprint, a different binding version and missing grant fail owner adoption',async()=>{
  const f=await fixture('meta','Yes',{approve:false,record:false});const b=await ownerBinding(f);
  assert.equal(await adopt(f,'f'.repeat(64)),'blocked');
- await db.query("update feh_ack_authority_private.bindings set notice_text='changed approved notice' where id=$1",[f.binding]);
- assert.equal(await adopt(f,b.fingerprint),'blocked');
+ const other=await fixture('meta','Yes',{approve:false,record:false});
+ assert.equal(await adopt(other,b.fingerprint),'blocked');
  await db.query('update execution_authorisers set revoked_at=clock_timestamp(),revoked_by=$1 where id=$2',[actor,grant]);
  assert.equal((await ownerBinding(f)).can_approve,false);assert.equal(await adopt(f),'blocked');
 });
@@ -492,4 +492,13 @@ test('owner recovery view distinguishes saved authority, interrupted claim and u
   assert.equal((await state()).used,true);
   assert.equal((await state()).can_approve,false);
   assert.equal((await counts()).attempts,1);assert.equal(sends.length,1);
+});
+
+test('an adopted consent mapping cannot be repurposed to interpret No as Yes',async()=>{
+ const f=await fixture('google_ads','No');
+ await db.exec('savepoint binding_edit');
+ await assert.rejects(db.query(`update feh_ack_authority_private.bindings
+   set affirmative_answer='No',negative_answer='Yes' where id=$1`,[f.binding]),{code:'23514'});
+ await db.exec('rollback to savepoint binding_edit');
+ const sends=[];assert.equal((await run(f,sends)).status,'blocked');assert.equal(sends.length,0);
 });

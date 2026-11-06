@@ -173,3 +173,38 @@ test('public intake runtime cannot obtain authorizer even when its flag and cred
   assert.ok(readPreviewDatabaseConfiguration('permission',edge));
   assert.equal(createPreviewAcknowledgementDatabase('authorizer',edge,()=>assert.fail('must not connect')),null);
 });
+
+// Exercise the actual catalog query with distinct SESSION_USER and CURRENT_USER.
+// These roles and credentials exist only in the isolated in-memory database.
+test('a restricted worker identity cannot hide an overprivileged login behind SET ROLE', async()=>{
+ const {PGlite}=await import('@electric-sql/pglite');
+ const db=new PGlite();
+ try{
+   await db.exec(`create table public.lead_acknowledgements(id bigint primary key);
+     create role execution_dispatch_worker nologin noinherit;
+     create role feh_ack_preview_worker login noinherit;
+     create role unexpected_role nologin;
+     grant execution_dispatch_worker to feh_ack_preview_worker with admin false, inherit false, set true;`);
+   const client=createPreviewAcknowledgementDatabase('worker',env(),()=>({
+     begin:work=>db.transaction(async tx=>{
+       await tx.exec('set local session authorization feh_ack_preview_worker');
+       try { return await work({unsafe:async(sql,args)=> (await tx.query(sql,args)).rows}); }
+       finally { await tx.exec('set session authorization postgres; reset role'); }
+     }),end:async()=>{},
+   }));
+   assert.equal(await client.verifyConnection(),true);
+   for(const [add,remove] of [
+     ['alter role feh_ack_preview_worker createdb','alter role feh_ack_preview_worker nocreatedb'],
+     ['grant unexpected_role to feh_ack_preview_worker','revoke unexpected_role from feh_ack_preview_worker'],
+     ['grant unexpected_role to execution_dispatch_worker','revoke unexpected_role from execution_dispatch_worker'],
+     ['grant select on public.lead_acknowledgements to feh_ack_preview_worker',
+      'revoke select on public.lead_acknowledgements from feh_ack_preview_worker'],
+   ]){
+     await db.exec(add);
+     assert.equal(await client.verifyConnection(),false,add);
+     assert.equal(client.verificationFailure(),'IDENTITY_MISMATCH');
+     await db.exec(remove);
+     assert.equal(await client.verifyConnection(),true,remove);
+   }
+ }finally{await db.close();}
+});

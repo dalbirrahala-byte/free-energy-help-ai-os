@@ -28,6 +28,17 @@ create table feh_ack_authority_private.bindings (
   check((provider='meta' and page_id is not null and page_id ~ '^[0-9]{1,100}$') or
     (provider='google_ads' and page_id is null))
 );
+-- Both permission evidence and owner approval refer to a binding by ID.
+-- An editor must insert a new version, even when only the notice changes.
+create function feh_ack_authority_private.reject_binding_update()
+returns trigger language plpgsql set search_path='' as $$
+begin
+  raise exception using errcode='23514',message='Insert a new acknowledgement binding version';
+end;
+$$;
+create trigger require_new_binding_version before update on feh_ack_authority_private.bindings
+for each row execute function feh_ack_authority_private.reject_binding_update();
+
 create table feh_ack_authority_private.rules (
   id uuid primary key default gen_random_uuid(),
   binding_id uuid not null unique references feh_ack_authority_private.bindings(id) on delete restrict,

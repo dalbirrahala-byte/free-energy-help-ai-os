@@ -18,7 +18,7 @@ function harness(overrides={}){
    async close(){calls.close.push(kind);if(o.closeThrows)throw Error('private close credential');},
   };
  };
- return {calls,handler:createIntakeReadinessHandler(env,factory),factory};
+ return {calls,handler:createIntakeReadinessHandler(async()=>true,env,factory),factory};
 }
 for(const data of [[],[candidate]])test(`healthy probe with ${data.length} candidates exposes no IDs or phone`,async()=>{
  const h=harness({worker:{data}});const r=await h.handler();assert.equal(r.status,200);assert.equal(r.headers.get('cache-control'),'no-store');
@@ -40,15 +40,23 @@ for(const o of [{rpcThrows:true},{error:{message:'private RPC credential'}}])tes
  const h=harness({worker:o});const r=await h.handler();assert.equal(r.status,503);assert.ok(!(await r.text()).includes('private'));assert.deepEqual(h.calls.close,['ingestor','worker']);
 });
 for(const changes of [{VERCEL_ENV:'production'},{FEH_ACK_DATABASE_ENABLED:'false'},{NEXT_PUBLIC_SUPABASE_URL:'https://kupuswwutonsagftivkv.supabase.co'}])test(`disabled scope never connects ${JSON.stringify(changes)}`,async()=>{
- const h=harness();assert.equal((await createIntakeReadinessHandler({...env,...changes},h.factory)()).status,404);assert.deepEqual(h.calls.factory,[]);
+ const h=harness();assert.equal((await createIntakeReadinessHandler(async()=>true,{...env,...changes},h.factory)()).status,404);assert.deepEqual(h.calls.factory,[]);
 });
 test('invalid recipient prevents candidate lookup without concealing connection health',async()=>{
- const h=harness();const r=await createIntakeReadinessHandler({...env,FEH_ACK_PREVIEW_ALLOWED_PHONE:'invalid'},h.factory)();assert.equal(r.status,503);const b=await r.json();assert.equal(b.worker,true);assert.equal(b.workerCandidateLookup,false);assert.equal(h.calls.rpc.length,0);
+ const h=harness();const r=await createIntakeReadinessHandler(async()=>true,{...env,FEH_ACK_PREVIEW_ALLOWED_PHONE:'invalid'},h.factory)();assert.equal(r.status,503);const b=await r.json();assert.equal(b.worker,true);assert.equal(b.workerCandidateLookup,false);assert.equal(h.calls.rpc.length,0);
 });
 test('failed identity verification never queries candidates',async()=>{
  const h=harness({worker:{verified:false}});const r=await h.handler();assert.equal(r.status,503);assert.equal((await r.json()).failures.worker,'IDENTITY_MISMATCH');assert.equal(h.calls.rpc.length,0);
 });
 test('configuration is snapshotted before probing',async()=>{
- const h=harness();const changed={...env};const handler=createIntakeReadinessHandler(changed,h.factory);changed.FEH_ACK_PREVIEW_ALLOWED_PHONE='+447700900002';changed.VERCEL_ENV='production';
+ const h=harness();const changed={...env};const handler=createIntakeReadinessHandler(async()=>true,changed,h.factory);changed.FEH_ACK_PREVIEW_ALLOWED_PHONE='+447700900002';changed.VERCEL_ENV='production';
  assert.equal((await handler()).status,200);assert.equal(h.calls.rpc[0].args.p_allowed_phone,env.FEH_ACK_PREVIEW_ALLOWED_PHONE);
+});
+
+test('unverified operator and failed identity service cannot open a readiness database', async()=>{
+ const h=harness();
+ for(const authorize of [async()=>false,async()=>{throw Error('identity unavailable');}]){
+   assert.equal((await createIntakeReadinessHandler(authorize,env,h.factory)()).status,403);
+ }
+ assert.deepEqual(h.calls.factory,[]);
 });

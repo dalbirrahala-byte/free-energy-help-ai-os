@@ -104,10 +104,15 @@ export function createPreviewAcknowledgementDatabase(
     await tx.unsafe(kind === 'callback' ? "set local lock_timeout = '750ms'" : "set local lock_timeout = '3s'");
     await tx.unsafe(`set local role ${identity.role}`);
     const check = await tx.unsafe(`select current_user as role, session_user as login, current_database() as database,
-      r.rolsuper or r.rolbypassrls or r.rolcreaterole as elevated,
-      has_table_privilege(current_user,'public.lead_acknowledgements','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') as raw_queue_access
+      r.rolsuper or r.rolbypassrls or r.rolcreaterole or r.rolcreatedb or r.rolreplication
+        or login.rolsuper or login.rolbypassrls or login.rolcreaterole or login.rolcreatedb or login.rolreplication
+        or exists (select 1 from pg_catalog.pg_auth_members m where m.member in (r.oid,login.oid)
+          and (m.member = r.oid or m.roleid <> r.oid or m.admin_option or m.inherit_option or not m.set_option))
+        as elevated,
+      (has_table_privilege(current_user,'public.lead_acknowledgements','SELECT,INSERT,UPDATE,DELETE,TRUNCATE')
+        or has_table_privilege(session_user,'public.lead_acknowledgements','SELECT,INSERT,UPDATE,DELETE,TRUNCATE')) as raw_queue_access
       ${kind === 'callback' ? ", has_table_privilege(current_user,'public.suppression_records','SELECT,INSERT,UPDATE,DELETE,TRUNCATE') as raw_suppression_access" : ''}
-      from pg_catalog.pg_roles r where r.rolname=current_user`);
+      from pg_catalog.pg_roles r join pg_catalog.pg_roles login on login.rolname=session_user where r.rolname=current_user`);
     if (check.length !== 1 || check[0].role !== identity.role || check[0].login !== identity.login ||
         check[0].database !== 'postgres' || check[0].elevated !== false || check[0].raw_queue_access !== false) throw new Error('identity');
     if (kind === 'callback' && check[0].raw_suppression_access !== false) throw new Error('identity');
