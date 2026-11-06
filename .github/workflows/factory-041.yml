@@ -65,11 +65,11 @@ jobs:
         working-directory: .
         shell: bash
         run: |
-          # PR #56 intentionally changes the authentication middleware. The
-          # independently reviewed MFA head is now the accepted application-security
-          # checkpoint; any later protected-path drift still fails closed.
-          baseline=1d2151f1d7d624ce77d06a98dd24f32b6e74461c
+          # Pin the exact code tree proposed in the protected-file review.
+          # Keep both the reviewed ancestor and all five protected paths.
+          baseline=de70363228c5cd72431086d08a17ac675133ba18
           git cat-file -e "${baseline}^{commit}"
+          git merge-base --is-ancestor "$baseline" HEAD
           if ! git diff --quiet "$baseline" HEAD -- \
             supabase/migrations \
             supabase/functions \
