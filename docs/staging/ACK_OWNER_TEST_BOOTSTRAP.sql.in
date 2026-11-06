@@ -1,0 +1,44 @@
+-- REVIEW TEMPLATE, NOT A MIGRATION. Do not execute until the owner explicitly
+-- approves the temporary staging-account privileges and the single-phone test.
+-- The operator must select ONLY project vredwhyphrhsudggrsen in the connected
+-- Supabase tool. Resolve the known test account from that project's auth.users.
+-- Substitute the three validated placeholders privately; never print the phone
+-- or insert a password, token, JWT claim override, or production credential.
+-- This block grants no table access, creates no enquiry/adapter/authorization,
+-- performs no RELEASE and sends no SMS. MFA and the owner screen are still needed.
+do $$
+declare
+  v_owner uuid := '__OWNER_UUID__';
+  v_phone text := '__OWNER_PHONE__';
+  v_evidence text := '__APPROVAL_REFERENCE__';
+  v_role text; v_authoriser bigint; v_controller bigint;
+begin
+  if current_user <> 'postgres' then raise exception 'privileged_staging_operator_required'; end if;
+  if v_phone !~ '^\+447[1-57-9][0-9]{8}$' or v_phone='+447427851020'
+    or v_evidence !~ '^owner-approved-staging-sms-[A-Za-z0-9_-]{6,100}$'
+    then raise exception 'invalid_test_configuration'; end if;
+  select role into v_role from public.user_roles where id=v_owner for update;
+  if v_role is distinct from 'read_only'
+    or not exists(select 1 from auth.users where id=v_owner)
+    or exists(select 1 from public.ack_preview_owner_test_control)
+    or exists(select 1 from public.execution_authorisers where revoked_at is null)
+    or exists(select 1 from public.execution_provider_adapters)
+    or exists(select 1 from public.execution_authorizations)
+    or exists(select 1 from public.lead_acknowledgements)
+    or public.evaluate_execution_emergency_stop() is distinct from 'stopped'
+    then raise exception 'unexpected_staging_prestate'; end if;
+  update public.user_roles set role='admin' where id=v_owner;
+  insert into public.execution_authorisers(user_id,capability,granted_by)
+    values(v_owner,'execution_authoriser',v_owner) returning id into v_authoriser;
+  insert into public.execution_authorisers(user_id,capability,granted_by)
+    values(v_owner,'execution_controller',v_owner) returning id into v_controller;
+  insert into public.ack_preview_owner_test_control(operator_id,allowed_phone,expires_at,enabled,
+    approval_reference,authoriser_grant_id,controller_grant_id)
+    values(v_owner,v_phone,pg_catalog.statement_timestamp()+interval '2 hours',true,v_evidence,v_authoriser,v_controller);
+  insert into public.audit_log(actor_id,actor_role,action,entity_type,entity_id,correlation_id,result,metadata)
+    values(v_owner,'admin','ack_owner_test_bootstrapped','user',v_owner::text,pg_catalog.gen_random_uuid(),'success',
+      pg_catalog.jsonb_build_object('approved_by_owner_reference',v_evidence,'executed_via','privileged_staging_operator',
+        'previous_role','read_only','scope','single_owner_test','mfa_required',true,'execution_allowed',false,
+        'authoriser_grant_id',v_authoriser,'controller_grant_id',v_controller));
+end;
+$$;

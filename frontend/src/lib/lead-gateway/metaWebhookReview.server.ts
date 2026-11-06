@@ -1,6 +1,7 @@
 // Dormant Node-only primitive. No route, env access, Graph request, CRM write or send.
 // A valid HMAC authenticates bytes; it does NOT prove freshness, consent or unique receipt.
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 
 export type MetaLeadReference = Readonly<{
   pageId: string;
