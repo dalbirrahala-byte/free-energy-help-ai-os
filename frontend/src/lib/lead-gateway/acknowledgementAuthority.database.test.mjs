@@ -1,3 +1,4 @@
+import {runPrivateAcknowledgementTrial} from "../../../scripts/privateAcknowledgementTrial.ts";
 import assert from 'node:assert/strict';
 import {before, after, beforeEach, afterEach, test} from 'node:test';
 import {readFile, readdir} from 'node:fs/promises';
@@ -9,6 +10,7 @@ const hook=registerHooks({resolve(s,c,next){return s==='server-only'?{url:'data:
 const {createFormPermissionCapture}=await import('./formPermissionCapture.server.ts');
 const {createGoogleIngressHandler}=await import('./googleIngress.server.ts');
 const {ingestMetaLeadAcknowledgements}=await import('./ingestMetaLeadAcknowledgement.server.ts');
+const {runConfiguredPrivateTrial}=await import('../../../scripts/privateAcknowledgementStaging.server.ts');
 hook.deregister();
 import {FEH_ACKNOWLEDGEMENT_V2_COPY} from '../execution-dispatch/telnyxAcknowledgementAdapter.ts';
 
@@ -501,4 +503,58 @@ test('an adopted consent mapping cannot be repurposed to interpret No as Yes',as
    set affirmative_answer='No',negative_answer='Yes' where id=$1`,[f.binding]),{code:'23514'});
  await db.exec('rollback to savepoint binding_edit');
  const sends=[];assert.equal((await run(f,sends)).status,'blocked');assert.equal(sends.length,0);
+});
+
+function localTrialWindow() {
+  const start=Date.now();
+  return {start:new Date(start).toISOString(),end:new Date(start+60_000).toISOString()};
+}
+
+for (const provider of ['meta','google_ads']) {
+  for (const scenario of ['accepted','timeout']) {
+    test(`private trial: ${provider} ${scenario} resumes without a second mock submission`, async () => {
+      const f = await fixture(provider);
+      await db.exec("select set_config('request.jwt.claim.sub','',true),set_config('request.jwt.claims','{}',true)");
+      const window = localTrialWindow();
+      const first = await runPrivateAcknowledgementTrial(authority,worker,f.leadId,scenario,window);
+      assert.equal(first.mode,'mock');
+      assert.equal(first.status,scenario==='accepted'?'succeeded':'indeterminate');
+      assert.equal(first.mockInvocations,1);
+      assert.ok(first.attemptId>0);
+      const restart = await runPrivateAcknowledgementTrial({...authority},{...worker},f.leadId,scenario,window);
+      assert.equal(restart.status,'idle');
+      assert.equal(restart.mockInvocations,0);
+      assert.deepEqual(await counts(),{intents:1,authorizations:1,attempts:1,bridges:1});
+    });
+  }
+}
+
+test('private trial never authorizes a different eligible fixture', async () => {
+  const f = await fixture();
+  const result = await runPrivateAcknowledgementTrial(authority,worker,f.leadId+1,'accepted',localTrialWindow());
+  assert.equal(result.status,'evaluation_failed');
+  assert.equal(result.mockInvocations,0);
+  assert.deepEqual(await counts(),{intents:0,authorizations:0,attempts:0,bridges:0});
+});
+
+test('private trial with closed interval opens neither database client', async () => {
+  const offline = {rpc: () => assert.fail('closed interval must not call RPC')};
+  const result = await runPrivateAcknowledgementTrial(offline,{...offline},1,'accepted',{
+    start:'2000-01-01T01:00:00.000Z',end:'2000-01-01T01:15:00.000Z',
+  });
+  assert.equal(result.status,'blocked');
+  assert.equal(result.mockInvocations,0);
+});
+
+test('private staging entry refuses missing scoped clients and an enabled provider worker', async () => {
+  const interval=localTrialWindow();
+  const env={VERCEL_ENV:'preview',NEXT_PUBLIC_SUPABASE_URL:'https://vredwhyphrhsudggrsen.supabase.co',
+    FEH_ACK_PRIVATE_TRIAL_ENABLED:'true',FEH_ACK_PRIVATE_TRIAL_START:interval.start,
+    FEH_ACK_PRIVATE_TRIAL_END:interval.end,FEH_ACK_PRIVATE_TRIAL_LEAD_ID:'1',
+    FEH_ACK_PRIVATE_TRIAL_SCENARIO:'accepted',FEH_ACK_PREVIEW_ALLOWED_PHONE:phone,
+    FEH_ACK_AUTOMATIC_ENABLED:'true',FEH_ACK_DATABASE_ENABLED:'true'};
+  for (const settings of [env,{...env,FEH_ACK_WORKER_ENABLED:'true'},{...env,VERCEL_ENV:'production'}]){
+    const result=await runConfiguredPrivateTrial(settings);
+    assert.deepEqual(result,{mode:'mock',status:'blocked',attemptId:null,mockInvocations:0});
+  }
 });

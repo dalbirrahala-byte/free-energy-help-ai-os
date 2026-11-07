@@ -154,7 +154,7 @@ test('both Edge manifests have resolved local imports and the new entry reads no
     for(const [,specifier] of file.data.matchAll(/from\s+['"](\.[^'"]+)['"]/g))assert.ok(paths.has(resolve('/',dirname(file.file),specifier).slice(1)),`${file.file}: ${specifier}`);
    }
    if(script==='build-google-receiver.mjs'){
-    assert.equal(files.length,10);const entry=files.find(f=>f.file==='index.ts').data;
+    assert.equal(files.length,11);const entry=files.find(f=>f.file==='index.ts').data;
     assert.doesNotMatch(entry,/WORKER|TELNYX|META_|SERVICE_ROLE|SECRET_KEY|STOP|RELEASE/);
     assert.match(entry,/FEH_GOOGLE_RECEIVER_ENABLED/);assert.match(entry,/FEH_GOOGLE_RECEIVER_SCOPE/);
     assert.match(entry,/FEH_GOOGLE_RECEIVER_TEST_STARTED_AT/);assert.match(entry,/FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT/);

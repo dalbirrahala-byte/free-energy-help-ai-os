@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 // Explicit source manifest. Never bundle the CRM, worker, secrets or .env files.
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const destination=resolve(process.argv[2]??'/tmp/feh-intake-receiver');
-const names=['formPermissionCapture.server','intakeReceiver.server','googleWebhookTest.server','googleReceiverConfiguration.server','metaWebhookTest.server','boundedBody.server','previewDatabase.server','supabaseCa.server',
+const names=['boundedTestWindow','formPermissionCapture.server','intakeReceiver.server','googleWebhookTest.server','googleReceiverConfiguration.server','metaWebhookTest.server','boundedBody.server','previewDatabase.server','supabaseCa.server',
  'metaIngress.server','metaGraph.server','ingestMetaLeadAcknowledgement.server','metaWebhookReview.server','adapters/meta'];
 const files=[];
 for(const name of names){
@@ -23,7 +23,7 @@ const settings=['FEH_ACK_PERMISSION_CAPTURE_ENABLED','FEH_ACK_PERMISSION_DATABAS
  'FEH_GOOGLE_CAMPAIGN_ID','FEH_GOOGLE_WEBHOOK_KEY','FEH_INTAKE_RECEIVER_DATABASE_URL',
  'FEH_META_APP_SECRET','FEH_META_VERIFY_TOKEN','FEH_META_DASHBOARD_TEST_ENABLED',
  'FEH_META_DASHBOARD_PAGE_ID','FEH_META_DASHBOARD_FORM_ID','FEH_META_DASHBOARD_LEAD_ID',
- 'FEH_META_FORM_TEST_ENABLED','FEH_META_FORM_TEST_EXPIRES_AT','FEH_META_TEST_LEAD_ID',
+ 'FEH_META_FORM_TEST_ENABLED','FEH_META_FORM_TEST_STARTED_AT','FEH_META_FORM_TEST_EXPIRES_AT','FEH_META_TEST_LEAD_ID',
  'FEH_META_PAGE_ID','FEH_META_FORM_ID','FEH_META_PAGE_TOKEN','FEH_ACK_PREVIEW_ALLOWED_PHONE','FEH_ACK_INGESTOR_DATABASE_URL'];
 files.push({file:'index.ts',data:`import {createIntakeReceiver} from './lib/intakeReceiver.server.mjs';
 const environment:Record<string,string|undefined>={FEH_INTAKE_RUNTIME:'supabase-edge',NEXT_PUBLIC_SUPABASE_URL:'https://vredwhyphrhsudggrsen.supabase.co'};

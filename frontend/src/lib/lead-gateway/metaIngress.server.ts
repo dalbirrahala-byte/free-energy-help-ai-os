@@ -1,3 +1,4 @@
+import {isBoundedTestWindowOpen} from './boundedTestWindow.ts';
 import {createFormPermissionCapture,type FormPermissionCapture} from './formPermissionCapture.server.ts';
 import 'server-only';
 import {createHash,timingSafeEqual} from 'node:crypto';
@@ -9,6 +10,18 @@ import {ACK_STAGING_PROJECT,createPreviewAcknowledgementDatabase} from './previe
 const response=(status:number,body:unknown={})=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const equal=(a:string,b:string)=>timingSafeEqual(createHash('sha256').update(a).digest(),createHash('sha256').update(b).digest());
 type Environment=Readonly<Record<string,string|undefined>>;
+
+/** A new interval is specific to the synthetic Meta form on FEH staging.
+ * Both gates use the same fixed deadline. It cannot renew on a cold start. */
+export function isMetaFixtureWindowOpen(env:Environment, now:number):boolean {
+  return env.VERCEL_ENV === undefined && env.FEH_INTAKE_RUNTIME === 'supabase-edge' &&
+    env.SUPABASE_URL === `https://${ACK_STAGING_PROJECT}.supabase.co` &&
+    env.NEXT_PUBLIC_SUPABASE_URL === env.SUPABASE_URL &&
+    env.FEH_INTAKE_RECEIVER_ENABLED === 'true' && env.FEH_META_FORM_TEST_ENABLED === 'true' &&
+    env.FEH_ACK_PREVIEW_ALLOWED_PHONE === '+447700900001' &&
+    env.FEH_INTAKE_RECEIVER_EXPIRES_AT === env.FEH_META_FORM_TEST_EXPIRES_AT &&
+    isBoundedTestWindowOpen(env.FEH_META_FORM_TEST_STARTED_AT,env.FEH_META_FORM_TEST_EXPIRES_AT,now);
+}
 
 /** Default disabled. GET verifies Meta's callback; POST authenticates raw bytes
  * before Graph or DB access. This endpoint only reserves, never authorizes SMS. */
@@ -23,7 +36,8 @@ export function createMetaIngressHandlers(environment:Environment=process.env,de
   const allowedLeadId=environment.FEH_META_TEST_LEAD_ID;
   const expiresAt=Date.parse(environment.FEH_META_FORM_TEST_EXPIRES_AT??'');
   const now=dependencies.now??Date.now;
-  const withinWindow=()=>Number.isFinite(expiresAt)&&expiresAt<=Date.parse('2026-11-06T23:59:59Z')&&expiresAt>now();
+  const fixtureWindow=environment.FEH_META_FORM_TEST_STARTED_AT!==undefined;
+  const withinWindow=()=>fixtureWindow ? isMetaFixtureWindowOpen(environment,now()) : Number.isFinite(expiresAt)&&expiresAt<=Date.parse('2026-11-06T23:59:59Z')&&expiresAt>now();
   const edge=environment.VERCEL_ENV===undefined&&environment.FEH_INTAKE_RUNTIME==='supabase-edge'&&
     environment.SUPABASE_URL===`https://${ACK_STAGING_PROJECT}.supabase.co`&&
     environment.FEH_INTAKE_RECEIVER_ENABLED==='true'&&environment.FEH_META_FORM_TEST_ENABLED==='true';
@@ -60,10 +74,11 @@ export function createMetaIngressHandlers(environment:Environment=process.env,de
         return database.rpc(name,args);
       }};
       try {
-        const result=await ingestMetaLeadAcknowledgements(bytes,request.headers.get('x-hub-signature-256'),{appSecret,pageId,formId,allowedPhone,allowedLeadId},async reference=>{
+        const acceptCreatedTime=fixtureWindow ? (seconds:number)=>seconds*1000<=now() && isMetaFixtureWindowOpen(environment,seconds*1000) : undefined;
+        const result=await ingestMetaLeadAcknowledgements(bytes,request.headers.get('x-hub-signature-256'),{appSecret,pageId,formId,allowedPhone,allowedLeadId,acceptCreatedTime},async reference=>{
           if(!withinWindow())throw new Error('test_expired');
           return reader(reference);
-        },lazy,capture);
+        },lazy,capture && (input => withinWindow() ? capture(input) : Promise.resolve(false)));
         return response(result.status==='persisted'?200:result.status==='rejected'?400:503);
       }finally{
         // Cleanup cannot change the confirmed RPC outcome or expose private

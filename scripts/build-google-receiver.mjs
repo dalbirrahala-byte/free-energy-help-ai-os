@@ -5,7 +5,7 @@ import {stripTypeScriptTypes} from 'node:module';
 import {createHash} from 'node:crypto';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const destination=resolve(process.argv[2]??'/tmp/feh-google-receiver');
-const names=['formPermissionCapture.server','googleReceiver.server','googleReceiverConfiguration.server','googleIngress.server',
+const names=['boundedTestWindow','formPermissionCapture.server','googleReceiver.server','googleReceiverConfiguration.server','googleIngress.server',
   'googleWebhookTest.server','boundedBody.server','previewDatabase.server','supabaseCa.server'];
 const files=[];
 for(const name of names){
