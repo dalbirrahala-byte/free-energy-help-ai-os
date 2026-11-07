@@ -58,7 +58,7 @@ function extractDetails(raw: unknown, ref: MetaLeadReference) {
 export async function ingestMetaLeadAcknowledgements(
   rawBody: Uint8Array,
   signature: unknown,
-  config: Readonly<{ appSecret: string; pageId: string; formId: string; allowedPhone?: string; allowedLeadId?: string }>,
+  config: Readonly<{ appSecret: string; pageId: string; formId: string; allowedPhone?: string; allowedLeadId?: string; acceptCreatedTime?: (seconds:number)=>boolean }>,
   readDetails: MetaLeadDetailsReader,
   ingestor: MetaIngestionRpc,
   permissionCapture?: FormPermissionCapture,
@@ -74,6 +74,8 @@ export async function ingestMetaLeadAcknowledgements(
   if (config.allowedLeadId !== undefined &&
       (!/^[1-9]\d{5,99}$/.test(config.allowedLeadId) ||
        reviewed.references.some(reference => reference.leadId !== config.allowedLeadId))) return result('rejected');
+  const {acceptCreatedTime} = config;
+  if (acceptCreatedTime && !reviewed.references.every(ref => acceptCreatedTime(ref.createdTime))) return result('rejected');
   try {
     for (const reference of reviewed.references) {
       const details=await readDetails(reference);

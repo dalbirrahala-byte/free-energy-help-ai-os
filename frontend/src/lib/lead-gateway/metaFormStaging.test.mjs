@@ -102,3 +102,80 @@ test('Edge runtime admits only the restricted ingestor identity, never a worker 
  const db=createPreviewAcknowledgementDatabase('ingestor',env,()=>({begin:async()=>assert.fail('no transaction allowed'),end:async()=>{}}));
  for(const name of ['select_lead_acknowledgement_candidate','create_execution_authorization','stop_execution','prepare_execution_dispatch','claim_meta_lead_acknowledgement'])assert.ok((await db.rpc(name,{})).error);
 });
+
+const start = '2026-11-07T12:00:00.000Z';
+const end = '2026-11-07T12:15:00.000Z';
+const scopedWindow = {...env, FEH_META_FORM_TEST_STARTED_AT:start,
+  FEH_META_FORM_TEST_EXPIRES_AT:end, FEH_INTAKE_RECEIVER_EXPIRES_AT:end};
+
+test('new Meta window admits only the signed fixture, expires across cold starts and keeps Google closed', async () => {
+  const h = harness();
+  h.setTime(Date.parse(start));
+  const created = Date.parse(start) / 1000;
+  h.dependencies.fetch = async () => {
+    h.calls.graph++;
+    return Response.json({...details(), created_time:start});
+  };
+  const makeReceiver = () => createIntakeReceiver(scopedWindow, {
+    metaForm:createMetaIngressHandlers(scopedWindow,h.dependencies), now:h.dependencies.now,
+  });
+  const event = payload();
+  event.entry[0].changes[0].value.created_time = created;
+  assert.equal((await makeReceiver()(request(event,url.replace('/meta-form','/google')))).status,404);
+  assert.equal((await makeReceiver()(request(event))).status,200);
+  assert.equal((await makeReceiver()(request(event,url.replace('/meta-form','/meta')))).status,200);
+  assert.equal(h.receipts.size,1);
+  h.setTime(Date.parse(end));
+  assert.equal((await makeReceiver()(request(event))).status,404);
+  assert.equal(h.calls.graph,2);
+});
+
+for (const [name,changes,now] of [
+  ['early',{},Date.parse(start)-1],
+  ['overlong',{FEH_META_FORM_TEST_STARTED_AT:'2026-11-07T11:59:59.999Z'},Date.parse(start)],
+  ['mismatched deadlines',{FEH_INTAKE_RECEIVER_EXPIRES_AT:'2026-11-07T12:16:00.000Z'},Date.parse(start)],
+  ['noncanonical',{FEH_META_FORM_TEST_STARTED_AT:'2026-11-07T12:00:00Z'},Date.parse(start)],
+  ['another number',{FEH_ACK_PREVIEW_ALLOWED_PHONE:'+447700900002'},Date.parse(start)],
+  ['production',{VERCEL_ENV:'production'},Date.parse(start)],
+]) test(`new Meta window rejects ${name} before any retrieval`, async () => {
+  const h=harness();
+  h.setTime(now);
+  const settings={...scopedWindow,...changes};
+  const inner=createMetaIngressHandlers(settings,h.dependencies);
+  const outer=createIntakeReceiver(settings,{metaForm:inner,now:h.dependencies.now});
+  assert.equal((await inner.POST(request())).status,404);
+  assert.equal((await outer(request())).status,404);
+  assert.equal(h.calls.graph,0);
+  assert.equal(h.calls.connections,0);
+});
+
+test('previously pinned event cannot be retrieved in a new interval', async () => {
+  const h=harness();
+  h.setTime(Date.parse(start));
+  assert.equal((await createMetaIngressHandlers(scopedWindow,h.dependencies).POST(request())).status,400);
+  assert.equal(h.calls.graph,0);
+  assert.equal(h.calls.connections,0);
+});
+
+test('expiry during queue persistence holds permission capture', async () => {
+  const h=harness();
+  h.setTime(Date.parse(start));
+  const event=payload();
+  event.entry[0].changes[0].value.created_time=Date.parse(start)/1000;
+  h.dependencies.fetch=async()=>Response.json({...details(),created_time:start});
+  let captures=0;
+  h.dependencies.permissionCapture=async()=>{ captures++; return true; };
+  const database=h.dependencies.database;
+  h.dependencies.database=()=>{
+    const client=database();
+    return {...client,async rpc(...args){
+      const result=await client.rpc(...args);
+      h.setTime(Date.parse(end));
+      return result;
+    }};
+  };
+  const handler=createMetaIngressHandlers(scopedWindow,h.dependencies);
+  assert.equal((await handler.POST(request(event))).status,503);
+  assert.equal(captures,0);
+  assert.equal(h.calls.closed,1);
+});
