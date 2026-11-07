@@ -209,6 +209,14 @@ Stop and escalate when:
 
 Do not stop merely for a correctable fixture, formatting, import, type, or narrow validation defect inside scope.
 
+### When a task is waiting for information or a decision
+
+1. Record the outcome still needed, the last verified result and exactly which step is waiting. Check existing evidence, approvals and work in progress before asking someone to supply information.
+2. Diagnose the cause. A missing fact, a reproducible defect, a transient failure and an owner decision call for different actions. Use the smallest check that can distinguish them. Reconcile an uncertain external outcome before any retry.
+3. Pause the dependent action. Continue independent work within the existing authority, such as inspecting a source, testing a different acceptance case or preparing a reviewable fix. Record what the result proves and what remains open.
+4. If Dalbir or a reviewer is the only person who can unblock the step, give them one decision with the evidence, recommended action, exact scope and consequence. Record who owns the next step, what evidence will unblock it and when or on what event to check again. Ask again only if the decision or evidence changes.
+5. Resume from the last verified step when the prerequisite is met. Verify the result against the original acceptance criteria and close the loop with evidence. If no authorised work remains, report the specific blocker once. Respect explicit stops, time limits and monitoring-only assignments.
+
 ## 16. Agent collaboration
 
 The Lead Architect owns architecture and invariants within the human-owner hierarchy. Implementation agents own bounded investigation, construction, testing, and narrow self-correction.
