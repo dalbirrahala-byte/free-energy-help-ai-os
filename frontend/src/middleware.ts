@@ -5,7 +5,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { decideAdminMfaRoute, normalizeAssuranceLevel, safeMfaRedirectTarget } from "@/lib/auth/mfa";
 import { requiresMfaForRoleLookup } from "@/lib/auth/mfaRoleResolution";
 
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/business-energy-quote"];
+// Public lead-generation pages only. Keep CRM, owner and admin routes behind authentication.
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password", "/auth/confirm", "/business-energy-quote", "/free-business-energy-health-check"];
 const PUBLIC_PREFIXES = ["/leads/web/"];
 const MFA_PATHS = ["/mfa/challenge", "/mfa/enroll"];
 
