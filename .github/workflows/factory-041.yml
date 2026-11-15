@@ -65,11 +65,13 @@ jobs:
         working-directory: .
         shell: bash
         run: |
-          # PR #56 intentionally changes the authentication middleware. The
-          # independently reviewed MFA head is now the accepted application-security
-          # checkpoint; any later protected-path drift still fails closed.
-          baseline=1d2151f1d7d624ce77d06a98dd24f32b6e74461c
+          # Review candidate for PR #125 public Health Check route only.
+          # Immutable code anchor is Dominic-reviewed PR #125 commit; not main's
+          # current accepted checkpoint and not PR #115/#122's independent anchor.
+          # Never adopt without a separate checkpoint acceptance on this PR.
+          baseline=235e90ae94ebf0d1e8a9c7a0b14f4c33202e0f0f
           git cat-file -e "${baseline}^{commit}"
+          git merge-base --is-ancestor "$baseline" HEAD
           if ! git diff --quiet "$baseline" HEAD -- \
             supabase/migrations \
             supabase/functions \
