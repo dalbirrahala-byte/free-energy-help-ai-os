@@ -3,12 +3,29 @@ import test from "node:test";
 
 import {
   decideAdminMfaRoute,
+  decideTotpEnrollment,
   hasAal2,
   normalizeAssuranceLevel,
   requiresMfaChallenge,
   requiresMfaForRoleResolution,
   safeMfaRedirectTarget,
 } from "./mfa.ts";
+
+test("already-enrolled users challenge their verified factor instead of enrolling again", () => {
+  assert.equal(decideTotpEnrollment({ totp: [{ status: "verified" }] }, null), "challenge");
+  assert.equal(decideTotpEnrollment({ totp: [{ status: "unverified" }, { status: "verified" }] }, null), "challenge");
+});
+
+test("users without a verified TOTP factor remain on the enrollment path", () => {
+  assert.equal(decideTotpEnrollment({ totp: [] }, null), "enroll");
+  assert.equal(decideTotpEnrollment({ totp: [{ status: "unverified" }] }, null), "enroll");
+});
+
+test("factor lookup failure blocks enrollment even if stale factor data is present", () => {
+  assert.equal(decideTotpEnrollment(null, new Error("lookup failed")), "blocked");
+  assert.equal(decideTotpEnrollment({ totp: [{ status: "verified" }] }, new Error("lookup failed")), "blocked");
+  assert.equal(decideTotpEnrollment(null, null), "blocked");
+});
 
 test("normalizes only supported assurance levels", () => {
   assert.equal(normalizeAssuranceLevel("aal1"), "aal1");
@@ -61,3 +78,4 @@ test("MFA redirect target stays on-site and cannot loop into MFA routes", () => 
   assert.equal(safeMfaRedirectTarget("/mfa/challenge?redirectTo=/leads"), "/");
   assert.equal(safeMfaRedirectTarget("/mfa/enroll?redirectTo=/leads"), "/");
 });
+

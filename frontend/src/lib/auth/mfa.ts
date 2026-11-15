@@ -10,6 +10,15 @@ export type AssuranceLevels = {
 
 export type AdminMfaRouteDecision = "allow" | "enroll" | "challenge";
 
+/** Existing verified factors must be challenged, never enrolled again. */
+export function decideTotpEnrollment(
+  factors: { totp: ReadonlyArray<{ status: string }> } | null,
+  error: unknown,
+): "blocked" | "challenge" | "enroll" {
+  if (error || !Array.isArray(factors?.totp)) return "blocked";
+  return factors.totp.some((factor) => factor.status === "verified") ? "challenge" : "enroll";
+}
+
 /**
  * Role resolution and MFA have opposite safe defaults: permissions may fall
  * back to read_only, but an unresolved role must never be treated as confirmed
@@ -66,3 +75,4 @@ export function safeMfaRedirectTarget(value: string | null | undefined): string 
   }
   return "/";
 }
+

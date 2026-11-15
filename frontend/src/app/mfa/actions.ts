@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import { safeMfaRedirectTarget } from "@/lib/auth/mfa";
+import { decideTotpEnrollment, safeMfaRedirectTarget } from "@/lib/auth/mfa";
 
 export type MfaActionState = { error: string | null };
 
@@ -35,6 +35,11 @@ export async function enrollTotp(): Promise<{ factorId: string; qrCode: string; 
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) return { error: "Sign in again before setting up MFA." };
 
+  const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
+  const enrollmentRoute = decideTotpEnrollment(factors, factorsError);
+  if (enrollmentRoute === "blocked") return { error: "We could not check your security factor. Try again." };
+  if (enrollmentRoute === "challenge") redirect("/mfa/challenge");
+
   const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "Free Energy Help" });
   if (error) return { error: "Authenticator setup could not be started." };
   return { factorId: data.id, qrCode: data.totp.qr_code, secret: data.totp.secret };
@@ -54,3 +59,4 @@ export async function verifyEnrollment(_previous: MfaActionState, formData: Form
   if (error) return { error: "That code was not accepted. Try the current code shown in Microsoft Authenticator." };
   redirect("/");
 }
+
