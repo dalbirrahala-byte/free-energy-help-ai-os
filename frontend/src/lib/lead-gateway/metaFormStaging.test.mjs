@@ -102,3 +102,128 @@ test('Edge runtime admits only the restricted ingestor identity, never a worker 
  const db=createPreviewAcknowledgementDatabase('ingestor',env,()=>({begin:async()=>assert.fail('no transaction allowed'),end:async()=>{}}));
  for(const name of ['select_lead_acknowledgement_candidate','create_execution_authorization','stop_execution','prepare_execution_dispatch','claim_meta_lead_acknowledgement'])assert.ok((await db.rpc(name,{})).error);
 });
+
+const novemberStart = '2026-11-08T12:00:00.000Z';
+const novemberEnd = '2026-11-08T12:15:00.000Z';
+const november = {
+  ...env,
+  FEH_META_FORM_ID: '1831927117943843',
+  FEH_META_FORM_TEST_STARTED_AT: novemberStart,
+  FEH_META_FORM_TEST_EXPIRES_AT: novemberEnd,
+  FEH_INTAKE_RECEIVER_EXPIRES_AT: novemberEnd,
+  FEH_ACK_PERMISSION_CAPTURE_ENABLED: 'true',
+  FEH_ACK_PERMISSION_DATABASE_URL: env.FEH_ACK_INGESTOR_DATABASE_URL.replace('feh_ack_preview_ingestor', 'feh_ack_permission_recorder'),
+  FEH_ACK_META_PERMISSION_BINDING_ID: '00000000-0000-4000-8000-000000000901',
+  FEH_ACK_META_PERMISSION_QUESTION_KEY: 'synthetic_permission',
+};
+const challenge = new URLSearchParams({
+  'hub.mode': 'subscribe', 'hub.challenge': '123456', 'hub.verify_token': env.FEH_META_VERIFY_TOKEN,
+});
+
+test('November form uses only the two Meta form callback paths during the bounded Edge window', async () => {
+  const receiver = createIntakeReceiver(november, {now: () => Date.parse(novemberStart)});
+  for (const suffix of ['/meta-form', '/meta']) {
+    const result = await receiver(new Request(url.replace('/meta-form', suffix) + '?' + challenge));
+    assert.equal(result.status, 200);
+    assert.equal(await result.text(), '123456');
+  }
+  assert.equal((await receiver(request(payload(), url.replace('/meta-form', '/google')))).status, 404);
+});
+
+test('November callback stays closed until both restricted CRM connections are configured', async () => {
+  for (const changes of [
+    {FEH_ACK_PERMISSION_DATABASE_URL: undefined},
+    {FEH_ACK_INGESTOR_DATABASE_URL: undefined},
+    {FEH_ACK_PERMISSION_DATABASE_URL: november.FEH_ACK_INGESTOR_DATABASE_URL},
+    {FEH_ACK_INGESTOR_DATABASE_URL: november.FEH_ACK_PERMISSION_DATABASE_URL},
+  ]) {
+    const settings = {...november, ...changes};
+    const now = () => Date.parse(novemberStart);
+    const receiver = createIntakeReceiver(settings, {now});
+    for (const path of [url, url.replace('/meta-form', '/meta')]) {
+      assert.equal((await receiver(new Request(path + '?' + challenge))).status, 404);
+      assert.equal((await receiver(request(payload(), path))).status, 404);
+    }
+  }
+});
+
+test('November form rejects wrong target, missing mapping and invalid or expired windows', async () => {
+  const afterCap = '2026-11-08T12:15:00.001Z';
+  const cases = [
+    {FEH_META_FORM_ID: env.FEH_META_FORM_ID}, {FEH_META_FORM_ID: '1111111'},
+    {FEH_META_FORM_TEST_ENABLED: 'false'}, {FEH_ACK_PERMISSION_CAPTURE_ENABLED: 'false'},
+    {FEH_ACK_META_PERMISSION_BINDING_ID: undefined}, {FEH_ACK_META_PERMISSION_QUESTION_KEY: ''},
+    {FEH_ACK_DATABASE_ENABLED: 'false'}, {FEH_META_TEST_LEAD_ID: undefined},
+    {FEH_META_PAGE_ID: '222222'}, {FEH_META_FORM_TEST_STARTED_AT: undefined},
+    {FEH_META_FORM_TEST_STARTED_AT: novemberEnd}, {FEH_INTAKE_RECEIVER_EXPIRES_AT: afterCap},
+    {FEH_META_FORM_TEST_EXPIRES_AT: afterCap, FEH_INTAKE_RECEIVER_EXPIRES_AT: afterCap},
+    {VERCEL_ENV: 'preview', FEH_META_INGRESS_ENABLED: 'true', FEH_INTAKE_RUNTIME: undefined},
+    {SUPABASE_URL: 'https://wrong.invalid'},
+  ];
+  for (const [changes, time] of [
+    ...cases.map(changes => [changes, Date.parse(novemberStart)]),
+    [{}, Date.parse(novemberStart) - 1], [{}, Date.parse(novemberEnd)],
+  ]) {
+    const settings = {...november, ...changes};
+    const dependencies = {now: () => time, fetch: () => assert.fail('Graph access'), database: () => assert.fail('DB access')};
+    const metaForm = createMetaIngressHandlers(settings, dependencies);
+    const receiver = createIntakeReceiver(settings, {...dependencies, metaForm});
+    for (const handler of [metaForm.POST, receiver]) {
+      assert.equal((await handler(request())).status, 404);
+    }
+  }
+});
+
+test('signed November enquiries carry the SMS choice and both business answers into separate CRM calls', async () => {
+  const {createFormPermissionCapture} = await import('./formPermissionCapture.server.ts');
+  for (const answer of ['yes', 'no', undefined]) {
+    const captured = [];
+    const receipts = [];
+    const fields = [
+      {name: 'phone_number', values: [november.FEH_ACK_PREVIEW_ALLOWED_PHONE]},
+      {name: 'when_does_your_current_business_energy_contract_end?', values: ['Synthetic renewal band']},
+      {name: 'roughly_how_much_does_your_business_spend_on_energy_each_month?', values: ['Synthetic spend band']},
+    ];
+    if (answer !== undefined) fields.push({name: november.FEH_ACK_META_PERMISSION_QUESTION_KEY, values: [answer]});
+    const permissionCapture = createFormPermissionCapture(november, 'meta', () => ({
+      async rpc(name, args) {
+        assert.equal(name, 'record_permission');
+        captured.push(args);
+        return {data: 'recorded', error: null};
+      },
+      async close() {},
+    }));
+    const timestamp = Date.parse(novemberStart);
+    const metaForm = createMetaIngressHandlers(november, {
+      now: () => timestamp,
+      permissionCapture,
+      fetch: async () => Response.json({
+        id: november.FEH_META_TEST_LEAD_ID, form_id: november.FEH_META_FORM_ID,
+        campaign_id: '123456', created_time: novemberStart, field_data: fields,
+      }),
+      database: () => ({
+        async rpc(name, args) {
+          assert.equal(name, 'ingest_meta_lead_with_acknowledgement');
+          receipts.push(args);
+          return {data: [{outcome: 'accepted', lead_id: 17, acknowledgement_reserved: true}], error: null};
+        },
+        async close() {},
+      }),
+    });
+    const body = payload();
+    Object.assign(body.entry[0].changes[0].value, {form_id: november.FEH_META_FORM_ID, created_time: timestamp / 1000});
+    const receiver = createIntakeReceiver(november, {now: () => timestamp, metaForm});
+    const response = await receiver(request(body));
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {});
+    assert.equal(receipts.length, 1);
+    assert.equal(receipts[0].p_form_id, november.FEH_META_FORM_ID);
+    assert.equal(receipts[0].p_contract_end_answer, 'Synthetic renewal band');
+    assert.equal(receipts[0].p_monthly_spend_answer, 'Synthetic spend band');
+    assert.deepEqual(captured, [{
+      p_binding_id: november.FEH_ACK_META_PERMISSION_BINDING_ID, p_lead_id: 17,
+      p_submitted_at: novemberStart, p_question_key: november.FEH_ACK_META_PERMISSION_QUESTION_KEY,
+      p_answer: answer ?? '',
+    }]);
+  }
+});

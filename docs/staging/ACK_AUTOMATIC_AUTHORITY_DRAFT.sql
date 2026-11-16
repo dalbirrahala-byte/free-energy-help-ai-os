@@ -116,16 +116,23 @@ declare b feh_ack_authority_private.bindings%rowtype; q public.lead_acknowledgem
   answer text; answer_hash bytea; phone text;
 begin
   select * into b from feh_ack_authority_private.bindings where id=p_binding_id for share;
-  if not found or p_question_key is distinct from b.question_key or p_submitted_at is null or
+  if not found or p_question_key is distinct from b.question_key or (p_submitted_at is null and b.provider <> 'google_ads') or
     not pg_catalog.isfinite(p_submitted_at) or p_answer is null or length(p_answer)>200 then return 'rejected'; end if;
   -- Lead/queue before the control mutex matches the existing claim/checkpoint
   -- order. Callback STOP holds the mutex and never requests these row locks.
   select * into l from public.leads where id=p_lead_id for share;
   select * into q from public.lead_acknowledgements where lead_id=p_lead_id for update;
+  -- A review-only lead has no reservation or permission. Confirm the lead
+  -- exists and matches this source before acknowledging that no-op.
+  if p_submitted_at is null and q.lead_id is null and l.provider=b.provider and
+    l.utm_campaign=b.campaign_id and l.telephone=b.allowed_phone and
+    not exists (select 1 from feh_ack_authority_private.permissions where lead_id=l.id)
+    then return 'no_prior_permission'; end if;
   if q.lead_id is null or q.provider is distinct from b.provider or q.form_id is distinct from b.form_id or
     q.page_id is distinct from b.page_id or l.utm_campaign is distinct from b.campaign_id or
     l.provider is distinct from q.provider or l.external_lead_id is distinct from q.external_lead_id or
-    l.provider_created_at is distinct from q.provider_created_at or p_submitted_at is distinct from q.provider_created_at then return 'rejected'; end if;
+    l.provider_created_at is distinct from q.provider_created_at or
+    (p_submitted_at is not null and p_submitted_at is distinct from q.provider_created_at) then return 'rejected'; end if;
   phone:=pg_catalog.regexp_replace(pg_catalog.btrim(l.telephone),'[ ()-]','','g');
   if phone ~ '^07' then phone:='+44'||pg_catalog.substr(phone,2);
   elsif phone ~ '^00447' then phone:='+'||pg_catalog.substr(phone,3); end if;
@@ -133,8 +140,14 @@ begin
   answer:=case when p_answer=b.affirmative_answer then 'yes' when p_answer=b.negative_answer then 'no' else 'unknown' end;
   answer_hash:=pg_catalog.sha256(pg_catalog.convert_to(p_answer,'UTF8'));
   select * into prior from feh_ack_authority_private.permissions where lead_id=q.lead_id;
-  if found then
-    if prior.binding_id=b.id and prior.submitted_at=p_submitted_at and prior.answer_hash=answer_hash and not prior.conflicted then return 'duplicate'; end if;
+  -- Google replay without a reliable time may only reconcile existing evidence.
+  if p_submitted_at is null then
+    if prior.lead_id is null then return 'no_prior_permission'; end if;
+    if prior.binding_id is distinct from b.id or
+      prior.submitted_at is distinct from q.provider_created_at then return 'rejected'; end if;
+  end if;
+  if prior.lead_id is not null then
+    if prior.binding_id=b.id and prior.submitted_at=coalesce(p_submitted_at,q.provider_created_at) and prior.answer_hash=answer_hash and not prior.conflicted then return 'duplicate'; end if;
     perform 1 from public.execution_control_lock where id=1 for update;
     if not found then return 'rejected'; end if;
     if not prior.conflicted then

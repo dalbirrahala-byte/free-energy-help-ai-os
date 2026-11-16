@@ -12,6 +12,14 @@ const equal=(a:string,b:string)=>timingSafeEqual(createHash('sha256').update(a).
 const response=(status:number)=>Response.json(status===200?{}:{message:'Lead could not be accepted'},{status,headers:{'Cache-Control':'no-store'}});
 const decimal=(x:unknown)=>typeof x==='string' && /^[1-9]\d{0,18}$/.test(x) && BigInt(x)<=BigInt('9223372036854775807');
 
+function validSubmissionTime(value: unknown): boolean {
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return false;
+  const date = /^(\d{4}-\d{2}-\d{2})(?:T|\s|$)/i.exec(value)?.[1];
+  if (!date) return true;
+  const midnight = new Date(date + 'T00:00:00Z');
+  return Number.isFinite(midnight.getTime()) && midnight.toISOString().slice(0, 10) === date;
+}
+
 /** Google documents int64 form/campaign IDs. Preserve the original numeric
  * token using Node 24's JSON reviver source; never round an account/form ID. */
 function decode(bytes:Uint8Array):unknown {
@@ -52,7 +60,7 @@ export function createGoogleIngressHandler(environment:Environment=process.env,d
       (payload.lead_source!==undefined && payload.lead_source!=='LEAD_FORM') ||
       typeof payload.lead_id!=='string' || !/^[A-Za-z0-9_-]{6,100}$/.test(payload.lead_id) ||
       (!(stable && payload.lead_submit_time===undefined) &&
-        (typeof payload.lead_submit_time!=='string' || !Number.isFinite(Date.parse(payload.lead_submit_time)))) ||
+        !validSubmissionTime(payload.lead_submit_time)) ||
       !Array.isArray(payload.user_column_data) || payload.user_column_data.length>100)return response(400);
     const fields=new Map<string,string>();
     const selected=new Set(['FULL_NAME','EMAIL','PHONE_NUMBER','COMPANY_NAME']);
@@ -63,12 +71,14 @@ export function createGoogleIngressHandler(environment:Environment=process.env,d
       fields.set(field.column_id,field.string_value);
     }
     if(fields.get('PHONE_NUMBER')!==allowedPhone)return response(400);
-    // Google may omit submission time. Retain that enquiry for review through
-    // the existing intake-only primitive. Never fabricate freshness to satisfy
-    // the acknowledgement RPC's mandatory provider-time check.
-    const reviewOnly=stable && payload.lead_submit_time===undefined;
+    // Stable intake can retain an enquiry even when its submission time
+    // cannot identify an instant independently of the database session zone.
+    const submittedAt = payload.lead_submit_time;
+    const reviewOnly = stable && (typeof submittedAt !== 'string' ||
+      !/T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i.test(submittedAt));
     let database:(MetaIngestionRpc & {close():Promise<void>})|null=null;
     try{
+      if(stable && !isGoogleReceiverEnabled(environment))return response(404);
       database=reviewOnly
         ? reviewDatabaseFactory?.()??createPreviewAcknowledgementDatabase('receiver',environment)
         : databaseFactory?.()??createPreviewAcknowledgementDatabase('ingestor',environment);
@@ -86,10 +96,22 @@ export function createGoogleIngressHandler(environment:Environment=process.env,d
       const row=receipt.data[0];
       if(row.outcome==='rejected')return response(400);
       if(!Number.isSafeInteger(row.lead_id) || (row.lead_id as number)<=0)return response(503);
-      if(reviewOnly)return response(['accepted','duplicate'].includes(row.outcome as string)?200:503);
+      if (reviewOnly) {
+        if (row.outcome === 'accepted') return response(200);
+        if (row.outcome !== 'duplicate') return response(503);
+        // A duplicate can refer to an earlier timestamped permission.
+        // Never substitute the time at which this replay arrived.
+        if (capture && stable && !isGoogleReceiverEnabled(environment)) return response(404);
+        if (capture && !await capture({leadId: row.lead_id as number, submittedAt: null, fields: payload.user_column_data})) {
+          return response(503);
+        }
+        return response(200);
+      }
       const saved=(row.outcome==='accepted' && row.acknowledgement_reserved===true) ||
         (row.outcome==='duplicate' && row.acknowledgement_reserved===false);
       if(!saved) return response(503);
+      // Receipt and permission recording use separate transactions.
+      if(capture && stable && !isGoogleReceiverEnabled(environment))return response(404);
       if(capture && !await capture({leadId:row.lead_id as number,submittedAt:payload.lead_submit_time as string,fields:payload.user_column_data})) return response(503);
       return response(200);
     }catch{return response(503);}finally{

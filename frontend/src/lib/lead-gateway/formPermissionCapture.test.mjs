@@ -54,3 +54,26 @@ test('lost approval response remains unconfirmed; no retry',async()=>{
  assert.equal(await approveAutomaticRule(c,{id,fingerprint:'a'.repeat(64),confirm:'yes'}),false);
  assert.equal((await readAutomaticRules({rpc:async()=>({data:null,error:'unavailable'})})).status,'unavailable');
 });
+
+for (const [result,expected] of [
+ ['duplicate',true],['conflict',true],['no_prior_permission',true],
+ ['rejected',false],['recorded',false],[['duplicate'],false],[null,false],
+]) test(`Google null-time replay requires an exact scalar reconciliation result: ${JSON.stringify(result)}`,async()=>{
+ const calls=[];
+ const capture=create({FEH_ACK_PERMISSION_CAPTURE_ENABLED:'true',FEH_ACK_GOOGLE_PERMISSION_BINDING_ID:id,
+  FEH_ACK_GOOGLE_PERMISSION_QUESTION_KEY:'synthetic_permission'},'google_ads',()=>({
+  async rpc(name,args){calls.push({name,args});return {data:result,error:null};},async close(){calls.push('close');},
+ }));
+ assert.equal(await capture({leadId:42,submittedAt:null,fields:[]}),expected);
+ assert.equal(calls.length,2);
+ assert.equal(calls[0].args.p_submitted_at,null);
+ assert.equal(calls[1],'close');
+});
+
+test('Meta cannot use Google null-time reconciliation',async()=>{
+ let opened=0;
+ const capture=create({FEH_ACK_PERMISSION_CAPTURE_ENABLED:'true',FEH_ACK_META_PERMISSION_BINDING_ID:id,
+  FEH_ACK_META_PERMISSION_QUESTION_KEY:'synthetic_permission'},'meta',()=>{opened++;throw new Error('must not connect');});
+ assert.equal(await capture({leadId:42,submittedAt:null,fields:[]}),false);
+ assert.equal(opened,0);
+});
