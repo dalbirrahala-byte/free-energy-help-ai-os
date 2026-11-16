@@ -4,7 +4,9 @@ import {readFile,readdir} from 'node:fs/promises';
 import {registerHooks} from 'node:module';
 import {PGlite} from '@electric-sql/pglite';
 const hook=registerHooks({resolve(s,c,next){return s==='server-only'?{url:'data:text/javascript,export{}',shortCircuit:true}:next(s,c);}});
-const {createGoogleReceiver}=await import('./googleReceiver.server.ts');hook.deregister();
+const {createGoogleReceiver}=await import('./googleReceiver.server.ts');
+const {createFormPermissionCapture}=await import('./formPermissionCapture.server.ts');
+hook.deregister();
 // Isolated real PostgreSQL engine, no remote credentials, fabricated permission,
 // actor grant, RELEASE, authority or provider transport. One connection only:
 // replay is proved here; multi-session racing requires separate acceptance.
@@ -84,4 +86,79 @@ test('wrong Google key and other telephone cannot leave any database evidence',a
  const before=calls.length;const p=payload('google_stable_rejected_001');p.google_key='incorrect';assert.equal((await send(p)).status,403);
  p.google_key=environment.FEH_GOOGLE_WEBHOOK_KEY;p.user_column_data[0].string_value='+447700900009';assert.equal((await send(p)).status,400);
  assert.equal(calls.length,before);assert.equal((await db.query('select count(*)::int n from leads where external_lead_id=$1',[p.lead_id])).rows[0].n,0);await closed();
+});
+
+test('review-only Google replays reconcile existing permission through the stable receiver', async () => {
+  await db.exec(await readFile(new URL('../../../../docs/staging/ACK_AUTOMATIC_AUTHORITY_DRAFT.sql', import.meta.url), 'utf8'));
+  const actor = '00000000-0000-4000-8000-000000000514';
+  await db.query('insert into auth.users(id) values ($1)', [actor]);
+  const org = (await db.query("insert into organisations(legal_name) values ('Synthetic replay') returning id")).rows[0].id;
+  const phone = environment.FEH_ACK_PREVIEW_ALLOWED_PHONE;
+  const contact = (await db.query('insert into contacts(organisation_id,phone) values ($1,$2) returning id', [org,phone])).rows[0].id;
+  const binding = (await db.query(`insert into feh_ack_authority_private.bindings
+    (project_ref, owner_id, contact_id, allowed_phone, provider, form_id, campaign_id, question_key,
+     affirmative_answer, negative_answer, notice_version, notice_text, form_review_reference)
+    values ('vredwhyphrhsudggrsen',$1,$2,$3,'google_ads',$4,$5,'synthetic_choice','Yes','No','fixture','Synthetic only','LOCAL')
+    returning id`, [actor,contact,phone,environment.FEH_GOOGLE_FORM_ID,environment.FEH_GOOGLE_CAMPAIGN_ID])).rows[0].id;
+  const profile = {...environment, FEH_ACK_PERMISSION_CAPTURE_ENABLED:'true',
+    FEH_ACK_GOOGLE_PERMISSION_BINDING_ID:binding, FEH_ACK_GOOGLE_PERMISSION_QUESTION_KEY:'synthetic_choice'};
+  const results = [];
+  const captureWith = rpc => createFormPermissionCapture(profile,'google_ads',() => ({rpc, async close() {}}));
+  const capture = captureWith(async (name,a) => {
+    assert.equal(name,'record_permission');
+    const result = await db.transaction(async tx => {
+      await tx.exec('set local role feh_ack_permission_recorder');
+      return (await tx.query('select feh_ack_authority_private.record_permission($1,$2,$3,$4,$5) as result',
+        [a.p_binding_id,a.p_lead_id,a.p_submitted_at,a.p_question_key,a.p_answer])).rows[0].result;
+    });
+    results.push(result);
+    return {data:result,error:null};
+  });
+  const live = createGoogleReceiver(profile,{...dependencies,permissionCapture:capture});
+  const submit = (requestBody, receiver=live) => receiver(new Request('https://staging.invalid/functions/v1/feh-google-lead-intake',
+    {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(requestBody)}));
+  const state = async id => (await db.query(`select l.id, q.status, p.answer, p.conflicted, p.submitted_at::text,
+    (select count(*)::int from suppression_records where evidence_reference='ack-permission-conflict:' || l.id) as holds
+    from leads l left join lead_acknowledgements q on q.lead_id=l.id
+    left join feh_ack_authority_private.permissions p on p.lead_id=l.id where l.external_lead_id=$1`,[id])).rows;
+  for (const choice of ['No', undefined]) {
+    const lead = payload('synthetic_existing_' + (choice ?? 'missing'));
+    lead.user_column_data.push({column_id:'synthetic_choice',string_value:'Yes'});
+    assert.equal((await submit(lead)).status,200);
+    assert.equal(results.at(-1),'recorded');
+    const [before] = await state(lead.lead_id);
+    assert.equal(before.answer,'yes');
+    assert.equal(before.conflicted,false);
+    delete lead.lead_submit_time;
+    assert.equal((await submit(lead)).status,200);
+    assert.equal(results.at(-1),'duplicate');
+    lead.user_column_data.pop();
+    if (choice) lead.user_column_data.push({column_id:'synthetic_choice',string_value:choice});
+    const older = createGoogleReceiver(profile,{...dependencies,permissionCapture:captureWith(async () => ({data:'rejected',error:null}))});
+    const unresolved = await submit(lead,older);
+    assert.equal(unresolved.status,503);
+    assert.deepEqual(await unresolved.json(),{message:'Lead could not be accepted'});
+    assert.deepEqual(await state(lead.lead_id),[before]);
+    for (let i=0;i<2;i++) {
+      assert.equal((await submit(lead)).status,200);
+      assert.equal(results.at(-1),'conflict');
+      assert.deepEqual(await state(lead.lead_id),[{...before,conflicted:true,holds:3}]);
+    }
+  }
+  for (const reserved of [true,false]) {
+    const lead = payload('synthetic_no_prior_' + reserved);
+    if (!reserved) delete lead.lead_submit_time;
+    const callsBefore = results.length;
+    assert.equal((await send(lead)).status,200);
+    delete lead.lead_submit_time;
+    lead.user_column_data.push({column_id:'synthetic_choice',string_value:'Yes'});
+    assert.equal((await submit(lead)).status,200);
+    assert.deepEqual(results.slice(callsBefore),['no_prior_permission']);
+    const rows = await state(lead.lead_id);
+    assert.equal(rows.length,1);
+    assert.equal(rows[0].status,reserved ? 'awaiting_authority' : null);
+    assert.equal(rows[0].answer,null);
+    assert.equal(rows[0].holds,0);
+  }
+  await closed();
 });

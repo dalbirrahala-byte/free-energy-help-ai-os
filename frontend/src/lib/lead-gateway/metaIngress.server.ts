@@ -1,14 +1,30 @@
-import {createFormPermissionCapture,type FormPermissionCapture} from './formPermissionCapture.server.ts';
+import {createFormPermissionCapture, readPermissionMapping, type FormPermissionCapture} from './formPermissionCapture.server.ts';
 import 'server-only';
 import {createHash,timingSafeEqual} from 'node:crypto';
 import {readBoundedBody} from './boundedBody.server.ts';
 import {createMetaGraphReader} from './metaGraph.server.ts';
 import {ingestMetaLeadAcknowledgements,type MetaIngestionRpc} from './ingestMetaLeadAcknowledgement.server.ts';
-import {ACK_STAGING_PROJECT,createPreviewAcknowledgementDatabase} from './previewDatabase.server.ts';
+import {ACK_STAGING_PROJECT,createPreviewAcknowledgementDatabase,readPreviewDatabaseConfiguration} from './previewDatabase.server.ts';
 
 const response=(status:number,body:unknown={})=>Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const equal=(a:string,b:string)=>timingSafeEqual(createHash('sha256').update(a).digest(),createHash('sha256').update(b).digest());
 type Environment=Readonly<Record<string,string|undefined>>;
+
+
+export const NOVEMBER_META_FORM_ID = '1831927117943843';
+
+// Both receiver layers must close together, including after a cold start.
+// Timestamps are supplied only for a separately approved staging window.
+export function isNovemberMetaWindowOpen(env: Environment, now: number): boolean {
+  const start = env.FEH_META_FORM_TEST_STARTED_AT;
+  const end = env.FEH_META_FORM_TEST_EXPIRES_AT;
+  if (!start || !end || end !== env.FEH_INTAKE_RECEIVER_EXPIRES_AT) return false;
+  const from = Date.parse(start);
+  const until = Date.parse(end);
+  return Number.isFinite(from) && Number.isFinite(until) &&
+    new Date(from).toISOString() === start && new Date(until).toISOString() === end &&
+    until > from && until - from <= 15 * 60_000 && now >= from && now < until;
+}
 
 /** Default disabled. GET verifies Meta's callback; POST authenticates raw bytes
  * before Graph or DB access. This endpoint only reserves, never authorizes SMS. */
@@ -23,14 +39,19 @@ export function createMetaIngressHandlers(environment:Environment=process.env,de
   const allowedLeadId=environment.FEH_META_TEST_LEAD_ID;
   const expiresAt=Date.parse(environment.FEH_META_FORM_TEST_EXPIRES_AT??'');
   const now=dependencies.now??Date.now;
-  const withinWindow=()=>Number.isFinite(expiresAt)&&expiresAt<=Date.parse('2026-11-06T23:59:59Z')&&expiresAt>now();
+  const novemberForm = formId === NOVEMBER_META_FORM_ID;
+  const withinWindow=()=>novemberForm ? isNovemberMetaWindowOpen(environment, now()) : Number.isFinite(expiresAt)&&expiresAt<=Date.parse('2026-11-06T23:59:59Z')&&expiresAt>now();
   const edge=environment.VERCEL_ENV===undefined&&environment.FEH_INTAKE_RUNTIME==='supabase-edge'&&
     environment.SUPABASE_URL===`https://${ACK_STAGING_PROJECT}.supabase.co`&&
     environment.FEH_INTAKE_RECEIVER_ENABLED==='true'&&environment.FEH_META_FORM_TEST_ENABLED==='true';
   const preview=environment.FEH_INTAKE_RUNTIME===undefined&&environment.VERCEL_ENV==='preview'&&environment.FEH_META_INGRESS_ENABLED==='true';
   const enabled=(edge||preview) &&
     environment.NEXT_PUBLIC_SUPABASE_URL===`https://${ACK_STAGING_PROJECT}.supabase.co` &&
-    pageId==='100693684801233' && formId==='1788543365401126' &&
+    pageId==='100693684801233' &&
+    (formId==='1788543365401126' || (novemberForm && edge &&
+      !!readPermissionMapping(environment,'meta') &&
+      !!readPreviewDatabaseConfiguration('ingestor',environment) &&
+      !!readPreviewDatabaseConfiguration('permission',environment))) &&
     typeof appSecret==='string' && typeof pageToken==='string' && typeof verifyToken==='string' &&
     typeof allowedLeadId==='string'&&/^[1-9]\d{5,99}$/.test(allowedLeadId)&&
     typeof allowedPhone==='string' && /^\+447[1-57-9]\d{8}$/.test(allowedPhone) &&
@@ -63,7 +84,7 @@ export function createMetaIngressHandlers(environment:Environment=process.env,de
         const result=await ingestMetaLeadAcknowledgements(bytes,request.headers.get('x-hub-signature-256'),{appSecret,pageId,formId,allowedPhone,allowedLeadId},async reference=>{
           if(!withinWindow())throw new Error('test_expired');
           return reader(reference);
-        },lazy,capture);
+        },lazy,capture && (input => withinWindow() ? capture(input) : Promise.resolve(false)));
         return response(result.status==='persisted'?200:result.status==='rejected'?400:503);
       }finally{
         // Cleanup cannot change the confirmed RPC outcome or expose private

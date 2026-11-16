@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 const hook=registerHooks({resolve(s,c,next){return s==='server-only'?{url:'data:text/javascript,export{}',shortCircuit:true}:next(s,c);}});
 const {createGoogleReceiver}=await import('./googleReceiver.server.ts');
+const {createGoogleWebhookTestHandler}=await import('./googleWebhookTest.server.ts');
 const {isGoogleReceiverEnabled}=await import('./googleReceiverConfiguration.server.ts');
 const {createPreviewAcknowledgementDatabase,readPreviewDatabaseConfiguration}=await import('./previewDatabase.server.ts');
 hook.deregister();
@@ -106,6 +107,27 @@ test('expiry during body streaming rejects the request before either ingestion f
  const r=await h.handler(new Request('https://staging.invalid/feh-google-lead-intake',{method:'POST',headers:{'content-type':'application/json'},body:stream,duplex:'half'}));
  assert.equal(r.status,404);assert.equal(h.opened(),0);
 });
+for (const outcome of ['accepted', 'duplicate']) {
+ test(`expiry after a Google ${outcome} receipt closes before permission recording`, async t => {
+  t.mock.timers.enable({apis: ['Date'], now: Date.parse('2026-11-03T00:00:00.000Z')});
+  const configuration = env();
+  const calls = [];
+  const handler = createGoogleReceiver(configuration, {
+   ingestor: () => ({
+    async rpc(name) {
+     calls.push(name);
+     t.mock.timers.setTime(Date.parse(configuration.FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT));
+     return {data: [{outcome, lead_id: 42, acknowledgement_reserved: outcome === 'accepted'}], error: null};
+    },
+    async close() { calls.push('close'); },
+   }),
+   permissionCapture: async () => { calls.push('capture'); return true; },
+  });
+  const result = await handler(request());
+  assert.equal(result.status, 404);
+  assert.deepEqual(calls, ['ingest_google_lead_with_acknowledgement', 'close']);
+ });
+}
 for(const path of ['/','/api/lead-acknowledgements/run','/feh-google-lead-intake/extra','/functions/v1/feh-google-lead-intake/'])test(`unexposed path ${path}`,async()=>{
  const h=harness();assert.equal((await h.handler(request(body(),{url:'https://staging.invalid'+path}))).status,404);assert.equal(h.opened(),0);
 });
@@ -162,4 +184,139 @@ test('both Edge manifests have resolved local imports and the new entry reads no
    }
   }
  }finally{await rm(destination,{recursive:true,force:true});}
+});
+
+for (const [route, payload, rpc] of [
+ ['ordinary', body, 'ingest_google_lead_with_acknowledgement'],
+ ['demonstration', demonstration, 'ingest_external_lead'],
+]) {
+ test(`Google ${route} handler constructed before the window follows both bounds`, async t => {
+  const start = Date.parse('2026-11-03T12:00:00.000Z');
+  const end = start + 60_000;
+  t.mock.timers.enable({apis: ['Date'], now: start - 1});
+  const configuration = {...env(),
+   FEH_GOOGLE_RECEIVER_TEST_STARTED_AT: new Date(start).toISOString(),
+   FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT: new Date(end).toISOString(),
+  };
+  const warm = harness(configuration);
+  assert.equal((await warm.handler(request(payload()))).status, 404);
+  assert.equal(warm.opened(), 0);
+  t.mock.timers.setTime(start);
+  const cold = harness(configuration);
+  for (const receiver of [cold, warm]) {
+   assert.equal((await receiver.handler(request(payload()))).status, 200);
+   assert.deepEqual(receiver.calls.map(call => call.name), [rpc]);
+   assert.equal(receiver.closed(), 1);
+  }
+  t.mock.timers.setTime(end);
+  assert.equal((await warm.handler(request(payload()))).status, 404);
+  assert.equal(warm.opened(), 1);
+ });
+}
+
+
+test('dashboard receiver database checks the window again before creating a pool', async t => {
+ const start = Date.parse('2026-11-03T12:00:00.000Z');
+ t.mock.timers.enable({apis: ['Date'], now: start});
+ const configuration = dbEnv();
+ const end = Date.parse(configuration.FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT);
+ let pools = 0;
+ const factory = () => createPreviewAcknowledgementDatabase('receiver', configuration, () => {
+  pools++;
+  return {begin: () => assert.fail('unexpected transaction'), end: async () => {}};
+ });
+ const handler = createGoogleWebhookTestHandler(configuration);
+ t.mock.timers.setTime(end - 1);
+ const control = factory();
+ assert.ok(control);
+ await control.close();
+ assert.equal(pools, 1);
+
+ t.mock.timers.setTime(end);
+ assert.equal(factory(), null);
+ assert.equal(pools, 1);
+ const response = await handler(request(demonstration()));
+ assert.equal(response.status, 503);
+ assert.deepEqual(await response.json(), {message: 'Test lead could not be accepted'});
+});
+
+for (const [label, timestamp, route] of [
+  ['missing', undefined, 'review'],
+  ['local time', '2026-07-01T12:00:00', 'review'],
+  ['date alone', '2026-07-01', 'review'],
+  ['UTC', '2026-07-01T12:00:00Z', 'ack'],
+  ['numeric offset', '2026-07-01T13:00:00+01:00', 'ack'],
+  ['malformed', 'invalidZ', 'reject'],
+]) {
+  test('stable Google timestamp routing: ' + label, async () => {
+    const calls = [];
+    const captures = [];
+    const factory = kind => () => ({
+      async rpc(name, args) {
+        calls.push([kind, name, args.p_provider_created_at, args.p_consent_status]);
+        const first = calls.length === 1;
+        return {data: [{outcome: first ? 'accepted' : 'duplicate', lead_id: 42,
+          acknowledgement_reserved: first && kind === 'ack'}], error: null};
+      },
+      async close() {},
+    });
+    const receiver = createGoogleReceiver(env(), {
+      ingestor: factory('ack'), receiver: factory('review'),
+      permissionCapture: async input => { captures.push(input.submittedAt); return true; },
+    });
+    const enquiry = {...body(), lead_submit_time: timestamp};
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await receiver(request(enquiry));
+      assert.equal(response.status, route === 'reject' ? 400 : 200);
+      if (route !== 'reject') assert.deepEqual(await response.json(), {});
+    }
+    const call = route === 'review'
+      ? ['review', 'ingest_external_lead', null, 'unknown']
+      : ['ack', 'ingest_google_lead_with_acknowledgement', timestamp, undefined];
+    assert.deepEqual(calls, route === 'reject' ? [] : [call, call]);
+    assert.deepEqual(captures, route === 'ack' ? [timestamp, timestamp] : route === 'review' ? [null] : []);
+  });
+}
+
+test('offset-free leap day keeps a fresh Google enquiry in review', async () => {
+  const h = harness();
+  const response = await h.handler(request({...body(), lead_submit_time: '2028-02-29T23:45:00'}));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {});
+  assert.equal(h.calls.length, 1);
+  const [call] = h.calls;
+  assert.equal(call.kind, 'receiver');
+  assert.equal(call.name, 'ingest_external_lead');
+  assert.equal(call.args.p_provider_created_at, null);
+  assert.equal(call.args.p_consent_status, 'unknown');
+  assert.equal(h.closed(), 1);
+});
+
+test('offset-free impossible day cannot open Google review intake', async () => {
+  const h = harness();
+  const response = await h.handler(request({...body(), lead_submit_time: '2026-02-29T23:45:00'}));
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {message: 'Lead could not be accepted'});
+  assert.equal(h.opened(), 0);
+  assert.deepEqual(h.calls, []);
+});
+
+test('review-only duplicate at expiry cannot start permission reconciliation', async t => {
+  t.mock.timers.enable({apis: ['Date'], now: Date.parse('2026-11-03T00:00:00.000Z')});
+  const configuration = env();
+  const calls = [];
+  const receiver = createGoogleReceiver(configuration, {
+    receiver: () => ({
+      async rpc(name) {
+        calls.push(name);
+        t.mock.timers.setTime(Date.parse(configuration.FEH_GOOGLE_RECEIVER_TEST_EXPIRES_AT));
+        return {data: [{outcome: 'duplicate', lead_id: 42, acknowledgement_reserved: false}], error: null};
+      },
+      async close() { calls.push('close'); },
+    }),
+    permissionCapture: async () => { calls.push('capture'); return true; },
+  });
+  const result = await receiver(request({...body(), lead_submit_time: undefined}));
+  assert.equal(result.status, 404);
+  assert.deepEqual(calls, ['ingest_external_lead', 'close']);
 });

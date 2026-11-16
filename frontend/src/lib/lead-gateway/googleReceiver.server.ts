@@ -17,8 +17,7 @@ type Dependencies=Readonly<{
  */
 export function createGoogleReceiver(environment:Environment=process.env,dependencies:Dependencies={}){
   const snapshot=Object.freeze({...environment});
-  const ordinary=createGoogleIngressHandler(snapshot,dependencies.ingestor,dependencies.receiver,dependencies.permissionCapture);
-  const demonstration=createGoogleWebhookTestHandler(snapshot,dependencies.receiver);
+  const {ingestor,receiver,permissionCapture}=dependencies;
   return async(request:Request):Promise<Response>=>{
     const url=new URL(request.url);
     if(!isGoogleReceiverEnabled(snapshot) ||
@@ -40,6 +39,10 @@ export function createGoogleReceiver(environment:Environment=process.env,depende
     // Forward exact raw bytes, preserving int64 IDs for the handlers' source
     // reviver. Never reserialize rounded numbers or silently change is_test.
     const forwarded=new Request(request.url,{method:'POST',headers:request.headers,body:Buffer.from(bytes)});
-    return marker===true?demonstration(forwarded):ordinary(forwarded);
+    // Child handlers evaluate the test window when constructed.
+    const handler=marker===true
+      ? createGoogleWebhookTestHandler(snapshot,receiver)
+      : createGoogleIngressHandler(snapshot,ingestor,receiver,permissionCapture);
+    return handler(forwarded);
   };
 }
