@@ -23,3 +23,9 @@ test('only operator-selected fixture can be replayed',async()=>{
   for(const route of ['google','google','meta'])assert.equal((await handle(request(route,{'x-feh-operator':token}))).status,200);
   assert.deepEqual(seen,[['google-test','fixed'],['google-test','fixed'],['meta-test']]);
 });
+test('accepts a zero-byte POST stream from a gateway',async()=>{
+  const handle=createOperator(env,async()=>({http:200}),()=>start);
+  const empty=request('google',{'x-feh-operator':token},{body:new Uint8Array(0)});
+  assert.ok(empty.body);
+  assert.equal((await handle(empty)).status,200);
+});
