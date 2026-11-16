@@ -18,7 +18,27 @@ export function createOperator(env, run = verify, now = Date.now) {
     if (!/^[a-f0-9]{64}$/.test(token ?? '') || !/^[a-f0-9]{64}$/.test(supplied) ||
         !timingSafeEqual(Buffer.from(supplied), Buffer.from(token))) return reject(403);
     const url = new URL(request.url);
-    if (url.search || request.body !== null) return reject(400);
+    if (url.search) return reject(400);
+    // An empty POST may arrive as a zero-byte stream through the Edge gateway.
+    // Reject the first nonempty chunk without accumulating a payload.
+    if (request.body) {
+      const reader = request.body.getReader();
+      try {
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          if (chunk.value.byteLength) {
+            await reader.cancel();
+            return reject(400);
+          }
+        }
+      } catch {
+        return reject(400);
+      } finally {
+        reader.releaseLock();
+      }
+    }
+    if (now() >= end) return reject(404);
     const base = '/feh-direct-intake-operator/';
     const path = url.pathname.replace(/^\/functions\/v1\//, '/');
     let args;
