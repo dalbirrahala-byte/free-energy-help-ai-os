@@ -29,3 +29,22 @@ test('accepts a zero-byte POST stream from a gateway',async()=>{
   assert.ok(empty.body);
   assert.equal((await handle(empty)).status,200);
 });
+
+test('authenticated Meta errors expose only the stage and numeric codes', async () => {
+  const {verify}=await import('./verify-direct-intake.mjs');
+  const settings={...env,FEH_META_PAGE_TOKEN:'synthetic-token',FEH_META_APP_SECRET:'synthetic-secret'};
+  const check=async(requestImpl, expected)=>{
+    const handle=createOperator(settings,(args,e)=>verify(args,e,requestImpl),()=>start);
+    const response=await handle(request('meta',{'x-feh-operator':token}));
+    assert.equal(response.status,502);
+    assert.deepEqual(await response.json(),expected);
+  };
+  await check(async()=>Response.json({error:{code:190,error_subcode:463,message:'private message',fbtrace_id:'private'}},{status:400}),
+    {stage:'graph_response',httpStatus:400,code:190,subcode:463});
+  await check(async()=>Response.json({error:{code:'private',error_subcode:[]}}, {status:403}),
+    {stage:'graph_response',httpStatus:403,code:null,subcode:null});
+  await check(async()=>{throw Error('private URL')},{stage:'transport',httpStatus:null,code:null,subcode:null});
+  await check(async()=>new Response('private non-JSON response',{status:503}),
+    {stage:'response_decode',httpStatus:503,code:null,subcode:null});
+  await check(async()=>Response.json({data:[null]}),{stage:'test_lead_identity',httpStatus:200,code:null,subcode:null});
+});

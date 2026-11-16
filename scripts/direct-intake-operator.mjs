@@ -1,7 +1,7 @@
 // Staging operator entry point. The deployment sets the fixed window and lead ID.
 import {Buffer} from "node:buffer";
 import {timingSafeEqual} from 'node:crypto';
-import {verify} from './verify-direct-intake.mjs';
+import {MetaLookupFailure, verify} from './verify-direct-intake.mjs';
 
 export function createOperator(env, run = verify, now = Date.now) {
   return async function handle(request) {
@@ -47,7 +47,10 @@ export function createOperator(env, run = verify, now = Date.now) {
     else return reject(404);
     try {
       return Response.json(await run(args, env), {headers:{'cache-control':'no-store'}});
-    } catch {
+    } catch (error) {
+      if (args[0] === 'meta-test' && error instanceof MetaLookupFailure) {
+        return Response.json(error.diagnostic, {status:502, headers:{'cache-control':'no-store'}});
+      }
       return reject(502);
     }
   };
