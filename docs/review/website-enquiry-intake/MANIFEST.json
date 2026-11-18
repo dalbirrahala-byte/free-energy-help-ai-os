@@ -26,7 +26,7 @@
     "airo/attempt/regression.tap": "157e4550c5c71d68294e1f34ff9ebbd65e8bb3fb9c6fd54768abc624eda725cb",
     "airo/attempt/README.md": "33abac5d5c4acd2e87024c1b16e3c278ecd03f91313faebfc3380ec3389a9e5f",
     "airo/attempt/native/README.md": "187b563de6fc91547a28e32beda69020218adfd008bb2ec4ee71958069c79dc4",
-    "airo/attempt/native/mysql.test.mjs": "3b710dad0fc6ebc9e18c099877402c08ef97e1db1e1dd630e0d5221179f18b7b",
+    "airo/attempt/native/mysql.test.mjs": "8b854fa1437e4a2e9fda1e490c03c00cdb1cf82a1d1fc150e13168a6e6e3c797",
     "airo/attempt/native/unix-only.py": "c8c758bd2c7be7a1892cffe7fe6866ee89120f33339be9dbb360ea416c7cfca8",
     "airo/attempt/native/result.tap": "0a2efae9b18db21306bca9aa5e08259a7c09bcba4e58df8ee070738c9f6fcc08",
     "airo/attempt/native/provenance.json": "94ee53d8ad6adf4149a9e819629cde75f7afbbcd5041d109151dbc962cf4b7a6",
@@ -34,15 +34,19 @@
     "airo/attempt/committed-mysql-store.test.mjs": "c2b5b4e725cbef6b006f024d12dd3101390c4875d57ba09ea5aa27ee3065f287",
     "airo/attempt/committed-regression.tap": "bd9eabde462eeff155a49bb91d2a3dc5ee28630c0a6d433355727b8f04e787a5",
     "airo/attempt/COMMITTED-EXECUTOR.md": "8e4412a055c53f5d4b7fa818589445eb84e20942be495ab1b014defd813a8635",
-    "airo/attempt/native/committed-store.test.mjs": "721553d4f4bae5cd16050a8436fcaafc2ab1a9ca59fa9ce92de45ea933bbd172",
+    "airo/attempt/native/committed-store.test.mjs": "31ecc4fcb9babf3edffbd6967f3ea845e383885e1a50054ed90e22c96007d441",
     "airo/attempt/native/COMMITTED-STORE.md": "98d5167f90e3287426c1509c08119e9cb7fd1e7cf71937d4b4ebda601a030d73",
     "airo/attempt/committed-quote-composition.test.mjs": "51b9451dda8c008bc6be999ca0746bdf0f023a7aee0b317203f417011ed3aa5c",
     "evidence/committed-quote-composition.tap": "bfc375c6f245aa9b655c6fb7adbfc85b3ea7583adedf12ff7ed041588e2139d2",
     "airo/attempt/native/full-enquiries.fixture.sql": "45aba2a06d5184ee110e2e5930a3336ada1b77d3e2f81bbe09f85f852982a0b9",
-    "airo/attempt/native/full-schema-committed-store.test.mjs": "e6dec7efbb0edd37108935b34a360543cd39c191e2d1f22850894c84534a20b6",
+    "airo/attempt/native/full-schema-committed-store.test.mjs": "50ffaaec57378fade9336417a1ac69e332c20811ed1bd33730a934e523cefdc1",
     "airo/attempt/native/FULL-SCHEMA.md": "b2f7c8157c260448e3af60d72d38409e5123f5762f8574df1c1e4e9cdde4fe16",
     "airo/attempt/owned-mysql-opener.ts": "ac30778e12b2ec8a94ce290a260e9c8e579a3105ed563415e7797493841919d4",
     "airo/attempt/owned-mysql-opener.test.mjs": "a4b53bf7a9d9a8a96818a42f7a95af83bda39aebf07e6afe5f5bf1d4205c9035",
-    "evidence/owned-mysql-opener.tap": "ee4c15d405b25a6ad4491714744fee2a253fa8f9f520c2af008fb4a9f347542d"
+    "evidence/owned-mysql-opener.tap": "ee4c15d405b25a6ad4491714744fee2a253fa8f9f520c2af008fb4a9f347542d",
+    "airo/attempt/native/package-lock.json": "f307ac31545118171116edd346c3dcc7448efb91f35c3d486609030474cd5ef8",
+    "airo/attempt/native/package.json": "f55d5c4cd017decf1542ddddcfd9ebf70b61c8038597a97f81727ece294f4b39",
+    "airo/attempt/native/private-test-socket.mjs": "1209e201c09b9152ca10ee2e83becad19fe6064351aabb19b364d9b929fd033a",
+    "airo/attempt/native/run-disposable-mysql.sh": "1acb960122cea6bbe8b8d6986606b7aa1faecf90057ecb71f85b1128e113ee19"
   }
 }

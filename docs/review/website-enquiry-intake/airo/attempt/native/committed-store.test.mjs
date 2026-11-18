@@ -1,14 +1,12 @@
 // LOCAL SYNTHETIC ONLY. Run under unix-only.py against a fresh disposable server.
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {lstatSync} from 'node:fs';
 import net from 'node:net';
+import { privateTestSocket } from './private-test-socket.mjs';
 import {createCommittedMysqlAttemptStore} from '../committed-mysql-store.ts';
 
 const require=createRequire(import.meta.url);
-const socketPath=process.argv[3];
-assert(typeof socketPath==='string' && socketPath.startsWith('/workspace/scratch/') && socketPath.endsWith('/test.sock'));
-assert(lstatSync(socketPath).isSocket(), 'requires private local test socket');
+const socketPath=privateTestSocket(process.argv[3]);
 const mysql=require(process.argv[2]);
 const live=new Set();
 const connect=async(database)=>{

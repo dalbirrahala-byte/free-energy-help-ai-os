@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import net from 'node:net';
+import { privateTestSocket } from './private-test-socket.mjs';
 import {createMysqlAttemptStore,CLAIM_SQL,FINISH_SQL} from '../mysql-attempt-store.ts';
 const require=createRequire(import.meta.url);
 const mysql=require(process.argv[2]);
-const socketPath=process.argv[3];
-assert(socketPath.startsWith('/workspace/scratch/')&&socketPath.endsWith('/test.sock'));
+const socketPath=privateTestSocket(process.argv[3]);
 let count=0;
 const check=async(name,f)=>{await f();console.log(`ok ${++count} - ${name}`);};
 const conn=()=>mysql.createConnection({socketPath,user:'root',database:'synthetic_attempts'});

@@ -1,0 +1,33 @@
+name: FEH website CRM native MySQL
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/feh-website-crm-native.yml"
+      - "docs/review/website-enquiry-intake/airo/attempt/native/**"
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-mysql:
+    if: >-
+      github.repository == 'dalbirrahala-byte/free-energy-help-ai-os' &&
+      github.event.pull_request.number == 133 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'review/website-crm-source-133'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: docs/review/website-enquiry-intake/airo/attempt/native
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+      - name: Run three disposable MySQL fixtures
+        run: bash run-disposable-mysql.sh
