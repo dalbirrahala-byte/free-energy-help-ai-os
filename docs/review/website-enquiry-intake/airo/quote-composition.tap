@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: actual handler composes with signed candidate and correlated mock receipt after both emails
+ok 1 - actual handler composes with signed candidate and correlated mock receipt after both emails
+  ---
+  duration_ms: 52.589076
+  type: 'test'
+  ...
+# Subtest: absent endpoint preserves identical email contents and 201 with no transport
+ok 2 - absent endpoint preserves identical email contents and 201 with no transport
+  ---
+  duration_ms: 2.519311
+  type: 'test'
+  ...
+# Subtest: delivery throws AND uncertain status write throws: 201, no repeat, redacted reconciliation
+ok 3 - delivery throws AND uncertain status write throws: 201, no repeat, redacted reconciliation
+  ---
+  duration_ms: 0.859416
+  type: 'test'
+  ...
+# Subtest: receiver receipt followed by failed status write stays pending: must reconcile, not replay
+ok 4 - receiver receipt followed by failed status write stays pending: must reconcile, not replay
+  ---
+  duration_ms: 1.783457
+  type: 'test'
+  ...
+# Subtest: uncommitted 202 remains uncertain while email contents and 201 are preserved
+ok 5 - uncommitted 202 remains uncertain while email contents and 201 are preserved
+  ---
+  duration_ms: 1.583873
+  type: 'test'
+  ...
+# Subtest: already sent emails and uncertain CRM are skipped with no transport
+ok 6 - already sent emails and uncertain CRM are skipped with no transport
+  ---
+  duration_ms: 0.512114
+  type: 'test'
+  ...
+# Subtest: owner email failure retains existing fatal behavior and blocks visitor and CRM
+ok 7 - owner email failure retains existing fatal behavior and blocks visitor and CRM
+  ---
+  duration_ms: 0.530472
+  type: 'test'
+  ...
+# Subtest: visitor email failure retains existing nonfatal behavior with candidate CRM
+ok 8 - visitor email failure retains existing nonfatal behavior with candidate CRM
+  ---
+  duration_ms: 1.721706
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 173.544599
