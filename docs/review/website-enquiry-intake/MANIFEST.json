@@ -24,6 +24,11 @@
     "airo/attempt/quote.patch": "7663bc2ea84c80955f08e1d967b05e50c97bddce3fbbb774c57a6c3cd0439de2",
     "airo/attempt/handoff.test.mjs": "4a240b1eb7070cca102ba8311135e739399d3a5d4249d32d5557090f7289a666",
     "airo/attempt/regression.tap": "157e4550c5c71d68294e1f34ff9ebbd65e8bb3fb9c6fd54768abc624eda725cb",
-    "airo/attempt/README.md": "33abac5d5c4acd2e87024c1b16e3c278ecd03f91313faebfc3380ec3389a9e5f"
+    "airo/attempt/README.md": "33abac5d5c4acd2e87024c1b16e3c278ecd03f91313faebfc3380ec3389a9e5f",
+    "airo/attempt/native/README.md": "187b563de6fc91547a28e32beda69020218adfd008bb2ec4ee71958069c79dc4",
+    "airo/attempt/native/mysql.test.mjs": "3b710dad0fc6ebc9e18c099877402c08ef97e1db1e1dd630e0d5221179f18b7b",
+    "airo/attempt/native/unix-only.py": "c8c758bd2c7be7a1892cffe7fe6866ee89120f33339be9dbb360ea416c7cfca8",
+    "airo/attempt/native/result.tap": "0a2efae9b18db21306bca9aa5e08259a7c09bcba4e58df8ee070738c9f6fcc08",
+    "airo/attempt/native/provenance.json": "94ee53d8ad6adf4149a9e819629cde75f7afbbcd5041d109151dbc962cf4b7a6"
   }
 }
