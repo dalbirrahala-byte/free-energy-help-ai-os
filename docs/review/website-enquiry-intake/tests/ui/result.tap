@@ -1,0 +1,7 @@
+TAP version 13
+ok 1 - kernel rejects TCP creation; all 67 input Git blobs verified
+ok 2 - actual ingestion SQL yields correlated ordinary CRM row after all migrations
+ok 3 - actual list query and component render website row, numeric detail link, null fallbacks and escaped text
+ok 4 - read failure displays error without a fabricated CRM row or fallback delivery
+1..4
+# Local engineering only: PGlite + real list sources; mocked auth/transport/revenue/panel. No browser, RLS identity or hosted acceptance.

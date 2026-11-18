@@ -47,6 +47,10 @@
     "airo/attempt/native/package-lock.json": "f307ac31545118171116edd346c3dcc7448efb91f35c3d486609030474cd5ef8",
     "airo/attempt/native/package.json": "f55d5c4cd017decf1542ddddcfd9ebf70b61c8038597a97f81727ece294f4b39",
     "airo/attempt/native/private-test-socket.mjs": "1209e201c09b9152ca10ee2e83becad19fe6064351aabb19b364d9b929fd033a",
-    "airo/attempt/native/run-disposable-mysql.sh": "1acb960122cea6bbe8b8d6986606b7aa1faecf90057ecb71f85b1128e113ee19"
+    "airo/attempt/native/run-disposable-mysql.sh": "1acb960122cea6bbe8b8d6986606b7aa1faecf90057ecb71f85b1128e113ee19",
+    "tests/ui/visibility.mjs": "0e534f3095857cf4bec1d8cac6cf73e2b2cc68d204b4eb6159946e7c8711b1fc",
+    "tests/ui/provenance.json": "69e536af394865667e43a734eb3b2c906a735b6e5117b1ec81c0532707247211",
+    "tests/ui/result.tap": "6784fd547a00def4e84fd882e802fd53b56e300a09f6cba748727245cfd749f9",
+    "tests/ui/README.md": "27c66492ebc35e80664c8098392d3410a0c7adb9e1ad1147d14612a14a101d8f"
   }
 }
