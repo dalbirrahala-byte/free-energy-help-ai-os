@@ -29,6 +29,10 @@
     "airo/attempt/native/mysql.test.mjs": "3b710dad0fc6ebc9e18c099877402c08ef97e1db1e1dd630e0d5221179f18b7b",
     "airo/attempt/native/unix-only.py": "c8c758bd2c7be7a1892cffe7fe6866ee89120f33339be9dbb360ea416c7cfca8",
     "airo/attempt/native/result.tap": "0a2efae9b18db21306bca9aa5e08259a7c09bcba4e58df8ee070738c9f6fcc08",
-    "airo/attempt/native/provenance.json": "94ee53d8ad6adf4149a9e819629cde75f7afbbcd5041d109151dbc962cf4b7a6"
+    "airo/attempt/native/provenance.json": "94ee53d8ad6adf4149a9e819629cde75f7afbbcd5041d109151dbc962cf4b7a6",
+    "airo/attempt/committed-mysql-store.ts": "589a8fd998a7166bbdb627813d416e443e1682f6b1d73ae7e7fd41043bcbf028",
+    "airo/attempt/committed-mysql-store.test.mjs": "c2b5b4e725cbef6b006f024d12dd3101390c4875d57ba09ea5aa27ee3065f287",
+    "airo/attempt/committed-regression.tap": "bd9eabde462eeff155a49bb91d2a3dc5ee28630c0a6d433355727b8f04e787a5",
+    "airo/attempt/COMMITTED-EXECUTOR.md": "8e4412a055c53f5d4b7fa818589445eb84e20942be495ab1b014defd813a8635"
   }
 }
