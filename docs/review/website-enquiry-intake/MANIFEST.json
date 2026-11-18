@@ -17,6 +17,13 @@
     "airo/README.md": "2942c7445f2b6c9dcd3ca69829898b201dbb61ef3de3294c9f231cbc7c30d41e",
     "airo/quote-POST.ts": "25219749b68dd6c3b4efd8d79a70ca9377e6e14a68b23f1e3dcd02f1c4680893",
     "airo/quote-composition.tap": "20d15131e78423a36b9dbd5936afccb9a84298ba9d6a8f5f31b3d06697678fc6",
-    "airo/quote-composition.test.mjs": "4138700f14861d78822f6efbae8f9db1a49e2ebb2ebca067b20185d2eb8acdc4"
+    "airo/quote-composition.test.mjs": "4138700f14861d78822f6efbae8f9db1a49e2ebb2ebca067b20185d2eb8acdc4",
+    "airo/attempt/handoff.ts": "358c30d0594486eb9c29669cb0c517fb4da11b939eeab8d1ee58e67c0e4ae09f",
+    "airo/attempt/mysql-attempt-store.ts": "36f2ed21252ffabdf21cdd37a4162030d3fcdb9daf0b8fd554fd16620f743f88",
+    "airo/attempt/quote-POST.candidate.ts": "0b7739a3d56d85b6eb9dec7354cf6ead123901a200294258b5b229322675e07c",
+    "airo/attempt/quote.patch": "7663bc2ea84c80955f08e1d967b05e50c97bddce3fbbb774c57a6c3cd0439de2",
+    "airo/attempt/handoff.test.mjs": "4a240b1eb7070cca102ba8311135e739399d3a5d4249d32d5557090f7289a666",
+    "airo/attempt/regression.tap": "157e4550c5c71d68294e1f34ff9ebbd65e8bb3fb9c6fd54768abc624eda725cb",
+    "airo/attempt/README.md": "33abac5d5c4acd2e87024c1b16e3c278ecd03f91313faebfc3380ec3389a9e5f"
   }
 }
