@@ -8,6 +8,16 @@ import {createReceiver,signature} from '../source/receiver.ts';
 import {deliver} from '../source/client.ts';
 import {createStore} from '../source/store.ts';
 const key='synthetic-fixture-only-no-runtime-authority';
+for(const [label,clock] of [
+ ['NaN',()=>NaN],['infinite',()=>Infinity],['throwing',()=>{throw Error('PRIVATE_CLOCK_ERROR');}]
+] as const){test('receiver fails closed for '+label+' clock before body read or persistence',async()=>{
+ let saves=0,reads=0;
+ const req=request(undefined,String(now/1000-301));
+ Object.defineProperty(req,'body',{get(){reads++;throw Error('must not read body');}});
+ const result=await createReceiver({key,now:clock,save:async()=>{saves++;throw Error('must not save');}})(req);
+ assert.equal(result.status,503);assert.deepEqual(await result.json(),{error:'clock_unavailable'});
+ assert.equal(saves,0);assert.equal(reads,0);
+});}
 const now=Date.parse('2026-11-17T21:00:00.000Z');
 const endpoint='https://crm.example.invalid'+PATH;
 const fixture=():Payload=>({submissionId:'00000000-0000-4000-8000-000000000001',submittedAt:'2026-11-17T20:00:00.000Z',businessName:'Synthetic Business',contactName:'Synthetic Person',email:'test@example.invalid',phone:null,meterNumbers:null,currentSupplier:'Synthetic Supplier',message:'Synthetic enquiry',smsConsent:null,attribution:{utmSource:'synthetic',utmMedium:null,utmCampaign:null,utmContent:null,utmTerm:null,gclid:null,fbclid:null},sourcePage:'/quote'});
@@ -69,3 +79,4 @@ test('SQL structural checks only: no grants, no permission upgrade, unique recei
  const sql=readFileSync(new URL('../source/website-enquiries.sql',import.meta.url),'utf8');
  assert(!/^\s*grant\s/im.test(sql));assert(sql.includes('submission_id uuid primary key'));assert(sql.includes('pg_advisory_xact_lock'));assert(sql.includes("'user-entered',false"));assert(sql.includes('alter table public.website_enquiry_receipts enable row level security'));assert(sql.includes('insert into public.audit_log'));assert(!sql.includes('exception when others'));assert(!sql.includes('set role'));
 });
+

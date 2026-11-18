@@ -29,7 +29,10 @@ export function createReceiver(deps:ReceiverDependencies|null){return async(req:
  const url=new URL(req.url);if(url.pathname!==PATH||url.search)return response(404,{error:'not_found'});
  if(req.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json'||req.headers.has('content-encoding'))return response(415,{error:'content_type'});
  const timestamp=req.headers.get('x-feh-timestamp')??'', supplied=req.headers.get('x-feh-signature')??'';
- if(!/^\d{10}$/.test(timestamp)||!/^v1=[0-9a-f]{64}$/.test(supplied)||Math.abs(deps.now()/1000-Number(timestamp))>300)return response(401,{error:'unauthorized'});
+ let now:number;
+ try{now=deps.now();}catch{return response(503,{error:'clock_unavailable'});}
+ if(!Number.isFinite(now))return response(503,{error:'clock_unavailable'});
+ if(!/^\d{10}$/.test(timestamp)||!/^v1=[0-9a-f]{64}$/.test(supplied)||Math.abs(now/1000-Number(timestamp))>300)return response(401,{error:'unauthorized'});
  let body:string;try{body=await readBounded(req);}catch{return response(413,{error:'invalid_body'});}
  const expected=Buffer.from(signature(deps.key,timestamp,body),'hex');
  if(!timingSafeEqual(expected,Buffer.from(supplied.slice(3),'hex')))return response(401,{error:'unauthorized'});
