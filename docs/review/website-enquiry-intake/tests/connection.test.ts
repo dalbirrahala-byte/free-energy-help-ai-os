@@ -10,6 +10,14 @@ import {createStore} from '../source/store.ts';
 const key='synthetic-fixture-only-no-runtime-authority';
 for(const [label,clock] of [
  ['NaN',()=>NaN],['infinite',()=>Infinity],['throwing',()=>{throw Error('PRIVATE_CLOCK_ERROR');}]
+] as const){test('sender blocks '+label+' clock without transport or uncertain outcome',async()=>{
+ let calls=0,clocks=0;
+ const result=await deliver(fixture(),{...deps(async()=>{calls++;return json(receipt());}),now:()=>{clocks++;return clock();}});
+ assert.deepEqual(result,{ok:false,httpStatus:null,simulated:false,endpointAbsent:false,uncertain:false,error:'clock_unavailable'});
+ assert.equal(calls,0);assert.equal(clocks,1);
+});}
+for(const [label,clock] of [
+ ['NaN',()=>NaN],['infinite',()=>Infinity],['throwing',()=>{throw Error('PRIVATE_CLOCK_ERROR');}]
 ] as const){test('receiver fails closed for '+label+' clock before body read or persistence',async()=>{
  let saves=0,reads=0;
  const req=request(undefined,String(now/1000-301));

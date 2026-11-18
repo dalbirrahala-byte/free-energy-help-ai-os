@@ -25,8 +25,11 @@ export async function deliver(payload:Payload,deps:ClientDependencies):Promise<D
  if(deps.endpoint!==deps.approvedEndpoint||url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!==PATH||!deps.key||deps.key.length<32)return failed('configuration_invalid');
  if(!validPayload(payload))return failed('invalid_payload');
  const body=JSON.stringify(payload);if(Buffer.byteLength(body)>MAX_BYTES)return failed('invalid_payload');
+ // Clock failure is definitive before transport; no delivery was attempted.
+ let now:number;try{now=deps.now();}catch{return failed('clock_unavailable');}
+ if(!Number.isFinite(now))return failed('clock_unavailable');
+ const timestamp=String(Math.floor(now/1000));
  try{
-  const timestamp=String(Math.floor(deps.now()/1000));
   const res=await deps.transport(deps.endpoint,{method:'POST',redirect:'error',headers:{'content-type':'application/json','x-feh-timestamp':timestamp,'x-feh-signature':'v1='+signature(deps.key,timestamp,body)},body,signal:AbortSignal.timeout(8000)});
   if(res.redirected)return failed('unverified_receipt',true,res.status);
   if(res.status===200||res.status===201){

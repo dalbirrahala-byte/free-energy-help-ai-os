@@ -4,14 +4,15 @@
   "files": {
     "README.md": "66e44f0b2f8d116f9960fcd64e81b558828d5ce46fd0de06084f4ae792a62521",
     "evidence/tests.tap": "0601dd908790f7510ecc2885d73a9d6fcd2bc725369dc4579fa02e05db663a36",
-    "source/client.ts": "eb169dad8c296bad4c1d7a57b38dbd4a6fa2381be569e3fc77f171c4a82f1457",
+    "source/client.ts": "de6cbade9da310879b17785b9ca36e5ad3574560735c1a52174715e2a1ab290d",
     "source/contract.ts": "0b0e5d2e304aca43e3911d69f36dda338013f36fd1fbf136e06f332f69bf7625",
     "source/receiver.ts": "f1d11caf5819e925c1694c30ffc76a97169f00727177059f0fca53cc718d5bf0",
     "source/store.ts": "7f995a9485175ef19d82f7ad512c4947ea2ba966dd064c7491c51d8f3a4ca67e",
     "source/website-enquiries.sql": "d88ae0d2a49fd0f2837f7aa2984bd7f2217aeb88e421687903db9fb39586d0ac",
-    "tests/connection.test.ts": "9b2004be151123a6dc3969c506a3762411b8b60d99387127a55b8ab49bf98285",
+    "tests/connection.test.ts": "354b20acfeccff68ccb37fc5cfdbb99c3d31ae0d436d25500a9d206eaf6c7af0",
     "tests/deny-network.py": "a3a26210010f9d20dfdbfa84f00e1466cc356c8144fb2cee698b2fc79ff82a46",
     "tests/postgres-local.sql": "7be5eb73d6c6a7aaa4ee72d98e153b036a706e01dcb2dc8e5df1b9d72e772637",
-    "evidence/clock-tests.tap": "ed27ca13359af8973000b397b60b6f72f1a3818d811564b152c7cfface597ba8"
+    "evidence/clock-tests.tap": "ed27ca13359af8973000b397b60b6f72f1a3818d811564b152c7cfface597ba8",
+    "evidence/sender-clock-tests.tap": "34ef78686e13f20b5e028e473644df67d87764f1b4afcf7507bcc11de704f047"
   }
 }
