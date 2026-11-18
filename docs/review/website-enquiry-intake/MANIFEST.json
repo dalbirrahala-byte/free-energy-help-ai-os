@@ -40,6 +40,9 @@
     "evidence/committed-quote-composition.tap": "bfc375c6f245aa9b655c6fb7adbfc85b3ea7583adedf12ff7ed041588e2139d2",
     "airo/attempt/native/full-enquiries.fixture.sql": "45aba2a06d5184ee110e2e5930a3336ada1b77d3e2f81bbe09f85f852982a0b9",
     "airo/attempt/native/full-schema-committed-store.test.mjs": "e6dec7efbb0edd37108935b34a360543cd39c191e2d1f22850894c84534a20b6",
-    "airo/attempt/native/FULL-SCHEMA.md": "b2f7c8157c260448e3af60d72d38409e5123f5762f8574df1c1e4e9cdde4fe16"
+    "airo/attempt/native/FULL-SCHEMA.md": "b2f7c8157c260448e3af60d72d38409e5123f5762f8574df1c1e4e9cdde4fe16",
+    "airo/attempt/owned-mysql-opener.ts": "ac30778e12b2ec8a94ce290a260e9c8e579a3105ed563415e7797493841919d4",
+    "airo/attempt/owned-mysql-opener.test.mjs": "a4b53bf7a9d9a8a96818a42f7a95af83bda39aebf07e6afe5f5bf1d4205c9035",
+    "evidence/owned-mysql-opener.tap": "ee4c15d405b25a6ad4491714744fee2a253fa8f9f520c2af008fb4a9f347542d"
   }
 }
