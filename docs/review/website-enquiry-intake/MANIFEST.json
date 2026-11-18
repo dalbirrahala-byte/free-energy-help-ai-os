@@ -35,6 +35,8 @@
     "airo/attempt/committed-regression.tap": "bd9eabde462eeff155a49bb91d2a3dc5ee28630c0a6d433355727b8f04e787a5",
     "airo/attempt/COMMITTED-EXECUTOR.md": "8e4412a055c53f5d4b7fa818589445eb84e20942be495ab1b014defd813a8635",
     "airo/attempt/native/committed-store.test.mjs": "721553d4f4bae5cd16050a8436fcaafc2ab1a9ca59fa9ce92de45ea933bbd172",
-    "airo/attempt/native/COMMITTED-STORE.md": "98d5167f90e3287426c1509c08119e9cb7fd1e7cf71937d4b4ebda601a030d73"
+    "airo/attempt/native/COMMITTED-STORE.md": "98d5167f90e3287426c1509c08119e9cb7fd1e7cf71937d4b4ebda601a030d73",
+    "airo/attempt/committed-quote-composition.test.mjs": "51b9451dda8c008bc6be999ca0746bdf0f023a7aee0b317203f417011ed3aa5c",
+    "evidence/committed-quote-composition.tap": "bfc375c6f245aa9b655c6fb7adbfc85b3ea7583adedf12ff7ed041588e2139d2"
   }
 }
