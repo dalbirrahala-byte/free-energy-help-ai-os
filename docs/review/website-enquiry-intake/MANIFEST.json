@@ -37,6 +37,9 @@
     "airo/attempt/native/committed-store.test.mjs": "721553d4f4bae5cd16050a8436fcaafc2ab1a9ca59fa9ce92de45ea933bbd172",
     "airo/attempt/native/COMMITTED-STORE.md": "98d5167f90e3287426c1509c08119e9cb7fd1e7cf71937d4b4ebda601a030d73",
     "airo/attempt/committed-quote-composition.test.mjs": "51b9451dda8c008bc6be999ca0746bdf0f023a7aee0b317203f417011ed3aa5c",
-    "evidence/committed-quote-composition.tap": "bfc375c6f245aa9b655c6fb7adbfc85b3ea7583adedf12ff7ed041588e2139d2"
+    "evidence/committed-quote-composition.tap": "bfc375c6f245aa9b655c6fb7adbfc85b3ea7583adedf12ff7ed041588e2139d2",
+    "airo/attempt/native/full-enquiries.fixture.sql": "45aba2a06d5184ee110e2e5930a3336ada1b77d3e2f81bbe09f85f852982a0b9",
+    "airo/attempt/native/full-schema-committed-store.test.mjs": "e6dec7efbb0edd37108935b34a360543cd39c191e2d1f22850894c84534a20b6",
+    "airo/attempt/native/FULL-SCHEMA.md": "b2f7c8157c260448e3af60d72d38409e5123f5762f8574df1c1e4e9cdde4fe16"
   }
 }
