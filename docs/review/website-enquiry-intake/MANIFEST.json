@@ -33,6 +33,8 @@
     "airo/attempt/committed-mysql-store.ts": "589a8fd998a7166bbdb627813d416e443e1682f6b1d73ae7e7fd41043bcbf028",
     "airo/attempt/committed-mysql-store.test.mjs": "c2b5b4e725cbef6b006f024d12dd3101390c4875d57ba09ea5aa27ee3065f287",
     "airo/attempt/committed-regression.tap": "bd9eabde462eeff155a49bb91d2a3dc5ee28630c0a6d433355727b8f04e787a5",
-    "airo/attempt/COMMITTED-EXECUTOR.md": "8e4412a055c53f5d4b7fa818589445eb84e20942be495ab1b014defd813a8635"
+    "airo/attempt/COMMITTED-EXECUTOR.md": "8e4412a055c53f5d4b7fa818589445eb84e20942be495ab1b014defd813a8635",
+    "airo/attempt/native/committed-store.test.mjs": "721553d4f4bae5cd16050a8436fcaafc2ab1a9ca59fa9ce92de45ea933bbd172",
+    "airo/attempt/native/COMMITTED-STORE.md": "98d5167f90e3287426c1509c08119e9cb7fd1e7cf71937d4b4ebda601a030d73"
   }
 }
