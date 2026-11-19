@@ -40,6 +40,7 @@ const visitor = 'visitor@example.invalid';
 const database = 'synthetic_quote_duplicate';
 const admin = await mysql.createConnection({socketPath, user:'root'});
 let pool;
+let crm;
 let fetches = 0;
 globalThis.fetch = () => { fetches++; throw Error('Unexpected transport'); };
 try {
@@ -89,13 +90,9 @@ try {
     assert.equal(fetches, 0);
     console.log('ok ' + (index + 2) + ' - duplicate held during ' + (index === 0 ? 'owner' : 'visitor') + ' mock email');
   }
-  // This ledger stands in for the CRM store. The receiver and sender are the
-  // candidate implementations. Independent sessions observe both commit boundaries.
-  await admin.query(`CREATE TABLE fixture_receipts (
-    lead_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    submission_id CHAR(36) NOT NULL UNIQUE,
-    payload JSON NOT NULL
-  ) ENGINE=InnoDB`);
+  const {startCrm} = await import('./disposable-crm.mjs');
+  const {default:postgres} = await import(pathToFileURL(requirePinned.resolve('postgres')).href);
+  crm = await startCrm(socketPath, postgres);
   const {createReceiver} = await import('../../../source/receiver.ts');
   const {PATH} = await import('../../../source/contract.ts');
   const {createCommittedMysqlAttemptStore} = await import('../committed-mysql-store.ts');
@@ -119,18 +116,7 @@ try {
     const observations = [];
     let attempts = 0;
     globalThis.recordEmail = async message => { messages.push(message.to); };
-    const receiver = createReceiver({key, now, async save(payload) {
-      const connection = await openFresh();
-      try {
-        await connection.beginTransaction();
-        const [result] = await connection.execute(
-          'INSERT INTO fixture_receipts (submission_id, payload) VALUES (?, ?)',
-          [payload.submissionId, JSON.stringify(payload)],
-        );
-        await connection.commit();
-        return {version:1, submissionId:payload.submissionId, outcome:'created', leadId:String(result.insertId)};
-      } finally { await connection.end(); }
-    }});
+    const receiver = createReceiver({key, now, save:crm.save});
     globalThis.fixtureStep = createQuoteCrmStep({store:attemptStore, client:{
       endpoint, approvedEndpoint:endpoint, key, now,
       async transport(destination, init) {
@@ -147,19 +133,10 @@ try {
     assert.deepEqual(await invoke(body), {code:201, ok:true, submissionId, created:true});
     assert.equal(attempts, 1);
     assert.deepEqual(messages, [owner, visitor]);
-    const [ledger] = await admin.execute(
-      'SELECT lead_id, CAST(payload AS CHAR) AS saved FROM fixture_receipts WHERE submission_id=?', [submissionId],
-    );
-    assert.equal(ledger.length, 1);
-    const saved = JSON.parse(ledger[0].saved);
-    assert.equal(saved.submissionId, submissionId);
-    assert.equal(saved.businessName, body.businessName);
-    assert.equal(saved.contactName, body.contactName);
-    assert.equal(saved.email, visitor);
-    assert.equal(saved.smsConsent, null);
+    const leadId = await crm.verifyLead(body);
     const before = [{owner_email_status:'sent', visitor_email_status:'sent', crm_status:'uncertain'}];
     assert.deepEqual(observations, [{destination:endpoint, before, status:201,
-      receipt:{version:1, submissionId, outcome:'created', leadId:String(ledger[0].lead_id)}}]);
+      receipt:{version:1, submissionId, outcome:'created', leadId}}]);
     assert.deepEqual(await readWebsiteState(submissionId), [
       {...before[0], crm_status:loseResponse ? 'uncertain' : 'sent'},
     ]);
@@ -170,6 +147,7 @@ try {
   }
   console.log('1..5');
 } finally {
+  if (crm) await crm.close();
   if (pool) await pool.end();
   await admin.end();
 }
