@@ -84,6 +84,65 @@ try {
  await check('terminal sent and failed statuses persist and reject another claim',async()=>{
   for(const [n,status] of [[5,'sent'],[6,'failed']]){await seed(n);assert.equal(await store.claim(id(n)),true);assert.equal(await store.finish(id(n),status),true);assert.equal(await state(n),status);assert.equal(await store.claim(id(n)),false);}
  });
+
+ // Prepared INSERT from Airo enquiry-store.ts (SHA-256 e8c4b4b4265bf082e5a9e59075c3cb850bc6dd8c74c3bef8da83d4b9d79c986c).
+ // Only the template parameters are replaced with mysql2 placeholders.
+ const insertQuote = `INSERT IGNORE INTO enquiries (
+        submission_id, submitted_at,
+        business_name, contact_name, email, phone,
+        meter_numbers, current_supplier, message, sms_consent,
+        utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+        gclid, fbclid, source_page,
+        owner_email_status, visitor_email_status, crm_status
+      ) VALUES (
+        ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        'pending', 'pending', 'pending'
+      )`;
+ const insertFields = ["submissionId", "submittedAt", "businessName", "contactName", "email", "phone", "meterNumbers", "currentSupplier", "message", "smsConsent", "utmSource", "utmMedium", "utmCampaign", "utmContent", "utmTerm", "gclid", "fbclid", "sourcePage"];
+ function submit(connection, submissionId, businessName) {
+   const input = {submissionId, submittedAt:'2026-11-18T12:00:00.000Z',
+     businessName, contactName:'Synthetic contact', email:'fixture@example.invalid'};
+   return connection.execute(insertQuote, insertFields.map(key => input[key] ?? null));
+ }
+
+ for (const outcome of ['commit', 'rollback']) {
+   await check('same-ID INSERT IGNORE after competing ' + outcome, async () => {
+     const submissionId = id(outcome === 'commit' ? 701 : 702);
+     const first = await open();
+     const second = await open();
+     await first.beginTransaction();
+     const [initial] = await submit(first, submissionId, 'First synthetic business');
+     assert.equal(initial.affectedRows, 1);
+     const contender = submit(second, submissionId, 'Second synthetic business');
+     // Observe the lock in MySQL before releasing it. Polling is read-only.
+     // Attach a rejection handler while inspecting the lock to avoid an unhandled rejection.
+     contender.catch(() => {});
+     const deadline = Date.now() + 8000;
+     for (;;) {
+       const [[wait]] = await observer.execute(
+         `SELECT COUNT(*) AS n FROM performance_schema.data_lock_waits w
+          JOIN performance_schema.threads t ON t.THREAD_ID = w.REQUESTING_THREAD_ID
+          JOIN performance_schema.threads b ON b.THREAD_ID = w.BLOCKING_THREAD_ID
+          WHERE t.PROCESSLIST_ID = ? AND b.PROCESSLIST_ID = ?`, [second.threadId, first.threadId]);
+       if (Number(wait.n) > 0) break;
+       assert.ok(Date.now() < deadline, 'Expected contender to wait on the first insert');
+       await new Promise(resolve => setTimeout(resolve, 20));
+     }
+     if (outcome === 'commit') await first.commit();
+     else await first.rollback();
+     const [header] = await contender;
+     assert.equal(header.affectedRows, outcome === 'commit' ? 0 : 1);
+     const [rows] = await observer.execute(
+       `SELECT business_name, sms_consent, owner_email_status, visitor_email_status, crm_status
+        FROM enquiries WHERE submission_id = ?`, [submissionId]);
+     assert.deepEqual(rows, [{business_name: outcome === 'commit' ? 'First synthetic business' : 'Second synthetic business',
+       sms_consent:null, owner_email_status:'pending', visitor_email_status:'pending', crm_status:'pending'}]);
+   });
+ }
  console.log(`1..${count}\n# pass ${count}; no hosted acceptance`);
 } finally {
  // Destroy every locally opened connection even when a fixture assertion fails.
