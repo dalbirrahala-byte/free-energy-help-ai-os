@@ -6,6 +6,7 @@ import {mkdirSync, readFileSync, readdirSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {createCommittedPostgresStore} from '../../../source/committed-postgres-store.ts';
 import {loadLeadsFixture} from '../../../tests/ui/load-leads-fixture.mjs';
+import {loadDetailFixture} from './lead-detail.fixture.mjs';
 import {privateTestSocket} from './private-test-socket.mjs';
 
 const repo = new URL('../../../../../../', import.meta.url);
@@ -99,7 +100,8 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       });
     }
 
-    const {client} = loadLeadsFixture(requirePinned, path => read(new URL(path, repo)));
+    const {client, loadSource} = loadLeadsFixture(requirePinned, path => read(new URL(path, repo)));
+    const renderDetail = loadDetailFixture(loadSource, requirePinned);
     const React = requirePinned('react');
     const {renderToStaticMarkup} = requirePinned('react-dom/server');
     function renderList(rows) {
@@ -120,6 +122,14 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
         const [reader] = await tx`select role, public.user_can_write() as can_write
           from public.user_roles where id = auth.uid()`;
         assert.deepEqual({...reader}, {role:'read_only', can_write:false});
+        const detail = await renderDetail(tx, id);
+        assert.equal(typeof detail, 'string');
+        for (const value of [body.businessName, body.contactName, body.email, 'Website', 'New']) {
+          assert(detail.includes('>' + value + '<'), 'Missing website enquiry field on detail page');
+        }
+        assert(detail.includes(body.submissionId), 'Missing submission reference in rendered notes');
+        assert(/&quot;smsConsentAnswer&quot;:\s*null/.test(detail), 'Unanswered consent missing from notes');
+        assert.equal(await renderDetail(tx, '2147483647'), null, 'Absent synthetic ID must call notFound');
         return listLeads(tx);
       });
       const matches = rows.filter(row => JSON.parse(row.notes).websiteSubmissionId === body.submissionId);
@@ -143,6 +153,7 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       await admin.begin('read only', async tx => {
         await tx`set local role anon`;
         await verifyAccess(tx, 'anon', null);
+        assert.equal(await renderDetail(tx, id), null, 'Anonymous role must not see the known lead ID');
         const anonymousRows = await listLeads(tx);
         assert.equal(anonymousRows.length, 0);
         const html = renderList(anonymousRows);
@@ -152,7 +163,7 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       const audits = await admin`select entity_id from public.audit_log where correlation_id=${body.submissionId} and action='website_enquiry_received'`;
       assert.equal(audits.length, 1);
       assert.equal(audits[0].entity_id, id);
-      console.log('# CRM rendered one matching receipt-linked row; anonymous list had no lead detail links');
+      console.log('# CRM detail rendered correlated website fields; missing ID and anonymous known-ID reads reached notFound');
       return id;
     }
     return {save, verifyLead, close};
