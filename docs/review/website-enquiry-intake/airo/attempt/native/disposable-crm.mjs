@@ -56,10 +56,42 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
     await admin.unsafe(`create role fixture_ingestor login;
       grant usage on schema public to fixture_ingestor;
       grant execute on function public.ingest_website_enquiry(jsonb) to fixture_ingestor;`).simple();
-    const [acl] = await admin`select has_function_privilege('fixture_ingestor','public.ingest_website_enquiry(jsonb)','execute') as execute,
-      has_table_privilege('fixture_ingestor','public.leads','select,insert,update,delete') as leads,
-      has_table_privilege('fixture_ingestor','public.website_enquiry_receipts','select,insert,update,delete') as receipts`;
-    assert.deepEqual({...acl}, {execute:true, leads:false, receipts:false});
+    // Inspect catalog permissions on a connection opened as the ingestion login.
+    // A SET ROLE on an administrative session has a different rollback boundary.
+    async function inspectAccess(tx) {
+      const [row] = await tx`select session_user as login, current_user as effective,
+        has_function_privilege('public.ingest_website_enquiry(jsonb)', 'execute') as ingest,
+        exists (
+          select 1 from pg_catalog.pg_proc p
+          join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+          where n.nspname <> 'information_schema' and n.nspname !~ '^pg_'
+            and p.prosecdef and p.prokind in ('f', 'p')
+            and p.oid <> 'public.ingest_website_enquiry(jsonb)'::regprocedure
+            and has_schema_privilege(n.oid, 'usage') and has_function_privilege(p.oid, 'execute')
+        ) as other_definer,
+        exists (
+          select 1 from (values ('public.leads'), ('public.website_enquiry_receipts'), ('public.audit_log')) t(name)
+          where has_table_privilege(t.name,'select,insert,update,delete,truncate,references,trigger')
+             or has_any_column_privilege(t.name,'select,insert,update,references')
+        ) as direct_access`;
+      return {...row};
+    }
+    const expectedAccess = {login:'fixture_ingestor', effective:'fixture_ingestor', ingest:true,
+      other_definer:false, direct_access:false};
+    const ingestor = open('fixture_ingestor');
+    try {
+      assert.deepEqual(await ingestor.begin('read only', inspectAccess), expectedAccess);
+    } finally {
+      await ingestor.end();
+    }
+    await admin.begin('read only', async tx => {
+      const elevated = await inspectAccess(tx);
+      assert.equal(elevated.other_definer, true);
+      assert.equal(elevated.direct_access, true);
+      await tx`set local role fixture_ingestor`;
+      assert.deepEqual(await inspectAccess(tx), {...expectedAccess, login:'postgres'});
+    });
+    console.log('# Restricted login verified; administrative login remains distinguishable after SET ROLE');
     console.log('# Disposable CRM:', server.version, '63 migrations verified');
 
     const save = createCommittedPostgresStore(async () => {
