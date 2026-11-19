@@ -5,9 +5,8 @@ import {createHash} from 'node:crypto';
 import {mkdirSync, readFileSync, readdirSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {createCommittedPostgresStore} from '../../../source/committed-postgres-store.ts';
-import {privateTestSocket} from './private-test-socket.mjs';
-
 import {loadLeadsFixture} from '../../../tests/ui/load-leads-fixture.mjs';
+import {privateTestSocket} from './private-test-socket.mjs';
 
 const repo = new URL('../../../../../../', import.meta.url);
 const read = url => readFileSync(url, 'utf8');
@@ -75,7 +74,13 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
     const page = read(new URL('frontend/src/app/leads/page.tsx', repo));
     const columns = page.match(/const LEAD_COLUMNS\s*=\s*"([a-z_, ]+)"/)?.[1];
     assert(columns && page.includes('.select(LEAD_COLUMNS)'));
-    const listLeads = 'select ' + columns + ' from public.leads order by created_at desc';
+    // The CRM receives Supabase JSON. Let PostgreSQL encode dates and numeric IDs
+    // before the native driver's timestamp decoder can turn them into JS Dates.
+    async function listLeads(tx) {
+      const records = await tx.unsafe('select row_to_json(visible) as lead from (select ' +
+        columns + ' from public.leads) visible order by visible.created_at desc');
+      return records.map(record => record.lead);
+    }
     const readerId = '00000000-0000-4000-8000-000000000901';
     await admin.begin(async tx => {
       await tx`insert into auth.users (id) values (${readerId})`;
@@ -115,11 +120,13 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
         const [reader] = await tx`select role, public.user_can_write() as can_write
           from public.user_roles where id = auth.uid()`;
         assert.deepEqual({...reader}, {role:'read_only', can_write:false});
-        return tx.unsafe(listLeads);
+        return listLeads(tx);
       });
       const matches = rows.filter(row => JSON.parse(row.notes).websiteSubmissionId === body.submissionId);
       assert.equal(matches.length, 1);
       const [lead] = matches;
+      assert.equal(typeof lead.created_at, 'string');
+      assert.equal(typeof lead.id, 'number');
       assert.equal(String(lead.id), id);
       assert.equal(lead.company_name, body.businessName);
       assert.equal(lead.contact_name, body.contactName);
@@ -136,7 +143,7 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       await admin.begin('read only', async tx => {
         await tx`set local role anon`;
         await verifyAccess(tx, 'anon', null);
-        const anonymousRows = await tx.unsafe(listLeads);
+        const anonymousRows = await listLeads(tx);
         assert.equal(anonymousRows.length, 0);
         const html = renderList(anonymousRows);
         assert(html.includes('No CRM leads in Supabase yet.'));
