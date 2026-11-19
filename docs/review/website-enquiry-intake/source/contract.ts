@@ -30,7 +30,13 @@ export function validPayload(v:unknown):v is Payload{
  return attributionFields.every(k=>attribution[k]===null||string(attribution[k],255));
 }
 export interface Receipt {version:1;submissionId:string;outcome:'created'|'duplicate';leadId:string;}
+const MAX_LEAD_ID = '9223372036854775807';
+function validLeadId(value:unknown):boolean {
+ if(typeof value!=='string'||!/^[1-9]\d{0,18}$/.test(value))return false;
+ // Canonical decimal strings of equal length sort in numeric order.
+ return value.length < MAX_LEAD_ID.length || value <= MAX_LEAD_ID;
+}
 export function validReceipt(v:unknown,id:string):v is Receipt{
  return object(v)&&keys(v,['version','submissionId','outcome','leadId'])&&v.version===1&&v.submissionId===id&&
- (v.outcome==='created'||v.outcome==='duplicate')&&typeof v.leadId==='string'&&/^[1-9]\d{0,18}$/.test(v.leadId);
+ (v.outcome==='created'||v.outcome==='duplicate')&&validLeadId(v.leadId);
 }

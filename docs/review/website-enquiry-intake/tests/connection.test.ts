@@ -71,6 +71,7 @@ for(const [label,config]of [['missing key',{key:null}],['different destination',
 for(const [label,resp]of [
  ['HTML 200',()=>new Response('<html>login</html>',{status:200,headers:{'content-type':'text/html'}})],
  ['empty 204',()=>new Response(null,{status:204})],['malformed JSON',()=>new Response('{',{status:201,headers:{'content-type':'application/json'}})],
+ ['lead id beyond PostgreSQL bigint',()=>json({...receipt(),leadId:'9223372036854775808'})],
  ['wrong submission',()=>json({...receipt(),submissionId:'different'})],['missing lead id',()=>json({version:1,submissionId:fixture().submissionId,outcome:'created'})],
  ['uncommitted 202',()=>json(receipt(),202)],['500',()=>json({error:'RAW'},500)],['429',()=>json({error:'RAW'},429)],['302',()=>new Response(null,{status:302})],
  ['HTML route 404',()=>new Response('Not found',{status:404})],
@@ -82,6 +83,17 @@ for(const [label,resp]of [
 test('network error classified uncertain, no raw exception or retry',async()=>{let calls=0;const r=await deliver(fixture(),deps(async()=>{calls++;throw Error('RAW');}));assert.equal(r.uncertain,true);assert.equal(calls,1);assert(!JSON.stringify(r).includes('RAW'));});
 test('receiver conflict is definitive without replay',async()=>{const r=await deliver(fixture(),deps(async()=>json({error:'submission_conflict'},409)));assert.equal(r.ok,false);assert.equal(r.uncertain,false);});
 test('duplicate committed receipt accepted',async()=>{const r=await deliver(fixture(),deps(async()=>json(receipt(fixture(),'duplicate'),200)));assert.equal(r.ok,true);});
+test('store preserves the largest PostgreSQL bigint as exact decimal text',async()=>{
+ const largest={...receipt(),leadId:'9223372036854775807'};
+ const save=createStore(async()=>({rows:[{receipt:largest}]}));
+ assert.deepEqual(await save(fixture()),largest);
+});
+test('receiver withholds the receipt when the store returns an impossible lead ID',async()=>{
+ const save=createStore(async()=>({rows:[{receipt:{...receipt(),leadId:'9223372036854775808'}}]}));
+ const response=await createReceiver({key,now:()=>now,save})(request());
+ assert.equal(response.status,503);
+ assert.deepEqual(await response.json(),{error:'receipt_unavailable'});
+});
 test('store uses parameterized single-function query and correlated receipt',async()=>{
  let called=0;const save=createStore(async(sql,values)=>{called++;assert.equal(sql,'select public.ingest_website_enquiry($1::jsonb) as receipt');assert.equal(values.length,1);assert.deepEqual(JSON.parse(values[0] as string),fixture());return {rows:[{receipt:receipt()}]};});
  assert(validReceipt(await save(fixture()),fixture().submissionId));assert.equal(called,1);
