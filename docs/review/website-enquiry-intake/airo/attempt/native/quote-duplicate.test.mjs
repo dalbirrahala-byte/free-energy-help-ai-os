@@ -125,11 +125,12 @@ try {
   `);
   const cases = [
     {name:'correlated receipt after both email status writes'},
-    {name:'lost receipt after receiver commit', loseResponse:true},
+    {name:'lost receipt after receiver commit', receiptFailure:'lost'},
     {name:'CRM receipt after interrupted owner email status write', pendingColumn:'owner_email_status'},
     {name:'CRM receipt after interrupted visitor email status write', pendingColumn:'visitor_email_status'},
     {name:'visitor email exception preserves one committed CRM receipt', failingRecipient:visitor},
     {name:'owner email exception stops before visitor delivery and CRM handoff', failingRecipient:owner},
+    {name:'gateway 404 after committed CRM receipt keeps website status uncertain', receiptFailure:'gateway404'},
   ];
   for (const [index, scenario] of cases.entries()) {
     const submissionId = '00000000-0000-4000-8000-00000000081' + index;
@@ -150,7 +151,8 @@ try {
         const response = await receiver(new Request(destination, init));
         const receipt = await response.clone().json();
         observations.push({destination, before, status:response.status, receipt});
-        if (scenario.loseResponse) throw Error('Synthetic response loss after receiver commit');
+        if (scenario.receiptFailure === 'gateway404') return new Response('Not found', {status:404});
+        if (scenario.receiptFailure === 'lost') throw Error('Synthetic response loss after receiver commit');
         return response;
       },
     }});
@@ -182,7 +184,7 @@ try {
     assert.deepEqual(observations, [{destination:endpoint, before, status:201,
       receipt:{version:1, submissionId, outcome:'created', leadId}}]);
     assert.deepEqual(await readWebsiteState(submissionId), [
-      {...before[0], crm_status:scenario.loseResponse ? 'uncertain' : 'sent'},
+      {...before[0], crm_status:scenario.receiptFailure ? 'uncertain' : 'sent'},
     ]);
     console.log('ok ' + (index + 4) + ' - ' + scenario.name);
   }

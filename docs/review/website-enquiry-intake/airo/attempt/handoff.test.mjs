@@ -53,7 +53,21 @@ test('receipt followed by failed finalization remains held and cannot be resent'
  for(const options of [{finishThrow:true},{badFinish:null},{badFinish:[]},{badFinish:[{affectedRows:0},[]]}]){const s=setup(options);assert.equal(await call(s),'reconcile');assert.equal(s.status,'uncertain');assert.equal(s.commits,1);await call(s);assert.equal(s.transports,1);}
 });
 test('202 and mismatched receipt cannot become sent',async()=>{for(const response of [()=>new Response('{}',{status:202}),()=>Response.json({version:1,submissionId:'wrong',outcome:'created',leadId:'1'},{status:201})]){const s=setup({response});assert.equal(await call(s),'reconcile');assert.equal(s.status,'uncertain');}});
-test('definitive receiver rejection finishes failed without retry',async()=>{const s=setup({response:()=>new Response('',{status:401})});assert.equal(await call(s),'failed');assert.equal(s.status,'failed');await call(s);assert.equal(s.transports,1);});
+test('unrecognised gateway response after a receiver commit preserves the reconciliation hold',async()=>{
+ const s=setup();
+ const send=s.client.transport;
+ s.client.transport=async(url,init)=>{
+  const committed=await send(url,init);
+  assert.equal(committed.status,201);
+  return new Response('Gateway could not find the route',{status:404});
+ };
+ assert.equal(await call(s),'reconcile');
+ assert.equal(s.status,'uncertain');
+ assert.deepEqual(s.events,['claim','transport']);
+ assert.equal(s.commits,1);
+ assert.equal(s.transports,1);
+});
+test('definitive receiver rejection finishes failed without retry',async()=>{const s=setup({response:()=>Response.json({error:'unauthorized'},{status:401})});assert.equal(await call(s),'failed');assert.equal(s.status,'failed');await call(s);assert.equal(s.transports,1);});
 test('mapper error or changed submission identity cannot claim',async()=>{const s=setup();assert.equal(await s.step(id,true,'pending',()=>{throw Error('PRIVATE_MAP');}),'reconcile');assert.equal(await s.step(id,true,'pending',()=>({...payload,submissionId:'wrong'})),'reconcile');assert.deepEqual(s.events,[]);});
 
 // Load both exact baseline and generated candidate with all DB/email imports mocked.

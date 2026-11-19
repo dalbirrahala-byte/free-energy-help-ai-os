@@ -73,6 +73,10 @@ for(const [label,resp]of [
  ['empty 204',()=>new Response(null,{status:204})],['malformed JSON',()=>new Response('{',{status:201,headers:{'content-type':'application/json'}})],
  ['wrong submission',()=>json({...receipt(),submissionId:'different'})],['missing lead id',()=>json({version:1,submissionId:fixture().submissionId,outcome:'created'})],
  ['uncommitted 202',()=>json(receipt(),202)],['500',()=>json({error:'RAW'},500)],['429',()=>json({error:'RAW'},429)],['302',()=>new Response(null,{status:302})],
+ ['HTML route 404',()=>new Response('Not found',{status:404})],
+ ['empty 401',()=>new Response(null,{status:401})],
+ ['mismatched rejection code',()=>json({error:'unauthorized'},409)],
+ ['extra rejection details',()=>json({error:'submission_conflict',debug:'RAW'},409)],
  ['oversized receipt',()=>json({...receipt(),extra:'x'.repeat(3000)})]
 ]as const){test('client holds ambiguous '+label+' without retry',async()=>{let calls=0;const r=await deliver(fixture(),deps(async()=>{calls++;return resp();}));assert.equal(r.ok,false);assert.equal(r.uncertain,true);assert.equal(calls,1);assert(!JSON.stringify(r).includes('RAW'));});}
 test('network error classified uncertain, no raw exception or retry',async()=>{let calls=0;const r=await deliver(fixture(),deps(async()=>{calls++;throw Error('RAW');}));assert.equal(r.uncertain,true);assert.equal(calls,1);assert(!JSON.stringify(r).includes('RAW'));});
