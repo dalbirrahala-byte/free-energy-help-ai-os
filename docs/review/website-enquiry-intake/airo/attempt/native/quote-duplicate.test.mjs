@@ -127,6 +127,8 @@ try {
     {name:'lost receipt after receiver commit', loseResponse:true},
     {name:'CRM receipt after interrupted owner email status write', pendingColumn:'owner_email_status'},
     {name:'CRM receipt after interrupted visitor email status write', pendingColumn:'visitor_email_status'},
+    {name:'visitor email exception preserves one committed CRM receipt', failingRecipient:visitor},
+    {name:'owner email exception stops before visitor delivery and CRM handoff', failingRecipient:owner},
   ];
   for (const [index, scenario] of cases.entries()) {
     const submissionId = '00000000-0000-4000-8000-00000000081' + index;
@@ -134,7 +136,10 @@ try {
     const messages = [];
     const observations = [];
     let attempts = 0;
-    globalThis.recordEmail = async message => { messages.push(message.to); };
+    globalThis.recordEmail = async message => {
+      messages.push(message.to);
+      if (message.to === scenario.failingRecipient) throw Error('Synthetic mail failure');
+    };
     const receiver = createReceiver({key, now, save:crm.save});
     globalThis.fixtureStep = createQuoteCrmStep({store:attemptStore, client:{
       endpoint, approvedEndpoint:endpoint, key, now,
@@ -149,19 +154,32 @@ try {
       },
     }});
 
-    assert.deepEqual(await invoke(body), {code:201, ok:true, submissionId, created:true});
+    const result = await invoke(body);
+    assert.equal(fetches, 0);
+    if (scenario.failingRecipient === owner) {
+      assert.deepEqual(result, {code:500, error:'Failed to send — please try again or call us directly.'});
+      assert.deepEqual(messages, [owner]);
+      assert.equal(attempts, 0);
+      assert.deepEqual(await readWebsiteState(submissionId), [
+        {owner_email_status:'failed', visitor_email_status:'pending', crm_status:'pending'},
+      ]);
+      await crm.verifyAbsent(submissionId);
+      console.log('ok ' + (index + 4) + ' - ' + scenario.name);
+      continue;
+    }
+    assert.deepEqual(result, {code:201, ok:true, submissionId, created:true});
     assert.equal(attempts, 1);
     assert.deepEqual(messages, [owner, visitor]);
     const leadId = await crm.verifyLead(body);
-    const before = [{owner_email_status:'sent', visitor_email_status:'sent', crm_status:'uncertain'}];
+    const before = [{owner_email_status:'sent',
+      visitor_email_status:scenario.failingRecipient === visitor ? 'failed' : 'sent', crm_status:'uncertain'}];
     if (scenario.pendingColumn) before[0][scenario.pendingColumn] = 'pending';
     assert.deepEqual(observations, [{destination:endpoint, before, status:201,
       receipt:{version:1, submissionId, outcome:'created', leadId}}]);
     assert.deepEqual(await readWebsiteState(submissionId), [
       {...before[0], crm_status:scenario.loseResponse ? 'uncertain' : 'sent'},
     ]);
-    assert.equal(fetches, 0);
-    console.log('ok ' + (index + 4) + ' - ' + scenario.name + '; both mock emails sent once');
+    console.log('ok ' + (index + 4) + ' - ' + scenario.name);
   }
   console.log('1..' + (3 + cases.length));
 } finally {

@@ -166,6 +166,13 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       console.log('# CRM detail rendered correlated website fields; missing ID and anonymous known-ID reads reached notFound');
       return id;
     }
-    return {save, verifyLead, close};
+    async function verifyAbsent(submissionId) {
+      const [counts] = await admin`select
+        (select count(*)::int from public.website_enquiry_receipts where submission_id=${submissionId}) as receipts,
+        (select count(*)::int from public.leads where notes::jsonb->>'websiteSubmissionId'=${submissionId}) as leads,
+        (select count(*)::int from public.audit_log where correlation_id=${submissionId} and action='website_enquiry_received') as audits`;
+      assert.deepEqual({...counts}, {receipts:0, leads:0, audits:0});
+    }
+    return {save, verifyLead, verifyAbsent, close};
   } catch (error) { await close(); throw error; }
 }
