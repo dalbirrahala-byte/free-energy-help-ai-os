@@ -98,7 +98,7 @@ export default async function handler(req: Request, res: Response) {
   // ── Submission ID ───────────────────────────────────────────────────────────
   // Accept a client-supplied UUID (retry after lost response) or generate one.
   const submissionId =
-    body.submissionId && UUID_RE.test(body.submissionId)
+    typeof body.submissionId === 'string' && UUID_RE.test(body.submissionId)
       ? body.submissionId
       : crypto.randomUUID();
 
@@ -217,7 +217,10 @@ export default async function handler(req: Request, res: Response) {
       await updateDeliveryStatus(submissionId, 'ownerEmailStatus', 'failed');
       // Owner email failure is fatal — visitor should not get a success response
       // if we cannot notify the business.
-      return res.status(500).json({ error: 'Failed to send — please try again or call us directly.' });
+      return res.status(500).json({
+        error: `We saved your enquiry but could not confirm the notification. Please call us and quote ${submissionId}.`,
+        submissionId,
+      });
     }
   }
 

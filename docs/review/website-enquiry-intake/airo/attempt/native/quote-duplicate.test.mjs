@@ -154,16 +154,20 @@ try {
       },
     }});
 
+    if (scenario.failingRecipient === owner) delete body.submissionId;
     const result = await invoke(body);
     assert.equal(fetches, 0);
     if (scenario.failingRecipient === owner) {
-      assert.deepEqual(result, {code:500, error:'Failed to send — please try again or call us directly.'});
+      const reference = result.submissionId;
+      assert.match(reference, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      assert.deepEqual(result, {code:500, submissionId:reference,
+        error:`We saved your enquiry but could not confirm the notification. Please call us and quote ${reference}.`});
       assert.deepEqual(messages, [owner]);
       assert.equal(attempts, 0);
-      assert.deepEqual(await readWebsiteState(submissionId), [
+      assert.deepEqual(await readWebsiteState(reference), [
         {owner_email_status:'failed', visitor_email_status:'pending', crm_status:'pending'},
       ]);
-      await crm.verifyAbsent(submissionId);
+      await crm.verifyAbsent(reference);
       console.log('ok ' + (index + 4) + ' - ' + scenario.name);
       continue;
     }

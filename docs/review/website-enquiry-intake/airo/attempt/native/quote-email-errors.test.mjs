@@ -29,10 +29,14 @@ const owner = 'owner@example.invalid';
 const visitor = 'visitor@example.invalid';
 process.env.NOTIFICATION_RECIPIENT_EMAIL = owner;
 
-for (const [index, recipient] of [owner, visitor].entries()) {
+const validId = '00000000-0000-4000-8000-000000009850';
+for (const [recipient, inputId, name] of [
+  [owner, validId, 'owner failure with a supplied reference'],
+  [owner, [validId], 'owner failure with a non-string reference'],
+  [visitor, validId, 'visitor failure'],
+]) {
   const ownerFailed = recipient === owner;
-  test((ownerFailed ? 'owner' : 'visitor') + ' email error keeps diagnostics private and preserves delivery order', async t => {
-    const submissionId = '00000000-0000-4000-8000-00000000985' + index;
+  test(name + ' preserves delivery order and reports only safe details', async t => {
     const calls = [], logs = [];
     for (const level of ['log', 'warn', 'error']) t.mock.method(console, level, (...args) => logs.push([level, ...args]));
     let fetches = 0;
@@ -54,13 +58,21 @@ for (const [index, recipient] of [owner, visitor].entries()) {
     };
     t.after(() => { delete globalThis.fixture; });
     const res = {status(code) { this.code = code; return this; }, json(body) { this.body = body; }};
-    await handler({body:{submissionId, businessName:'Fixture business', contactName:'Fixture contact', email:visitor}}, res);
+    await handler({body:{submissionId:inputId, businessName:'Fixture business', contactName:'Fixture contact', email:visitor}}, res);
+    const submissionId = calls[0][1];
+    if (typeof inputId === 'string') assert.equal(submissionId, inputId);
+    else {
+      assert.match(submissionId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      assert.notEqual(submissionId, validId);
+    }
     assert.deepEqual(calls, [
       ['save', submissionId], ['email', owner], ['update', submissionId, 'ownerEmailStatus', ownerFailed ? 'failed' : 'sent'],
       ...(ownerFailed ? [] : [['email', visitor], ['update', submissionId, 'visitorEmailStatus', 'failed'], ['crm', submissionId, true, 'pending']]),
     ]);
     assert.equal(res.code, ownerFailed ? 500 : 201);
-    assert.deepEqual(res.body, ownerFailed ? {error:'Failed to send — please try again or call us directly.'} : {ok:true, submissionId, created:true});
+    assert.deepEqual(res.body, ownerFailed
+      ? {error:`We saved your enquiry but could not confirm the notification. Please call us and quote ${submissionId}.`, submissionId}
+      : {ok:true, submissionId, created:true});
     assert.equal(fetches, 0);
     assert.doesNotMatch(JSON.stringify([logs,res.body]), /SYNTHETIC_PRIVATE_MAIL_DETAIL|example\.invalid|Fixture business|Fixture contact/);
     const failureLogs = logs.filter(([level]) => level === 'warn' || level === 'error');
