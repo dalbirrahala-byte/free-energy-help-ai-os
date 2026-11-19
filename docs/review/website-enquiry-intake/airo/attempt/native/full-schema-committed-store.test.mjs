@@ -118,19 +118,19 @@ try {
      const [initial] = await submit(first, submissionId, 'First synthetic business');
      assert.equal(initial.affectedRows, 1);
      const contender = submit(second, submissionId, 'Second synthetic business');
-     // Observe the lock in MySQL before releasing it. Polling is read-only.
-     // Attach a rejection handler while inspecting the lock to avoid an unhandled rejection.
-     contender.catch(() => {});
-     const deadline = Date.now() + 8000;
+     // INNODB_TRX exposes the engine's own lock-wait state for this connection.
+     // Only these two writers run in this fresh table during the check.
+     const finishedEarly = contender.then(
+       () => { throw Error('Contender finished before the first transaction ended'); });
+     finishedEarly.catch(() => {});
+     const deadline = Date.now() + 10000;
      for (;;) {
-       const [[wait]] = await observer.execute(
-         `SELECT COUNT(*) AS n FROM performance_schema.data_lock_waits w
-          JOIN performance_schema.threads t ON t.THREAD_ID = w.REQUESTING_THREAD_ID
-          JOIN performance_schema.threads b ON b.THREAD_ID = w.BLOCKING_THREAD_ID
-          WHERE t.PROCESSLIST_ID = ? AND b.PROCESSLIST_ID = ?`, [second.threadId, first.threadId]);
+       const [[wait]] = await Promise.race([finishedEarly, observer.query(
+         `SELECT COUNT(*) AS n FROM information_schema.innodb_trx
+          WHERE trx_mysql_thread_id = ? AND trx_state = 'LOCK WAIT'`, [second.threadId])]);
        if (Number(wait.n) > 0) break;
-       assert.ok(Date.now() < deadline, 'Expected contender to wait on the first insert');
-       await new Promise(resolve => setTimeout(resolve, 20));
+       assert.ok(Date.now() < deadline, 'Expected InnoDB lock wait on the second session');
+       await new Promise(resolve => setTimeout(resolve, 150));
      }
      if (outcome === 'commit') await first.commit();
      else await first.rollback();
