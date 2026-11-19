@@ -51,7 +51,7 @@ env -i PATH="$(dirname "$node_bin"):/usr/bin:/bin" npm_config_cache="$cache/npm-
 
 lib="$cache/root/usr/lib/x86_64-linux-gnu"
 mysql="$cache/root/usr/sbin/mysqld"
-for fixture in mysql.test.mjs committed-store.test.mjs full-schema-committed-store.test.mjs; do
+for fixture in mysql.test.mjs committed-store.test.mjs full-schema-committed-store.test.mjs quote-duplicate.test.mjs; do
   run_dir=$(mktemp -d /tmp/feh133-native-XXXXXXXX)
   opts=(--no-defaults "--basedir=$cache/root/usr" "--datadir=$run_dir/data"
     "--lc-messages-dir=$cache/root/usr/share/mysql-8.4" "--socket=$run_dir/test.sock"
