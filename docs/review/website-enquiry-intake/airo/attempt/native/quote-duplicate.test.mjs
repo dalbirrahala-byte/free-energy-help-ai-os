@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire, registerHooks } from 'node:module';
 import net from 'node:net';
+import { mock } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { privateTestSocket } from './private-test-socket.mjs';
 
@@ -185,7 +186,39 @@ try {
     ]);
     console.log('ok ' + (index + 4) + ' - ' + scenario.name);
   }
-  console.log('1..' + (3 + cases.length));
+  // Fail either side of the actual MySQL insert. Inspect durable state on
+  // the independent admin connection using only the handler's returned ID.
+  const saveFaults = [
+    {method:'execute', name:'write interrupted before insert', expectedRows:[]},
+    {method:'select', name:'readback interrupted after insert', expectedRows:[
+      {owner_email_status:'pending', visitor_email_status:'pending', crm_status:'pending'},
+    ]},
+  ];
+  for (const [index, fault] of saveFaults.entries()) {
+    const deliveries = [];
+    globalThis.recordEmail = () => { deliveries.push('email'); };
+    globalThis.fixtureStep = () => { deliveries.push('crm'); };
+    const interruption = mock.method(globalThis.fixtureDb, fault.method, () => {
+      throw Error('Synthetic database interruption');
+    });
+    let result;
+    try {
+      result = await invoke({businessName:'Synthetic initial save', contactName:'Fixture contact', email:visitor});
+      assert.equal(interruption.mock.callCount(), 1);
+    } finally {
+      interruption.mock.restore();
+    }
+    const reference = result.submissionId;
+    assert.match(reference, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.deepEqual(result, {code:500, submissionId:reference,
+      error:`We could not confirm whether your enquiry was saved. Please call us and quote ${reference}.`});
+    assert.deepEqual(await readWebsiteState(reference), fault.expectedRows);
+    await crm.verifyAbsent(reference);
+    assert.deepEqual(deliveries, []);
+    assert.equal(fetches, 0);
+    console.log('ok ' + (4 + cases.length + index) + ' - ' + fault.name);
+  }
+  console.log('1..' + (3 + cases.length + saveFaults.length));
 } finally {
   if (crm) await crm.close();
   if (pool) await pool.end();

@@ -141,7 +141,10 @@ export default async function handler(req: Request, res: Response) {
 
   if (!saveResult.ok) {
     console.error('quote.submit.db_save_failed', { submissionId });
-    return res.status(500).json({ error: 'Failed to save enquiry — please try again.' });
+    return res.status(500).json({
+      error: `We could not confirm whether your enquiry was saved. Please call us and quote ${submissionId}.`,
+      submissionId,
+    });
   }
 
   const row = saveResult.row;

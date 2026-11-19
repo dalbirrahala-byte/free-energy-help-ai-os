@@ -30,6 +30,29 @@ const visitor = 'visitor@example.invalid';
 process.env.NOTIFICATION_RECIPIENT_EMAIL = owner;
 
 const validId = '00000000-0000-4000-8000-000000009850';
+test('unconfirmed initial save returns the original reference and holds delivery', async t => {
+  const calls = [], logs = [];
+  for (const level of ['log', 'warn', 'error']) t.mock.method(console, level, (...args) => logs.push(args));
+  t.mock.method(globalThis, 'fetch', () => { calls.push('fetch'); throw Error('Unexpected fetch'); });
+  globalThis.fixture = {
+    save(input) {
+      calls.push(['save', input.submissionId]);
+      return {ok:false, code:'db_error', error:'SYNTHETIC_PRIVATE_STORE_DETAIL'};
+    },
+    email() { calls.push('email'); },
+    update() { calls.push('update'); },
+    crm() { calls.push('crm'); },
+  };
+  t.after(() => { delete globalThis.fixture; });
+  const res = {status(code) { this.code = code; return this; }, json(body) { this.body = body; }};
+  await handler({body:{submissionId:validId, businessName:'Fixture business', contactName:'Fixture contact', email:visitor}}, res);
+  assert.deepEqual(calls, [['save', validId]]);
+  assert.equal(res.code, 500);
+  assert.deepEqual(res.body, {submissionId:validId,
+    error:`We could not confirm whether your enquiry was saved. Please call us and quote ${validId}.`});
+  assert.doesNotMatch(JSON.stringify([logs, res.body]), /SYNTHETIC_PRIVATE_STORE_DETAIL|example\.invalid|Fixture business|Fixture contact/);
+});
+
 for (const [recipient, inputId, name] of [
   [owner, validId, 'owner failure with a supplied reference'],
   [owner, [validId], 'owner failure with a non-string reference'],
