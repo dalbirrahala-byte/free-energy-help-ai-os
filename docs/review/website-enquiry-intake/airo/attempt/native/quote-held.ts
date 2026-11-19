@@ -212,9 +212,8 @@ export default async function handler(req: Request, res: Response) {
         text: ownerText,
       });
       await updateDeliveryStatus(submissionId, 'ownerEmailStatus', 'sent');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('quote.submit.owner_email_failed', { submissionId, msg });
+    } catch {
+      console.error('quote.submit.owner_email_failed', { submissionId });
       await updateDeliveryStatus(submissionId, 'ownerEmailStatus', 'failed');
       // Owner email failure is fatal — visitor should not get a success response
       // if we cannot notify the business.
@@ -233,10 +232,9 @@ export default async function handler(req: Request, res: Response) {
         text: `Hi ${row.contactName},\n\nThanks for your quote request for ${row.businessName}. One of our energy consultants will be in touch shortly.\n\nFree Energy Help Ltd`,
       });
       await updateDeliveryStatus(submissionId, 'visitorEmailStatus', 'sent');
-    } catch (err) {
+    } catch {
       // Visitor email failure is non-fatal — the business has been notified.
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn('quote.submit.visitor_email_failed', { submissionId, msg });
+      console.warn('quote.submit.visitor_email_failed', { submissionId });
       await updateDeliveryStatus(submissionId, 'visitorEmailStatus', 'failed');
     }
   }
