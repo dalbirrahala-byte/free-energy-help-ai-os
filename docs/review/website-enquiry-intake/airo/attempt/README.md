@@ -1,6 +1,42 @@
 # Airo durable CRM handoff candidate — local engineering only
 
-## Scope and provenance
+## Current quote-handler integration patch
+
+From `docs/review/website-enquiry-intake`, generate the patch for independent source review:
+
+```sh
+sh airo/attempt/quote-patch.sh > /tmp/feh-quote-review.patch
+```
+
+The script checks the archived Airo export hash, patches a private copy of
+`src/server/api/quote/POST.ts`, compares the result byte for byte with
+`native/quote-held.ts`, then reverses the patch and compares with the export.
+Use its output only on exit 0. The checked-in `quote.patch` below belongs to
+the earlier `quote-POST.candidate.ts` fixture. It predates duplicate holds
+and the recovery references for uncertain saves and owner email failures.
+
+At handler commit `60eedf450f553e9fb3ab227237f7ca5915ef9dc1`, the generated
+patch SHA-256 is `aec2e7d891e248b6fc06bc62268f8c754d3781a88e224684320bee396e8855ea`.
+Disposable CI verified 34 database checks and four focused handler tests with
+mock email. The PostgreSQL fixture checked all 63 migration hashes. See the
+[assertions and recovery handoff](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/pull/133#issuecomment-7020857465).
+
+**Integration gates.** The patched handler expects the published website build
+to resolve `@/server/lib/quote-crm-step.js`. The archive exports
+`finishQuoteCrm = createQuoteCrmStep(null)` in `handoff.ts`. The Airo
+maintainer must identify the published revision, form, build and server alias
+mapping. On that source, verify that the browser shows the returned UUID and
+holds a second submission after an uncertain response. The CRM maintainer must
+verify the server route reaches the authenticated receiver through the actual
+middleware and identify its authorised destination, TLS and restricted service
+identity. See the [route test](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/pull/133#issuecomment-6994035067).
+
+Source reversal demonstrates file recovery only. An authorised runtime rollback
+would close the new CRM transport, preserve the email path and durable records,
+and reconcile existing UUIDs without replay. Restoring an enabled older CRM
+sender could send again. Live delivery and the published build remain unverified.
+
+## Historical fixture scope and provenance
 
 Parent PR #133 head: f5f5e16c552ad9213fc7e3f03f572634f9757603.
 Owner-supplied Airo source baseline: 4bdb65372cdba68a0332482c8de16835a939e89d.
@@ -82,7 +118,7 @@ by the runtime tests with mocked imports. An initial combined test invocation ha
 mock-import bindings. A distinct baseline module URL fixed the harness; the final
 combined run above passed all 74. No product success was inferred from that failure.
 
-## Next action and release/rollback gates
+## Original fixture handoff and release/rollback gates
 
 Engineering next: provide a disposable native MySQL/autocommit fixture for the exact
 conditional UPDATEs and actual mysql2 result shape, including simultaneous claims,
