@@ -21,7 +21,7 @@ const stub = code => 'data:text/javascript,' + encodeURIComponent(code);
 const aliases = new Map([
   ['@/server/email.js', stub('export const sendEmail = message => globalThis.recordEmail(message)')],
   ['@/lib/phone.js', stub('export const TEL1="SYNTHETIC", TEL1_HREF="tel:synthetic"')],
-  ['@/server/lib/quote-crm-step.js', url('../handoff.ts')],
+  ['@/server/lib/quote-crm-step.js', stub('export const finishQuoteCrm = (...args) => globalThis.fixtureStep(...args)')],
   ['@/server/lib/enquiry-store.js', url('./enquiry-store.candidate.ts')],
   ['../db/schema.js', url('./enquiries-schema.ts')],
   ['../db/client.js', stub('export const db = globalThis.fixtureDb')],
@@ -53,6 +53,8 @@ try {
   const schema = await import('./enquiries-schema.ts');
   globalThis.fixtureDb = drizzle(pool, {schema, mode:'default'});
   process.env.NOTIFICATION_RECIPIENT_EMAIL = owner;
+  const {createQuoteCrmStep, finishQuoteCrm} = await import('../handoff.ts');
+  globalThis.fixtureStep = finishQuoteCrm;
   const handler = (await import('./quote-held.ts')).default;
 
   async function invoke(body) {
@@ -87,7 +89,86 @@ try {
     assert.equal(fetches, 0);
     console.log('ok ' + (index + 2) + ' - duplicate held during ' + (index === 0 ? 'owner' : 'visitor') + ' mock email');
   }
-  console.log('1..3');
+  // This ledger stands in for the CRM store. The receiver and sender are the
+  // candidate implementations. Independent sessions observe both commit boundaries.
+  await admin.query(`CREATE TABLE fixture_receipts (
+    lead_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    submission_id CHAR(36) NOT NULL UNIQUE,
+    payload JSON NOT NULL
+  ) ENGINE=InnoDB`);
+  const {createReceiver} = await import('../../../source/receiver.ts');
+  const {PATH} = await import('../../../source/contract.ts');
+  const {createCommittedMysqlAttemptStore} = await import('../committed-mysql-store.ts');
+  const openFresh = () => mysql.createConnection({socketPath, user:'root', database});
+  const attemptStore = createCommittedMysqlAttemptStore(openFresh);
+  const key = 'fixture-only-key-for-isolated-receipt-check';
+  const endpoint = 'https://crm.example.invalid' + PATH;
+  const now = () => 1800000000000;
+
+  async function readWebsiteState(id) {
+    const [rows] = await admin.execute(
+      'SELECT owner_email_status, visitor_email_status, crm_status FROM enquiries WHERE submission_id=?', [id],
+    );
+    return rows;
+  }
+
+  for (const [index, loseResponse] of [false, true].entries()) {
+    const submissionId = '00000000-0000-4000-8000-00000000081' + index;
+    const body = {submissionId, email:visitor, businessName:'Synthetic receipt', contactName:'Fixture contact'};
+    const messages = [];
+    const observations = [];
+    let attempts = 0;
+    globalThis.recordEmail = async message => { messages.push(message.to); };
+    const receiver = createReceiver({key, now, async save(payload) {
+      const connection = await openFresh();
+      try {
+        await connection.beginTransaction();
+        const [result] = await connection.execute(
+          'INSERT INTO fixture_receipts (submission_id, payload) VALUES (?, ?)',
+          [payload.submissionId, JSON.stringify(payload)],
+        );
+        await connection.commit();
+        return {version:1, submissionId:payload.submissionId, outcome:'created', leadId:String(result.insertId)};
+      } finally { await connection.end(); }
+    }});
+    globalThis.fixtureStep = createQuoteCrmStep({store:attemptStore, client:{
+      endpoint, approvedEndpoint:endpoint, key, now,
+      async transport(destination, init) {
+        attempts++;
+        const before = await readWebsiteState(submissionId);
+        const response = await receiver(new Request(destination, init));
+        const receipt = await response.clone().json();
+        observations.push({destination, before, status:response.status, receipt});
+        if (loseResponse) throw Error('Synthetic response loss after receiver commit');
+        return response;
+      },
+    }});
+
+    assert.deepEqual(await invoke(body), {code:201, ok:true, submissionId, created:true});
+    assert.equal(attempts, 1);
+    assert.deepEqual(messages, [owner, visitor]);
+    const [ledger] = await admin.execute(
+      'SELECT lead_id, CAST(payload AS CHAR) AS saved FROM fixture_receipts WHERE submission_id=?', [submissionId],
+    );
+    assert.equal(ledger.length, 1);
+    const saved = JSON.parse(ledger[0].saved);
+    assert.equal(saved.submissionId, submissionId);
+    assert.equal(saved.businessName, body.businessName);
+    assert.equal(saved.contactName, body.contactName);
+    assert.equal(saved.email, visitor);
+    assert.equal(saved.smsConsent, null);
+    const before = [{owner_email_status:'sent', visitor_email_status:'sent', crm_status:'uncertain'}];
+    assert.deepEqual(observations, [{destination:endpoint, before, status:201,
+      receipt:{version:1, submissionId, outcome:'created', leadId:String(ledger[0].lead_id)}}]);
+    assert.deepEqual(await readWebsiteState(submissionId), [
+      {...before[0], crm_status:loseResponse ? 'uncertain' : 'sent'},
+    ]);
+    assert.equal(fetches, 0);
+    console.log('ok ' + (index + 4) + ' - ' + (loseResponse
+      ? 'lost committed receiver receipt retains uncertain hold with both mock emails sent once'
+      : 'correlated committed receiver receipt marks sent with both mock emails sent once'));
+  }
+  console.log('1..5');
 } finally {
   if (pool) await pool.end();
   await admin.end();
