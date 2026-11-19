@@ -109,7 +109,26 @@ try {
     return rows;
   }
 
-  for (const [index, loseResponse] of [false, true].entries()) {
+  // Restrict the injected database failures to two fresh fixture references. The
+  // successful mock email has already returned when its status write is rejected.
+  await admin.query(`
+    CREATE TRIGGER fixture_interrupt_email_status BEFORE UPDATE ON enquiries
+    FOR EACH ROW BEGIN
+      IF (OLD.submission_id = '00000000-0000-4000-8000-000000000812'
+          AND OLD.owner_email_status = 'pending' AND NEW.owner_email_status = 'sent')
+        OR (OLD.submission_id = '00000000-0000-4000-8000-000000000813'
+          AND OLD.visitor_email_status = 'pending' AND NEW.visitor_email_status = 'sent') THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Synthetic email status write interrupted';
+      END IF;
+    END
+  `);
+  const cases = [
+    {name:'correlated receipt after both email status writes'},
+    {name:'lost receipt after receiver commit', loseResponse:true},
+    {name:'CRM receipt after interrupted owner email status write', pendingColumn:'owner_email_status'},
+    {name:'CRM receipt after interrupted visitor email status write', pendingColumn:'visitor_email_status'},
+  ];
+  for (const [index, scenario] of cases.entries()) {
     const submissionId = '00000000-0000-4000-8000-00000000081' + index;
     const body = {submissionId, email:visitor, businessName:'Synthetic receipt ' + index, contactName:'Fixture contact ' + index};
     const messages = [];
@@ -125,7 +144,7 @@ try {
         const response = await receiver(new Request(destination, init));
         const receipt = await response.clone().json();
         observations.push({destination, before, status:response.status, receipt});
-        if (loseResponse) throw Error('Synthetic response loss after receiver commit');
+        if (scenario.loseResponse) throw Error('Synthetic response loss after receiver commit');
         return response;
       },
     }});
@@ -135,17 +154,16 @@ try {
     assert.deepEqual(messages, [owner, visitor]);
     const leadId = await crm.verifyLead(body);
     const before = [{owner_email_status:'sent', visitor_email_status:'sent', crm_status:'uncertain'}];
+    if (scenario.pendingColumn) before[0][scenario.pendingColumn] = 'pending';
     assert.deepEqual(observations, [{destination:endpoint, before, status:201,
       receipt:{version:1, submissionId, outcome:'created', leadId}}]);
     assert.deepEqual(await readWebsiteState(submissionId), [
-      {...before[0], crm_status:loseResponse ? 'uncertain' : 'sent'},
+      {...before[0], crm_status:scenario.loseResponse ? 'uncertain' : 'sent'},
     ]);
     assert.equal(fetches, 0);
-    console.log('ok ' + (index + 4) + ' - ' + (loseResponse
-      ? 'lost committed receiver receipt retains uncertain hold with both mock emails sent once'
-      : 'correlated committed receiver receipt marks sent with both mock emails sent once'));
+    console.log('ok ' + (index + 4) + ' - ' + scenario.name + '; both mock emails sent once');
   }
-  console.log('1..5');
+  console.log('1..' + (3 + cases.length));
 } finally {
   if (crm) await crm.close();
   if (pool) await pool.end();
