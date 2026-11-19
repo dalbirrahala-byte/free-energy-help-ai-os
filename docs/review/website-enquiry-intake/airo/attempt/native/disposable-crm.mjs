@@ -7,10 +7,12 @@ import {dirname, join} from 'node:path';
 import {createCommittedPostgresStore} from '../../../source/committed-postgres-store.ts';
 import {privateTestSocket} from './private-test-socket.mjs';
 
+import {loadLeadsFixture} from '../../../tests/ui/load-leads-fixture.mjs';
+
 const repo = new URL('../../../../../../', import.meta.url);
 const read = url => readFileSync(url, 'utf8');
 
-export async function startCrm(mysqlSocket, postgres) {
+export async function startCrm(mysqlSocket, postgres, requirePinned) {
   const directory = dirname(privateTestSocket(mysqlSocket));
   const data = join(directory, 'pgdata');
   mkdirSync(data, {mode:0o700});
@@ -92,6 +94,16 @@ export async function startCrm(mysqlSocket, postgres) {
       });
     }
 
+    const {client} = loadLeadsFixture(requirePinned, path => read(new URL(path, repo)));
+    const React = requirePinned('react');
+    const {renderToStaticMarkup} = requirePinned('react-dom/server');
+    function renderList(rows) {
+      return renderToStaticMarkup(React.createElement(client.LeadsPageClient, {
+        crmLeads:rows, revenueViews:{}, supabaseError:false,
+        recomputeUnscoredLeadQualifications() { assert.fail('Unexpected write action'); },
+      }));
+    }
+
     async function verifyLead(body) {
       const receipts = await admin`select lead_id::text as id from public.website_enquiry_receipts where submission_id=${body.submissionId}`;
       assert.equal(receipts.length, 1);
@@ -115,16 +127,25 @@ export async function startCrm(mysqlSocket, postgres) {
       assert.equal(lead.lead_source, 'Website');
       assert.equal(lead.status, 'New');
       assert.equal(JSON.parse(lead.notes).smsConsentAnswer, null);
+      const renderedRows = renderList(rows).match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g) ?? [];
+      const linkedRows = renderedRows.filter(row => row.includes(`href="/leads/${id}"`));
+      assert.equal(linkedRows.length, 1);
+      for (const value of [body.businessName, body.contactName, 'Website', 'New']) {
+        assert(linkedRows[0].includes('>' + value + '<'), 'Unexpected contents of linked CRM row');
+      }
       await admin.begin('read only', async tx => {
         await tx`set local role anon`;
         await verifyAccess(tx, 'anon', null);
         const anonymousRows = await tx.unsafe(listLeads);
         assert.equal(anonymousRows.length, 0);
+        const html = renderList(anonymousRows);
+        assert(html.includes('No CRM leads in Supabase yet.'));
+        assert.doesNotMatch(html, /href="\/leads\/\d+"/);
       });
       const audits = await admin`select entity_id from public.audit_log where correlation_id=${body.submissionId} and action='website_enquiry_received'`;
       assert.equal(audits.length, 1);
       assert.equal(audits[0].entity_id, id);
-      console.log('# CRM Leads RLS: read_only matched one correlated lead; anon saw zero rows');
+      console.log('# CRM rendered one matching receipt-linked row; anonymous list had no lead detail links');
       return id;
     }
     return {save, verifyLead, close};

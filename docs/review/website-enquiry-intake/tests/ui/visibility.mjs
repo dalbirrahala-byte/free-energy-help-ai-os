@@ -5,15 +5,13 @@ import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
-import { compileFunction } from 'node:vm';
+import { loadLeadsFixture } from './load-leads-fixture.mjs';
 import net from 'node:net';
 
 const [dependencyRoot, sourceRoot, migrationRoot] = process.argv.slice(2).map(p => resolve(p));
 assert.ok(dependencyRoot && sourceRoot && migrationRoot);
 const requireDependency = createRequire(join(dependencyRoot, 'package.json'));
-const React = requireDependency('react');
 const { renderToStaticMarkup } = requireDependency('react-dom/server');
-const ts = requireDependency('typescript');
 const { PGlite } = requireDependency('@electric-sql/pglite');
 const provenance = JSON.parse(readFileSync(new URL('./provenance.json', import.meta.url), 'utf8'));
 const files = new Map();
@@ -35,40 +33,9 @@ await new Promise((resolve, reject) => {
 });
 pass('kernel rejects TCP creation; all 67 input Git blobs verified');
 
-// Compile exact source with strict dependency allowlists. No Next runtime, auth,
-// provider, email, local-storage or production Supabase implementation is imported.
-function loadSource(path, dependencies) {
-  const output = ts.transpileModule(files.get(path), {
-    fileName: path,
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-    reportDiagnostics: true,
-  });
-  assert.equal(output.diagnostics.filter(d => d.category === ts.DiagnosticCategory.Error).length, 0);
-  const module = { exports: {} };
-  const requireMock = name => {
-    assert.ok(Object.hasOwn(dependencies, name), `unmocked import: ${name}`);
-    return dependencies[name];
-  };
-  compileFunction(output.outputText, ['require', 'module', 'exports'], { filename: path })(requireMock, module, module.exports);
-  return module.exports;
-}
 const forbidden = () => { throw Error('unexpected action'); };
 const jsx = requireDependency('react/jsx-runtime');
-const emptyPanelCalls = [];
-const rank = loadSource('frontend/src/lib/revenue-engine/leadWorklistOrder.ts', {});
-const client = loadSource('frontend/src/components/leads/LeadsPageClient.tsx', {
-  react: React, 'react/jsx-runtime': jsx,
-  'next/link': { default: ({ href, children, ...props }) => React.createElement('a', { href, ...props }, children) },
-  '@/components/website-leads/WebsiteLeadsPanel': { WebsiteLeadsPanel: props => {
-    emptyPanelCalls.push(props);
-    return React.createElement('aside', { 'data-fixture-local-panel': true });
-  } },
-  '@/components/layout/AppShell': { AppShell: ({ children }) => React.createElement('main', null, children) },
-  '@/lib/website-leads/useWebsiteLeads': { useWebsiteLeads: () => [], useNewWebsiteLeadCount: () => 0 },
-  '@/components/leads/RevenueBadges': { PriorityBadge: forbidden, QualificationReadinessBadge: forbidden,
-    NextActionBadge: forbidden, LeadQualityBadge: forbidden },
-  '@/lib/revenue-engine/leadWorklistOrder': rank,
-});
+const { client, loadSource, emptyPanelCalls } = loadLeadsFixture(requireDependency, path => files.get(path));
 let failRead = false, selections = 0, revenueReads = 0;
 const db = new PGlite();
 const server = loadSource('frontend/src/app/leads/page.tsx', {

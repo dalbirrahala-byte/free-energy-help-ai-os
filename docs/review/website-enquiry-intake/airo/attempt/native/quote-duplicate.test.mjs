@@ -92,7 +92,7 @@ try {
   }
   const {startCrm} = await import('./disposable-crm.mjs');
   const {default:postgres} = await import(pathToFileURL(requirePinned.resolve('postgres')).href);
-  crm = await startCrm(socketPath, postgres);
+  crm = await startCrm(socketPath, postgres, requirePinned);
   const {createReceiver} = await import('../../../source/receiver.ts');
   const {PATH} = await import('../../../source/contract.ts');
   const {createCommittedMysqlAttemptStore} = await import('../committed-mysql-store.ts');
@@ -111,7 +111,7 @@ try {
 
   for (const [index, loseResponse] of [false, true].entries()) {
     const submissionId = '00000000-0000-4000-8000-00000000081' + index;
-    const body = {submissionId, email:visitor, businessName:'Synthetic receipt', contactName:'Fixture contact'};
+    const body = {submissionId, email:visitor, businessName:'Synthetic receipt ' + index, contactName:'Fixture contact ' + index};
     const messages = [];
     const observations = [];
     let attempts = 0;

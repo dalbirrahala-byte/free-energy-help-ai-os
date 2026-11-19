@@ -2,6 +2,9 @@
   "dependencies": {
     "mysql2": "^3.24.6",
     "drizzle-orm": "0.45.4",
-    "postgres": "4.0.0"
+    "postgres": "4.0.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "typescript": "5.9.3"
   }
 }
