@@ -47,7 +47,7 @@ const child = spawn(chrome, [
   '--disable-extensions', '--no-first-run', '--disable-dev-shm-usage', '--remote-debugging-pipe',
   '--user-data-dir=' + join(directory, 'profile'), 'about:blank',
 ], {env:{HOME:directory, PATH:'/usr/bin:/bin'}, stdio:['ignore','ignore','ignore','pipe','pipe']});
-const exited = once(child, 'exit');
+const closed = once(child, 'close');
 const pending = new Map();
 let buffer = '', sequence = 0, posts = 0, analytics = 0, httpRequests = 0, exceptions = 0;
 child.stdio[4].setEncoding('utf8');
@@ -59,7 +59,7 @@ child.stdio[4].on('data', chunk => {
     buffer = buffer.slice(end+1);
     if (message.id) {
       const waiter = pending.get(message.id);
-      pending.delete(message.id);
+      if (!waiter) continue; // A response can arrive during timeout cleanup.
       if (message.error) waiter.reject(Error(message.error.message));
       else waiter.resolve(message.result);
     }
@@ -72,17 +72,31 @@ child.stdio[4].on('data', chunk => {
     if (message.method === 'Network.requestWillBeSent' && /^https?:/.test(message.params.request.url)) httpRequests++;
   }
 });
-child.once('exit', () => { for (const waiter of pending.values()) waiter.reject(Error('Chrome exited')); });
+let disconnectReason;
+function disconnected(reason) {
+  disconnectReason ??= reason;
+  for (const waiter of pending.values()) waiter.reject(Error(waiter.method + ': ' + disconnectReason));
+}
+for (const pipe of [child.stdio[3], child.stdio[4]]) {
+  pipe.on('error', error => disconnected('Chrome pipe error ' + error.code));
+}
+child.stdio[4].once('end', () => disconnected('Chrome response pipe closed'));
+child.once('exit', (code, signal) => disconnected('Chrome exited ' + (signal ?? code)));
 async function command(method, params = {}, sessionId) {
+  if (disconnectReason) throw Error(method + ': ' + disconnectReason);
   assert.equal(child.exitCode, null);
   const id = ++sequence;
   const waiter = Promise.withResolvers();
-  pending.set(id, waiter);
-  const timer = setTimeout(() => waiter.reject(Error('CDP timeout for ' + method)), 10000);
+  pending.set(id, {...waiter, method});
+  const timeout = method === 'Browser.getVersion' ? 45000 : 10000;
+  const timer = setTimeout(() => waiter.reject(Error('CDP timeout for ' + method)), timeout);
   try {
     child.stdio[3].write(JSON.stringify({id, method, params, sessionId}) + '\0');
     return await waiter.promise;
-  } finally { clearTimeout(timer); }
+  } finally {
+    clearTimeout(timer);
+    pending.delete(id);
+  }
 }
 try {
   const version = await command('Browser.getVersion');
@@ -133,6 +147,6 @@ try {
   }
 } finally {
   if (child.exitCode === null) child.kill();
-  await exited;
+  await closed;
   await rm(directory,{recursive:true,force:true,maxRetries:3});
 }
