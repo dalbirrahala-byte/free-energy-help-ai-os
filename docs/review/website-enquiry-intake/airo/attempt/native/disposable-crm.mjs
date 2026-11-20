@@ -6,6 +6,7 @@ import {mkdirSync, readFileSync, readdirSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {createCommittedPostgresStore} from '../../../source/committed-postgres-store.ts';
 import {loadLeadsFixture} from '../../../tests/ui/load-leads-fixture.mjs';
+import {verifyLeadFormRoutes} from './lead-form-routes.fixture.mjs';
 import {loadDetailFixture} from './lead-detail.fixture.mjs';
 import {privateTestSocket} from './private-test-socket.mjs';
 
@@ -206,6 +207,7 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       assert.deepEqual({...counts}, {receipts:0, leads:0, audits:0});
     }
     async function verifyPostgrest(binary) {
+      await verifyLeadFormRoutes(loadSource, requirePinned);
       const ids = ['9007199254740992', '9007199254740993', '9223372036854775807'];
       for (const [i, id] of ids.entries()) {
         await admin`select setval(pg_get_serial_sequence('public.leads','id'), ${id}::bigint, false)`;

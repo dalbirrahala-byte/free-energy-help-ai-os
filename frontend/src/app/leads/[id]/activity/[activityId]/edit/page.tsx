@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { requireNumericRouteId } from "@/lib/navigation/requireNumericRouteId";
 import { createClient } from "@/lib/supabase/server";
 
 type EditActivityPageProps = {
@@ -26,15 +27,8 @@ export default async function EditActivityPage({
 }: EditActivityPageProps) {
   const { id, activityId } = await params;
 
-  const leadId = Number(id);
-  const selectedActivityId = Number(activityId);
-
-  if (
-    !Number.isInteger(leadId) ||
-    !Number.isInteger(selectedActivityId)
-  ) {
-    notFound();
-  }
+  const leadId = requireNumericRouteId(id);
+  const selectedActivityId = requireNumericRouteId(activityId);
 
   const supabase = await createClient();
 
