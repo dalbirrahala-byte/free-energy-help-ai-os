@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { findPotentialDuplicateLeads, type DuplicateCandidateRow } from "./duplicateDetection.ts";
+import { createServerClient } from "@supabase/ssr";
+
+import { findPotentialDuplicateLeads, loadPotentialDuplicateLeads, type DuplicateCandidateRow } from "./duplicateDetection.ts";
 
 function candidate(overrides: Partial<DuplicateCandidateRow> = {}): DuplicateCandidateRow {
   return {
@@ -55,7 +57,7 @@ test("reports both fields when email and telephone both match the same candidate
 test("a lead is never reported as its own duplicate, even if the candidate list includes it", () => {
   const result = findPotentialDuplicateLeads(
     { id: 1, email: "a@example.com", telephone: null },
-    [candidate({ id: 1, email: "a@example.com" })],
+    [candidate({ id: 1, email: "a@example.com" }), candidate({ id: "1", email: "a@example.com" })],
   );
   assert.deepEqual(result, []);
 });
@@ -85,4 +87,38 @@ test("null email/telephone on a candidate never matches null-normalised input", 
     [candidate({ id: 2, email: null, telephone: null })],
   );
   assert.deepEqual(result, []);
+});
+
+test("the duplicate loader keeps adjacent bigint matches distinct and in numeric order", async () => {
+  const ids = ["9007199254740993", "10", "9007199254740992", "2"];
+  const queries: URL[] = [];
+  const client = createServerClient("https://fixture.invalid", "synthetic-only", {
+    cookies: { getAll: () => [], setAll: () => {} },
+    global: { fetch: async (input, init) => {
+      assert.equal(init?.method, "GET");
+      const url = new URL(String(input));
+      queries.push(url);
+      const exact = url.searchParams.get("select")?.split(",").includes("id:id::text");
+      const rows = ids.map(id => ({
+        ...candidate({ email: "match@example.invalid" }),
+        id: exact ? id : Number(id),
+        company_name: `Synthetic ${id}`,
+      }));
+      return Response.json(rows);
+    } },
+  });
+  const matches = await loadPotentialDuplicateLeads(client, {
+    id: 42, email: "match@example.invalid", telephone: null,
+  });
+  await assert.rejects(loadPotentialDuplicateLeads(client, {
+    id: Number("9007199254740993"), email: "match@example.invalid", telephone: null,
+  }), RangeError);
+  assert.equal(queries.length, 1);
+  assert.equal(queries[0].pathname, "/rest/v1/leads");
+  assert.equal(queries[0].searchParams.get("id"), "neq.42");
+  assert.deepEqual(matches.map(match => [String(match.id), match.companyName]), [
+    ["2", "Synthetic 2"], ["10", "Synthetic 10"],
+    ["9007199254740992", "Synthetic 9007199254740992"],
+    ["9007199254740993", "Synthetic 9007199254740993"],
+  ]);
 });
