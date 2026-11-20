@@ -21,7 +21,7 @@ test "$(git hash-object quote-held.ts)" = 31c0dc1b237c2e911d5000540d44a7a6530b52
 test "$(git hash-object enquiry-store.candidate.ts)" = 661d01e7b9c75e80b7e791d14817845cdb30a054
 test "$(git hash-object "$native/full-enquiries.fixture.sql")" = 52e47b7807a7cb7c85e38afc0f218f8c7102c175
 patchfile="$archive/airo/shared-route/candidate.patch"
-test "$(git hash-object "$patchfile")" = b78de9733b2fd4b4e9f51419668b7cfea9a7919e
+test "$(git hash-object "$patchfile")" = 15a944a4e594d2cb4aab59c1b29f2f2ee6c91e30
 git apply "$patchfile"
 guard="$archive/tests/deny-network.py"
 test "$(git hash-object "$guard")" = 3e8f7c946cda0da555852bfddf68c26f1c138c1f

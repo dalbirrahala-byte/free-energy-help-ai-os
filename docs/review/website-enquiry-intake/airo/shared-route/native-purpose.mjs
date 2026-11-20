@@ -48,7 +48,11 @@ async function executePrepared(statement, values) {
   return [{affectedRows:Number(affected)}, []];
 }
 const orm = {
-  execute({strings, values}) { return executePrepared(strings.join('?'),values); },
+  execute({strings, values}) {
+    // Capture the generated reference for calls where the caller supplied none.
+    if (currentId === undefined) currentId = values[0];
+    return executePrepared(strings.join('?'),values);
+  },
   select() { return {from:()=>({where:rows})}; },
   update() { return {set:changes=>({where:async ([col,id])=>{
     assert.equal(col,'submission_id');
@@ -134,6 +138,38 @@ try {
   assert.equal((await rows(['crm_status','excluded'])).length,8);
   const afterClaim=await getPendingOnlyCrmEnquiries();
   assert.deepEqual(afterClaim,{ok:true,rows:[]});
+  const count = () => query([], 'SELECT COUNT(*) FROM enquiries');
+  const baseCount = Number(await count());
+  const details = {businessName:'Reference fixture',contactName:'Fixture',email:visitor};
+  async function referenceCase(handler, extra) {
+    currentId = undefined;
+    const res = {status(code){this.code=code;return this;},json(body){this.body=body;}};
+    await handler({body:{...details,...extra}},res);
+    return res;
+  }
+  for (const handler of [shared, verifiedEnquiry]) {
+    for (const supplied of ['', null, 42, {}, 'fixture-ref', id(15) + ' ', id(15).replace('-4000-', '-1000-')]) {
+      const response = await referenceCase(handler,{submissionId:supplied});
+      assert.equal(response.code,400,'An explicit invalid reference must be rejected before saving');
+      assert.deepEqual(response.body,{error:'Invalid submissionId. Supply a UUID v4 or omit the field.'});
+      assert.equal(currentId,undefined);
+      assert.deepEqual(events,[]);
+    }
+  }
+  assert.equal(Number(await count()),baseCount);
+  const generated = await referenceCase(shared,{});
+  assert.equal(generated.code,201);
+  assert.equal(generated.body.created,true);
+  assert.match(generated.body.submissionId,/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  assert.equal(generated.body.submissionId,currentId);
+  assert.deepEqual(events.splice(0),[owner,visitor]);
+  const [stored] = await rows(['submission_id',generated.body.submissionId]);
+  assert.deepEqual([stored.crmStatus,stored.ownerEmailStatus,stored.visitorEmailStatus],['excluded','sent','sent']);
+  const repeat = await referenceCase(shared,{submissionId:generated.body.submissionId});
+  assert.deepEqual(repeat.body,{ok:true,submissionId:generated.body.submissionId,created:false});
+  assert.deepEqual(events,[]);
+  assert.equal(Number(await count()),baseCount+1);
+  console.log('PASS fourteen explicit invalid reference cases rejected before insert; omitted reference generated once and duplicate held');
   assert.equal(fetches,0);
   console.log('PASS MySQL '+cfg+'; eight excluded and unclaimable, one eligible claim, both duplicate directions held, zero fetches');
 } finally { closeSync(fd); }
