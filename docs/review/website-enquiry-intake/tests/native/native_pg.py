@@ -10,6 +10,7 @@ parser.add_argument('--migration-root',required=True,type=pathlib.Path,help='Che
 parser.add_argument('--work-root',required=True,type=pathlib.Path,help='Disposable scratch directory')
 parser.add_argument('--phase',choices=['controller','phase1','recovery'],default='controller')
 parser.add_argument('--work',type=pathlib.Path)
+parser.add_argument('--upgrade-from',type=pathlib.Path,help='Run only the pinned legacy receipt upgrade rehearsal')
 args=parser.parse_args()
 SOURCE=args.source_root.resolve();MIGRATIONS=args.migration_root.resolve()
 PKG=args.package_root.resolve()
@@ -21,17 +22,19 @@ work=args.work.resolve() if args.work else pathlib.Path(tempfile.mkdtemp(prefix=
 assert work.name.startswith('feh_synthetic_')
 data=work/'data';log=work/'server.log';port=55433
 worker_args=['--package-root',str(PKG),'--source-root',str(SOURCE),'--migration-root',str(MIGRATIONS),'--work-root',str(args.work_root.resolve()),'--work',str(work)]
+if args.upgrade_from:
+    worker_args.extend(['--upgrade-from',str(args.upgrade_from.resolve())])
 spec=importlib.util.spec_from_file_location('guard',ROOT/'network_guard.py')
 guard=importlib.util.module_from_spec(spec);spec.loader.exec_module(guard)
 pg=C.CDLL(str(PKG/'usr/lib/x86_64-linux-gnu/libpq.so.5'))
-for name,rest,args in [
+for name,rest,argtypes in [
  ('PQconnectdb',C.c_void_p,[C.c_char_p]),('PQstatus',C.c_int,[C.c_void_p]),
  ('PQerrorMessage',C.c_char_p,[C.c_void_p]),('PQexec',C.c_void_p,[C.c_void_p,C.c_char_p]),
  ('PQresultStatus',C.c_int,[C.c_void_p]),('PQresultErrorMessage',C.c_char_p,[C.c_void_p]),
  ('PQntuples',C.c_int,[C.c_void_p]),('PQnfields',C.c_int,[C.c_void_p]),
  ('PQgetvalue',C.c_char_p,[C.c_void_p,C.c_int,C.c_int]),
  ('PQclear',None,[C.c_void_p]),('PQfinish',None,[C.c_void_p])]:
-    f=getattr(pg,name);f.restype=rest;f.argtypes=args
+    f=getattr(pg,name);f.restype=rest;f.argtypes=argtypes
 connections=[]
 class DB:
     def __init__(self,database='feh_synthetic_native'):
@@ -97,6 +100,10 @@ if phase=='controller':
         with (data/'postgresql.conf').open('a') as f:f.write(f"\nlisten_addresses='127.0.0.1'\nport={port}\nunix_socket_directories=''\ndynamic_library_path='{LIB}'\nfsync=on\nsynchronous_commit=on\nfull_page_writes=on\n")
         start();started=True
         bootstrap=DB('postgres');bootstrap.q('create database feh_synthetic_native');bootstrap.close()
+        if args.upgrade_from:
+            subprocess.run(['/usr/bin/python3',__file__,*worker_args,'--phase','phase1'],
+                           env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},timeout=60,check=True)
+            sys.exit(0)
         child=subprocess.Popen(['/usr/bin/python3',__file__,*worker_args,'--phase','phase1'],stdout=subprocess.PIPE,stdin=subprocess.PIPE,text=True,env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'})
         ready=False
         for line in child.stdout:
@@ -134,6 +141,10 @@ try:
         b=(MIGRATIONS/item['path']).read_bytes()
         assert hashlib.sha1(f'blob {len(b)}\0'.encode()+b).hexdigest()==item['sha']
         admin.q(b.decode())
+    if args.upgrade_from:
+        from receipt_upgrade import verify_upgrade
+        verify_upgrade(admin, pool[0], payload, args.upgrade_from, SQL)
+        sys.exit(0)
     admin.q(SQL.read_text())
     passed('native-63-migration-schema-compatibility')
     for role in ('anon','authenticated','service_role'):
