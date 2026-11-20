@@ -1,6 +1,6 @@
 // Review candidate for src/pages/index.tsx. Supply the tab's sessionStorage,
 // crypto.randomUUID, and the homepage's POST transport when integrating.
-const key = 'feh.homepage-quote.v1';
+const homepageKey = 'feh.homepage-quote.v1';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const limits = {businessName:255, contactName:255, email:255, phone:40, currentSupplier:255, message:2000};
 
@@ -18,6 +18,10 @@ function validate(fields) {
 }
 
 export function readHomepageAttempt(storage) {
+  return readQuoteAttempt(storage, homepageKey);
+}
+
+export function readQuoteAttempt(storage, key) {
   try {
     const raw = storage.getItem(key);
     if (raw === null) return {status:'ready'};
@@ -29,10 +33,20 @@ export function readHomepageAttempt(storage) {
   return {status:'unavailable'};
 }
 
-export async function submitHomepageQuote(fields, {storage, newId, post, recordConversion}) {
-  const previous = readHomepageAttempt(storage);
+export async function submitHomepageQuote(fields, dependencies) {
+  return submitQuoteAttempt(homepageKey, () => {
+    const error = validate(fields);
+    if (error) return {error};
+    const body = {source:'homepage-quote-form'};
+    for (const field of Object.keys(limits)) body[field] = fields[field];
+    return {body};
+  }, dependencies);
+}
+
+export async function submitQuoteAttempt(key, prepare, {storage, newId, post, recordConversion}) {
+  const previous = readQuoteAttempt(storage, key);
   if (previous.status !== 'ready') return previous;
-  const error = validate(fields);
+  const {body, error} = prepare();
   if (error) return {status:'invalid', ...error};
 
   let submissionId;
@@ -44,12 +58,10 @@ export async function submitHomepageQuote(fields, {storage, newId, post, recordC
   } catch { return {status:'unavailable'}; }
 
   const held = {status:'held', submissionId};
-  const body = {source:'homepage-quote-form', submissionId};
-  for (const field of Object.keys(limits)) body[field] = fields[field];
   try {
     const response = await post('/api/quote', {
       method:'POST', redirect:'error', credentials:'same-origin', mode:'same-origin',
-      headers:{'Content-Type':'application/json'}, body:JSON.stringify(body),
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({...body, submissionId}),
       signal:AbortSignal.timeout(15000),
     });
     if (response.status !== 201 || response.redirected ||
