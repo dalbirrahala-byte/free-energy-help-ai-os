@@ -3,6 +3,10 @@ export const PATH = '/api/website-enquiries';
 export const SOURCE = 'feh-airo-website';
 export const MAX_BYTES = 32768;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const answerFields = ['contractEndDate', 'postcode', 'annualUsage', 'industry',
+ 'annualElectricity', 'annualGas', 'sites'] as const;
+type BusinessAnswers = Partial<Record<typeof answerFields[number], string>>;
+
 export interface Payload {
   submissionId: string; submittedAt: string; businessName: string;
   contactName: string; email: string; phone: string|null;
@@ -10,6 +14,7 @@ export interface Payload {
   smsConsent: 'yes'|'no'|null;
   attribution: {utmSource:string|null;utmMedium:string|null;utmCampaign:string|null;utmContent:string|null;utmTerm:string|null;gclid:string|null;fbclid:string|null};
   sourcePage: string|null;
+  businessAnswers?: BusinessAnswers;
 }
 const fields = ['submissionId','submittedAt','businessName','contactName','email','phone','meterNumbers','currentSupplier','message','smsConsent','attribution','sourcePage'];
 const attributionFields = ['utmSource','utmMedium','utmCampaign','utmContent','utmTerm','gclid','fbclid'];
@@ -23,7 +28,14 @@ function string(v:unknown, max:number, required=false) {
 }
 /** No coercion or truncation; preserve every submitted field and missing consent. */
 export function validPayload(v:unknown):v is Payload{
- if(!object(v)||!keys(v,fields))return false;
+ if(!object(v))return false;
+ if(Object.hasOwn(v,'businessAnswers')) {
+  if(!keys(v,[...fields,'businessAnswers']) || !object(v.businessAnswers))return false;
+  const entries = Object.entries(v.businessAnswers);
+  if(!entries.length || !entries.every(([field, answer]) =>
+   answerFields.some(key => key === field) && typeof answer === 'string' &&
+   answer.length > 0 && string(answer,255) && !/[\uD800-\uDFFF]/u.test(answer)))return false;
+ } else if(!keys(v,fields))return false;
  if(typeof v.submissionId!=='string'||!UUID.test(v.submissionId))return false;
  if(!string(v.submittedAt,30,true)||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(v.submittedAt as string))return false;
  const date=new Date(v.submittedAt as string);if(!Number.isFinite(date.getTime())||date.toISOString()!==v.submittedAt)return false;

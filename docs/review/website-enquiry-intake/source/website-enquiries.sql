@@ -27,8 +27,19 @@ declare
 begin
  -- Validate again at the database trust boundary; never trust only the HTTP layer.
  if jsonb_typeof(p_payload) is distinct from 'object' then raise exception 'invalid_payload'; end if;
- if (select count(*) from jsonb_object_keys(p_payload)) <> 12
+ if (select count(*) from jsonb_object_keys(p_payload - 'businessAnswers')) <> 12
  or not (p_payload ?& array['submissionId','submittedAt','businessName','contactName','email','phone','meterNumbers','currentSupplier','message','smsConsent','attribution','sourcePage']) then raise exception 'invalid_payload'; end if;
+ -- Optional structured form answers. Preserve original strings, including approximate
+ -- dates and usage bands. An omitted object keeps legacy payloads and hashes intact.
+ if p_payload ? 'businessAnswers' then
+  if jsonb_typeof(p_payload->'businessAnswers') <> 'object'
+    or p_payload->'businessAnswers' = '{}'::jsonb then raise exception 'invalid_payload'; end if;
+  for v_key, v_value in select key,value from jsonb_each(p_payload->'businessAnswers') loop
+   if v_key not in ('contractEndDate','postcode','annualUsage','industry','annualElectricity','annualGas','sites')
+     or jsonb_typeof(v_value) <> 'string'
+     or char_length(v_value #>> '{}') not between 1 and 255 then raise exception 'invalid_payload'; end if;
+  end loop;
+ end if;
  if jsonb_typeof(p_payload->'submissionId') is distinct from 'string'
  or (p_payload->>'submissionId') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then raise exception 'invalid_payload'; end if;
  v_id := (p_payload->>'submissionId')::uuid;
@@ -72,11 +83,13 @@ begin
   lead_owner,next_action,follow_up_required,follow_up_date
  ) values (
   p_payload->>'businessName',p_payload->>'contactName',p_payload->>'email',p_payload->>'phone',p_payload->>'currentSupplier','New',
-  jsonb_build_object('websiteSubmissionId',v_id,'submittedAt',p_payload->>'submittedAt',
+  (jsonb_build_object('websiteSubmissionId',v_id,'submittedAt',p_payload->>'submittedAt',
    'message',p_payload->'message','meterNumbers',p_payload->'meterNumbers',
    'smsConsentAnswer',p_payload->'smsConsent','sourcePage',p_payload->'sourcePage',
    'gclid',p_payload->'attribution'->'gclid','fbclid',p_payload->'attribution'->'fbclid',
-   'permissionNote','Enquiry record only; no automatic contact authority granted.')::text,
+   'permissionNote','Enquiry record only; no automatic contact authority granted.')
+   || case when p_payload ? 'businessAnswers' then jsonb_build_object('businessAnswers',p_payload->'businessAnswers')
+      else '{}'::jsonb end)::text,
   'Website','Free Energy Help website enquiry','user-entered',false,
   p_payload->'attribution'->>'utmSource',p_payload->'attribution'->>'utmMedium',
   p_payload->'attribution'->>'utmCampaign',p_payload->'attribution'->>'utmContent',p_payload->'attribution'->>'utmTerm',

@@ -94,8 +94,10 @@ async function exercise(page, component, outcome) {
   assert.equal(resets,Number(confirmed));
   assert.equal(clears,Number(confirmed));
   const {company,name,...details} = fields;
+  const sourcePage = requests[0].body.sourcePage;
+  assert.ok(typeof sourcePage === 'string' && bundle.includes('path:"' + sourcePage + '"'));
   assert.deepEqual(requests,[{path:'/api/quote', method:'POST',
-    body:{...details, businessName:company, contactName:name, source:page, submissionId:id}}]);
+    body:{...details, businessName:company, contactName:name, source:page, sourcePage, submissionId:id}}]);
   assert.equal(ids,1);
   assert.equal(values.size,1);
   assert.deepEqual(JSON.parse([...values.values()][0]),result);

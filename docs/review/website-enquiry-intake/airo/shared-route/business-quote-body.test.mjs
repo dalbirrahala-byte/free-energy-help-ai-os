@@ -93,7 +93,9 @@ async function exercise(component, page, missing) {
     assert.deepEqual([states,requests,responses,saved,mail,status],[[],[],[],[],[],[]]);
   } else {
     const {name, company, ...details} = state;
-    assert.deepEqual(requests,[{path:'/api/quote', method:'POST', body:{...details, contactName:name, businessName:company, source:page}}]);
+    const sourcePage = requests[0].body.sourcePage;
+    assert.ok(typeof sourcePage === 'string' && source.includes('path:"' + sourcePage + '"'));
+    assert.deepEqual(requests,[{path:'/api/quote', method:'POST', body:{...details, contactName:name, businessName:company, source:page, sourcePage}}]);
     assert.equal(responses.length,1);
     const [res] = responses;
     assert.equal(res.code,201);

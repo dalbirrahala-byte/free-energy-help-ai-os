@@ -10,6 +10,12 @@ export async function traceFormFields({asset, rows, query, owner, visitor, fetch
   assert.equal(createHash('sha256').update(bytes).digest('hex'),
     '6346d0755a91d04a4ab4b99e07d92b90b5ecd3789e0922efa0adcb7809393b88');
   const bundle = bytes.toString('utf8');
+  // Resolve each form through its actual parent route in the pinned build.
+  const routes = [...bundle.matchAll(/path:"([^"]+)",element:e\.jsx\(([$\w]+),\{\}\)\}/g)].flatMap(([,path,parent]) => {
+    const start = bundle.indexOf('function ' + parent + '(');
+    if (start < 0) return [];
+    return [{path,body:bundle.slice(start,bundle.indexOf('function ',start+9))}];
+  });
   const messages = [];
   globalThis.fixture.email = message => messages.push(message);
   let crmCalls = 0;
@@ -63,8 +69,12 @@ export async function traceFormFields({asset, rows, query, owner, visitor, fetch
     }
     assert.equal(row.smsConsent,null);
     assert.equal(projection.smsConsent,null);
-    assert.equal(row.sourcePage,null);
-    assert.equal(projection.sourcePage,null);
+    const formComponent = component.match(/^function ([$\w]+)\(/)[1];
+    const matches = routes.filter(route => route.body.includes('e.jsx(' + formComponent + ',{})'));
+    assert.equal(matches.length,1);
+    assert.equal(prepared.sourcePage,matches[0].path);
+    assert.equal(row.sourcePage,matches[0].path);
+    assert.equal(projection.sourcePage,matches[0].path);
   }
   assert.equal(pages.size,19);
   assert.deepEqual(missing,{annualUsage:1,postcode:17,contractEndDate:18,industry:1,

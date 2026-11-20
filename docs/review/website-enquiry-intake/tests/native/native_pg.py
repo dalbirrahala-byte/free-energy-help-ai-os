@@ -15,7 +15,7 @@ SOURCE=args.source_root.resolve();MIGRATIONS=args.migration_root.resolve()
 PKG=args.package_root.resolve()
 BIN=PKG/'usr/lib/postgresql/17/bin';SHARE=PKG/'usr/share/postgresql/17';LIB=PKG/'usr/lib/postgresql/17/lib'
 SQL=SOURCE/'source/website-enquiries.sql'
-assert hashlib.sha256(SQL.read_bytes()).hexdigest()=='d88ae0d2a49fd0f2837f7aa2984bd7f2217aeb88e421687903db9fb39586d0ac'
+assert hashlib.sha256(SQL.read_bytes()).hexdigest()=='98f8b5a1eed2de867d975640c8c74df453752c31e797aa0fcfe8bd8c41d12aa8'
 phase=args.phase
 work=args.work.resolve() if args.work else pathlib.Path(tempfile.mkdtemp(prefix='feh_synthetic_',dir=args.work_root.resolve()))
 assert work.name.startswith('feh_synthetic_')
@@ -54,7 +54,12 @@ def start():control('-p',str(work/'postgres-isolated'),'-l',str(log),'-w','start
 def payload(n,message='Synthetic check'):
     return dict(submissionId=f'00000000-0000-4000-8000-{n:012}',submittedAt='2030-01-01T00:00:00.000Z',businessName='Synthetic business',contactName='Synthetic person',email='test@example.invalid',phone=None,meterNumbers=None,currentSupplier=None,message=message,smsConsent=None,sourcePage=None,attribution=dict.fromkeys(['utmSource','utmMedium','utmCampaign','utmContent','utmTerm','gclid','fbclid']))
 def invoke(db,n,message='Synthetic check'):
-    p=json.dumps(payload(n,message)).replace("'","''")
+    enquiry=payload(n,message)
+    if n==2:
+        # Same reference and free text; only the reported number-of-sites band differs.
+        enquiry['businessAnswers']={'sites':'2-5' if message=='Synthetic check' else '6-10'}
+        enquiry['message']='Synthetic check'
+    p=json.dumps(enquiry).replace("'","''")
     return json.loads(db.q(f"select public.ingest_website_enquiry('{p}'::jsonb)")[0][0])
 def begin(db):db.q('begin; set local role synthetic_website_ingestor')
 def count(db,n):
@@ -152,6 +157,8 @@ try:
         if not changed:assert first['leadId']==second['leadId']
         assert count(admin,n)==[1,1,1]
         assert admin.q(f"select notes::jsonb->>'message' from leads where id={int(first['leadId'])}")==[['Synthetic check']]
+        if changed:
+            assert admin.q(f"select notes::jsonb #>> '{{businessAnswers,sites}}' from leads where id={int(first['leadId'])}")==[['2-5']]
         a.close();b.close();passed('concurrent-conflict-no-overwrite' if changed else 'concurrent-identical-one-durable-lead')
     # Different IDs may commit while the first transaction remains open.
     a,b=DB(),DB();begin(a);begin(b);invoke(a,3);t,out=async_call(b,4);t.join(5)
