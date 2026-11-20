@@ -161,6 +161,10 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
           assert(detail.includes('>' + value + '<'), 'Missing website enquiry field on detail page');
         }
         assert(detail.includes(body.submissionId), 'Missing submission reference in rendered notes');
+        for (const [field, value] of Object.entries(body.businessAnswers ?? {})) {
+          assert(detail.includes('&quot;' + field + '&quot;: &quot;' + value + '&quot;'),
+            'Missing business answer on CRM detail page: ' + field);
+        }
         assert(/&quot;smsConsentAnswer&quot;:\s*null/.test(detail), 'Unanswered consent missing from notes');
         assert.equal(await renderDetail(tx, '2147483647'), null, 'Absent synthetic ID must call notFound');
         return listLeads(tx);
@@ -175,6 +179,7 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       assert.equal(lead.contact_name, body.contactName);
       assert.equal(lead.email, body.email);
       assert.equal(lead.lead_source, 'Website');
+      if (body.businessAnswers) assert.deepEqual(JSON.parse(lead.notes).businessAnswers, body.businessAnswers);
       assert.equal(lead.status, 'New');
       assert.equal(JSON.parse(lead.notes).smsConsentAnswer, null);
       const renderedRows = renderList(rows).match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g) ?? [];

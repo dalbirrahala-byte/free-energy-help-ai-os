@@ -58,6 +58,14 @@ echo "eb4471a7b8112a54e103539f2348c4d7f1c5b9b390649700ad62836e9211e279  $rest_ar
 tar -xJO -f "$rest_archive" --wildcards --no-anchored 'postgrest' > "$cache/postgrest"
 chmod 700 "$cache/postgrest"
 
+# Test the actual layered archive with the pinned ORM. Apply the overlays away
+# from the checkout so earlier fixtures still load the original baseline.
+candidate="$cache/business-source"
+mkdir "$candidate"
+cp -- quote-held.ts enquiries-schema.ts enquiry-store.candidate.ts "$candidate/"
+route=$(realpath ../../shared-route)
+(cd "$candidate" && git apply "$route/candidate.patch" && git apply "$route/business-answer-store.patch")
+
 lib="$cache/root/usr/lib/x86_64-linux-gnu"
 mysql="$cache/root/usr/sbin/mysqld"
 for fixture in mysql.test.mjs committed-store.test.mjs full-schema-committed-store.test.mjs quote-duplicate.test.mjs; do
@@ -80,6 +88,6 @@ for fixture in mysql.test.mjs committed-store.test.mjs full-schema-committed-sto
   fi
   echo "Running $fixture"
   timeout 60s python3 unix-only.py "$lib" "$node_bin" --no-warnings \
-    "$fixture" "$cache/node_modules/mysql2/promise.js" "$run_dir/test.sock" "$cache/postgrest"
+    "$fixture" "$cache/node_modules/mysql2/promise.js" "$run_dir/test.sock" "$cache/postgrest" "$candidate"
   cleanup_case
 done

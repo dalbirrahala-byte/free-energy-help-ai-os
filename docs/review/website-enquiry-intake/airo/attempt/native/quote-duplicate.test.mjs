@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire, registerHooks } from 'node:module';
 import net from 'node:net';
+import {join} from 'node:path';
+import {verifyBusinessDelivery} from './business-delivery.fixture.mjs';
 import { mock } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { privateTestSocket } from './private-test-socket.mjs';
@@ -255,6 +257,27 @@ try {
     assert.equal(fetches, 0);
     console.log('ok ' + (4 + cases.length + index) + ' - ' + fault.name);
   }
+  // Only the three copies under the private fixture directory carry the website patches.
+  // Existing fixtures above continue to exercise their original source revision.
+  const candidateUrl = name => pathToFileURL(join(process.argv[5], name)).href;
+  aliases.set('@/server/lib/enquiry-store.js', candidateUrl('enquiry-store.candidate.ts'));
+  aliases.set('../db/schema.js', candidateUrl('enquiries-schema.ts'));
+  await admin.query(readFileSync(new URL('../../shared-route/business-answer-column.sql', import.meta.url), 'utf8'));
+  const {default:shared, verifiedEnquiry} = await import(candidateUrl('quote-held.ts'));
+  const candidateSchema = await import(candidateUrl('enquiries-schema.ts'));
+  const {enquiryRowToCrmPayload:mapRow} = await import(candidateUrl('enquiry-store.candidate.ts'));
+  await verifyBusinessDelivery({
+    shared, verifiedEnquiry, mapRow, owner, visitor, attemptStore, crm,
+    setEmail:fn => { globalThis.recordEmail = fn; },
+    setStep:fn => { globalThis.fixtureStep = fn; },
+    async readWebsite(id) {
+      const rows = await globalThis.fixtureDb.select().from(candidateSchema.enquiries)
+        .where(eq(candidateSchema.enquiries.submissionId, id));
+      assert.equal(rows.length, 1);
+      return rows[0];
+    },
+  });
+  assert.equal(fetches, 0);
   await crm.verifyPostgrest(process.argv[4]);
   console.log('ok ' + (4 + cases.length + saveFaults.length) + ' - PostgREST reads exact receipt IDs under CRM RLS');
   console.log('1..' + (4 + cases.length + saveFaults.length));
