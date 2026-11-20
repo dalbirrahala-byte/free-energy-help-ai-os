@@ -199,6 +199,20 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       console.log('# CRM detail rendered correlated website fields; missing ID and anonymous known-ID reads reached notFound');
       return id;
     }
+    // Fixture-only inspection. Keep both the payload and digest inside the comparison.
+    async function inspectReceipt(payload) {
+      return admin.begin('read only', async tx => {
+        const rows = await tx`select
+          r.payload_sha256 = encode(sha256(convert_to(${tx.json(payload)}::jsonb::text, 'UTF8')), 'hex') as matches,
+          exists (select 1 from public.leads l where l.id = r.lead_id
+            and l.notes::jsonb->>'websiteSubmissionId' = r.submission_id::text) as linked,
+          (select count(*)::int from public.audit_log a where a.action = 'website_enquiry_received'
+            and a.correlation_id = r.submission_id and a.entity_id = r.lead_id::text) as audits
+          from public.website_enquiry_receipts r where r.submission_id = ${payload.submissionId}::uuid`;
+        assert(rows.length <= 1);
+        return rows.length ? {...rows[0]} : null;
+      });
+    }
     async function verifyAbsent(submissionId) {
       const [counts] = await admin`select
         (select count(*)::int from public.website_enquiry_receipts where submission_id=${submissionId}) as receipts,
@@ -245,6 +259,6 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       execFileSync('/usr/bin/python3', ['verify-postgrest.py', binary, directory, ...ids],
         {env:{}, timeout:40000, stdio:'inherit'});
     }
-    return {save, verifyLead, verifyAbsent, verifyPostgrest, close};
+    return {save, inspectReceipt, verifyLead, verifyAbsent, verifyPostgrest, close};
   } catch (error) { await close(); throw error; }
 }

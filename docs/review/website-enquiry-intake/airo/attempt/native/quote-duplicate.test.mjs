@@ -52,6 +52,8 @@ try {
   await admin.query(readFileSync(new URL('./full-enquiries.fixture.sql', import.meta.url), 'utf8'));
   pool = mysql.createPool({socketPath, user:'root', database, connectionLimit:3});
   const {drizzle} = await import('drizzle-orm/mysql2');
+  const {eq} = await import('drizzle-orm');
+  const {enquiryRowToCrmPayload} = await import('./enquiry-store.candidate.ts');
   const schema = await import('./enquiries-schema.ts');
   globalThis.fixtureDb = drizzle(pool, {schema, mode:'default'});
   process.env.NOTIFICATION_RECIPIENT_EMAIL = owner;
@@ -136,6 +138,9 @@ try {
   for (const [index, scenario] of cases.entries()) {
     const submissionId = '00000000-0000-4000-8000-00000000081' + index;
     const body = {submissionId, email:visitor, businessName:'Synthetic receipt ' + index, contactName:'Fixture contact ' + index};
+    if (scenario.receiptFailure === 'json404') {
+      Object.assign(body, {message:'  Synthetic café enquiry  ', utmCampaign:'  fixture campaign  ', sourcePage:'  '});
+    }
     const messages = [];
     const observations = [];
     let attempts = 0;
@@ -188,6 +193,25 @@ try {
     assert.deepEqual(await readWebsiteState(submissionId), [
       {...before[0], crm_status:scenario.receiptFailure ? 'uncertain' : 'sent'},
     ]);
+    if (scenario.receiptFailure === 'json404') {
+      // Re-read the saved website row after the response has been lost. No second submission.
+      const rows = await globalThis.fixtureDb.select().from(schema.enquiries)
+        .where(eq(schema.enquiries.submissionId, submissionId));
+      assert.equal(rows.length, 1);
+      const mapped = enquiryRowToCrmPayload(rows[0]);
+      assert.equal(mapped.message, 'Synthetic café enquiry');
+      assert.equal(mapped.attribution.utmCampaign, 'fixture campaign');
+      assert.equal(mapped.sourcePage, null);
+      assert.deepEqual(await crm.inspectReceipt(mapped), {matches:true, linked:true, audits:1});
+      assert.deepEqual(await crm.inspectReceipt({...mapped, message:'Changed fixture'}),
+        {matches:false, linked:true, audits:1});
+      assert.equal(await crm.inspectReceipt({...mapped, submissionId:'00000000-0000-4000-8000-000000000999'}), null);
+      assert.deepEqual(await readWebsiteState(submissionId), [{...before[0], crm_status:'uncertain'}]);
+      assert.deepEqual(messages, [owner, visitor]);
+      assert.equal(attempts, 1);
+      assert.equal(fetches, 0);
+      console.log('# Saved MySQL row reconciled against CRM receipt; altered and absent references stayed held');
+    }
     console.log('ok ' + (index + 4) + ' - ' + scenario.name);
   }
   // Fail either side of the actual MySQL insert. Inspect durable state on
