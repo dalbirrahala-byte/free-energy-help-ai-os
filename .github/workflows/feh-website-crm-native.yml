@@ -7,6 +7,8 @@ on:
       - "docs/review/website-enquiry-intake/airo/attempt/native/**"
       - "docs/review/website-enquiry-intake/airo/homepage-attempt.mjs"
       - "docs/review/website-enquiry-intake/airo/homepage-browser.test.mjs"
+      - "docs/review/website-enquiry-intake/airo/shared-route/business-quote-body.mjs"
+      - "docs/review/website-enquiry-intake/airo/shared-route/browser-form-test.py"
 
 permissions:
   contents: read
@@ -35,3 +37,5 @@ jobs:
         run: bash run-disposable-mysql.sh
       - name: Check same-tab reload in an offline browser
         run: python3 unix-only.py '' "$(command -v node)" ../../homepage-browser.test.mjs "$(command -v google-chrome)"
+      - name: Check business name validation in an offline browser
+        run: python3 unix-only.py '' /usr/bin/python3 ../../shared-route/browser-form-test.py "$(command -v google-chrome)"
