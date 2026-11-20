@@ -5,6 +5,8 @@ umask 077
 here=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 archive=$(realpath "$1")
 mysqlroot=$(realpath "$2")
+asset=
+if [ "$#" -eq 3 ]; then asset=$(realpath "$3"); fi
 work=$(mktemp -d /tmp/feh133-purpose-XXXXXXXX)
 server=
 cleanup() {
@@ -15,6 +17,9 @@ trap cleanup EXIT
 native="$archive/airo/attempt/native"
 cp "$native/quote-held.ts" "$native/enquiry-store.candidate.ts" "$here/native-purpose.mjs" "$work/"
 cp "$archive/airo/attempt/mysql-attempt-store.ts" "$work/"
+if [ -n "$asset" ]; then
+  cp "$here/native-field-retention.mjs" "$here/business-quote-body.mjs" "$work/"
+fi
 cd "$work"
 test "$(git hash-object mysql-attempt-store.ts)" = b403c2fa7e9c61dd65d39f96022e4bed540698c5
 test "$(git hash-object quote-held.ts)" = 31c0dc1b237c2e911d5000540d44a7a6530b5278
@@ -28,7 +33,7 @@ test "$(git hash-object "$guard")" = 3e8f7c946cda0da555852bfddf68c26f1c138c1f
 mkfifo input
 timeout 70s python3 "$guard" /usr/bin/env LD_LIBRARY_PATH="$mysqlroot/lib/x86_64-linux-gnu" "$mysqlroot/sbin/mysqld" --no-defaults --initialize-insecure --skip-networking --mysqlx=0 --innodb-use-native-aio=0 --basedir="$mysqlroot" --datadir="$work/data" --lc-messages-dir="$mysqlroot/share/mysql-8.4" --secure-file-priv="$work" --init-file=/dev/stdin <input >mysql.log 2>&1 &
 server=$!
-timeout 60s python3 "$guard" "$(command -v node)" --no-warnings "$work/native-purpose.mjs" "$work" "$native/full-enquiries.fixture.sql"
+timeout 60s python3 "$guard" "$(command -v node)" --no-warnings "$work/native-purpose.mjs" "$work" "$native/full-enquiries.fixture.sql" "$asset"
 wait "$server"
 server=
 if grep -Fq '[ERROR]' mysql.log; then exit 1; fi

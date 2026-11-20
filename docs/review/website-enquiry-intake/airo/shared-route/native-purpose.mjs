@@ -91,10 +91,14 @@ registerHooks({resolve(name,ctx,next){
   if(Object.hasOwn(stubs,name)) return {shortCircuit:true,url:'data:text/javascript,'+encodeURIComponent(stubs[name])};
   return next(name,ctx);
 }});
-try {
+async function runFixture() {
   const ddl=readFileSync(ddlPath,'utf8').split('\n').filter(l=>!l.startsWith('--')).join(' ');
   const cfg=await query(['CREATE DATABASE feh_fixture','USE feh_fixture','SET autocommit=1',ddl], "SELECT CONCAT(VERSION(),' ',@@skip_networking,' ',@@autocommit)");
   assert.match(cfg,/^8\.4\.13\S* 1 1$/);
+  if (process.argv[4]) {
+    const {traceFormFields} = await import('./native-field-retention.mjs');
+    return traceFormFields({asset:process.argv[4], rows, query, owner, visitor, fetchCount:() => fetches});
+  }
   const {default:shared,verifiedEnquiry}=await import('./quote-held.ts');
   const {getPendingOnlyCrmEnquiries}=await import('./enquiry-store.candidate.ts');
   const id=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
@@ -172,4 +176,5 @@ try {
   console.log('PASS fourteen explicit invalid reference cases rejected before insert; omitted reference generated once and duplicate held');
   assert.equal(fetches,0);
   console.log('PASS MySQL '+cfg+'; eight excluded and unclaimable, one eligible claim, both duplicate directions held, zero fetches');
-} finally { closeSync(fd); }
+}
+try { await runFixture(); } finally { closeSync(fd); }
