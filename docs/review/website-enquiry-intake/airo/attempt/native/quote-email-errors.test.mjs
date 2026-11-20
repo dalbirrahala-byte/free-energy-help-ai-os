@@ -103,3 +103,64 @@ for (const [recipient, inputId, name] of [
       ownerFailed ? 'quote.submit.owner_email_failed' : 'quote.submit.visitor_email_failed', {submissionId}]]);
   });
 }
+
+test('quote text fits the saved row before any delivery', async t => {
+  const calls = [];
+  const logs = [];
+  for (const level of ['log', 'warn', 'error']) t.mock.method(console, level, (...args) => logs.push(args));
+  globalThis.fixture = {
+    save(input) {
+      calls.push(['save', input]);
+      return {ok:true, created:true, row:{...input, ownerEmailStatus:'pending', visitorEmailStatus:'pending', crmStatus:'pending'}};
+    },
+    email(message) { calls.push(['email', message.to]); },
+    update(id, column, status) { calls.push(['update', column, status]); },
+    crm() { calls.push(['crm']); return 'disabled'; },
+  };
+  t.after(() => { delete globalThis.fixture; });
+  const valid = {submissionId:validId, businessName:'Fixture', contactName:'Fixture', email:visitor};
+  async function submit(fields) {
+    const res = {status(code) { this.code = code; return this; }, json(body) { this.body = body; }};
+    await handler({body:{...valid, ...fields}}, res);
+    return res;
+  }
+
+  const columnWidths = {
+    businessName:255, contactName:255, email:255, phone:40, meterNumbers:255,
+    currentSupplier:255, message:2000, utmSource:255, utmMedium:255,
+    utmCampaign:255, utmContent:255, utmTerm:255, gclid:255, fbclid:255, sourcePage:255,
+  };
+  for (const [field, limit] of Object.entries(columnWidths)) {
+    const suffix = field === 'email' ? '@example.invalid' : '';
+    const value = 'a'.repeat(limit + 1 - suffix.length) + suffix;
+    const res = await submit({[field]:value});
+    assert.equal(res.code, 400, field);
+    assert.deepEqual(res.body, {error:`${field} must be ${limit} characters or fewer.`});
+  }
+  assert.deepEqual(calls, []);
+  assert.deepEqual(logs, []);
+
+  // MySQL utf8mb4 counts a supplementary character as one character.
+  const message = '🌱'.repeat(2000);
+  const res = await submit({message:'  ' + message + '  ', phone:'1'.repeat(40), businessName:'B'.repeat(255)});
+  assert.equal(res.code, 201);
+  assert.equal(calls[0][0], 'save');
+  assert.equal(calls[0][1].message, message);
+  assert.deepEqual(calls.slice(1), [
+    ['email', owner], ['update', 'ownerEmailStatus', 'sent'],
+    ['email', visitor], ['update', 'visitorEmailStatus', 'sent'], ['crm'],
+  ]);
+});
+
+test('CRM message limit counts Unicode code points and rejects one over', async () => {
+  const {validPayload} = await import('../../../source/contract.ts');
+  const payload = {
+    submissionId:validId, submittedAt:'2026-11-20T00:00:00.000Z',
+    businessName:'Fixture', contactName:'Fixture', email:visitor, phone:null,
+    meterNumbers:null, currentSupplier:null, message:'🌱'.repeat(1999) + 'a',
+    smsConsent:null, sourcePage:null,
+    attribution:{utmSource:null, utmMedium:null, utmCampaign:null, utmContent:null, utmTerm:null, gclid:null, fbclid:null},
+  };
+  assert.equal(validPayload(payload), true);
+  assert.equal(validPayload({...payload, message:payload.message + 'a'}), false);
+});

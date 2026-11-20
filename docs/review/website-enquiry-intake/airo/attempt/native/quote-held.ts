@@ -108,6 +108,33 @@ export default async function handler(req: Request, res: Response) {
   const smsConsentNorm: 'yes' | 'no' | null =
     smsConsent === 'yes' ? 'yes' : smsConsent === 'no' ? 'no' : null;
 
+  const fields = {
+    businessName:    businessName.trim(),
+    contactName:     contactName.trim(),
+    email:           email.trim(),
+    phone:           phoneNorm,
+    meterNumbers:    opt(meterNumbers),
+    currentSupplier: opt(currentSupplier),
+    message:         opt(message),
+    utmSource:       opt(utmSource),
+    utmMedium:       opt(utmMedium),
+    utmCampaign:     opt(utmCampaign),
+    utmContent:      opt(utmContent),
+    utmTerm:         opt(utmTerm),
+    gclid:           opt(gclid),
+    fbclid:          opt(fbclid),
+    sourcePage:      opt(sourcePage),
+  };
+  // MySQL VARCHAR widths count Unicode code points. INSERT IGNORE would
+  // otherwise accept a truncated row and both delivery paths would trust it.
+  for (const [field, value] of Object.entries(fields)) {
+    const limit = field === 'phone' ? 40 : field === 'message' ? 2000 : 255;
+    if (value && value.length > limit &&
+        (value.length > 2 * limit || Array.from(value).length > limit)) {
+      return res.status(400).json({error: `${field} must be ${limit} characters or fewer.`});
+    }
+  }
+
   // ── Notification recipient ──────────────────────────────────────────────────
   const recipient = process.env.NOTIFICATION_RECIPIENT_EMAIL;
   if (!recipient) {
@@ -118,26 +145,7 @@ export default async function handler(req: Request, res: Response) {
   // ── Step 1: Save to DB ──────────────────────────────────────────────────────
   // INSERT IGNORE — idempotent. A double-submit returns the existing row and
   // holds further delivery for reconciliation.
-  const saveResult = await saveEnquiry({
-    submissionId,
-    submittedAt,
-    businessName:    businessName.trim(),
-    contactName:     contactName.trim(),
-    email:           email.trim(),
-    phone:           phoneNorm,
-    meterNumbers:    opt(meterNumbers),
-    currentSupplier: opt(currentSupplier),
-    message:         opt(message),
-    smsConsent:      smsConsentNorm,
-    utmSource:       opt(utmSource),
-    utmMedium:       opt(utmMedium),
-    utmCampaign:     opt(utmCampaign),
-    utmContent:      opt(utmContent),
-    utmTerm:         opt(utmTerm),
-    gclid:           opt(gclid),
-    fbclid:          opt(fbclid),
-    sourcePage:      opt(sourcePage),
-  });
+  const saveResult = await saveEnquiry({submissionId, submittedAt, smsConsent: smsConsentNorm, ...fields});
 
   if (!saveResult.ok) {
     console.error('quote.submit.db_save_failed', { submissionId });

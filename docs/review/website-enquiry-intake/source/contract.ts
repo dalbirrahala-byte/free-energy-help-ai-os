@@ -15,7 +15,12 @@ const fields = ['submissionId','submittedAt','businessName','contactName','email
 const attributionFields = ['utmSource','utmMedium','utmCampaign','utmContent','utmTerm','gclid','fbclid'];
 function object(v:unknown): v is Record<string,unknown>{return !!v&&typeof v==='object'&&!Array.isArray(v);}
 function keys(v:Record<string,unknown>,expected:string[]){return Object.keys(v).length===expected.length&&expected.every(k=>Object.hasOwn(v,k));}
-function string(v:unknown,max:number,required=false){return typeof v==='string'&&v.length<=max&&(!required||v.trim().length>0)&&!v.includes('\u0000');}
+function string(v:unknown, max:number, required=false) {
+ if(typeof v !== 'string' || v.length > 2 * max) return false;
+ // Match MySQL VARCHAR and PostgreSQL char_length for supplementary characters.
+ if(v.length > max && Array.from(v).length > max) return false;
+ return (!required || v.trim().length > 0) && !v.includes('\u0000');
+}
 /** No coercion or truncation; preserve every submitted field and missing consent. */
 export function validPayload(v:unknown):v is Payload{
  if(!object(v)||!keys(v,fields))return false;

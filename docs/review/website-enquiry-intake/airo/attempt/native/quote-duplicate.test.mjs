@@ -67,6 +67,14 @@ try {
     return {code:res.code, ...res.body};
   }
 
+  const overlongId = '00000000-0000-4000-8000-000000000970';
+  const invalid = await invoke({submissionId:overlongId, email:visitor,
+    businessName:'Fixture', contactName:'Fixture', message:'🌱'.repeat(2001)});
+  assert.deepEqual(invalid, {code:400, error:'message must be 2000 characters or fewer.'});
+  const [absent] = await admin.execute('SELECT id FROM enquiries WHERE submission_id=?', [overlongId]);
+  assert.equal(absent.length, 0);
+  console.log('# Overlength quote rejected before inserting a MySQL row');
+
   for (const [index, pauseAt] of [owner, visitor].entries()) {
     const submissionId = '00000000-0000-4000-8000-00000000080' + index;
     const body = {submissionId, email:visitor, businessName:'Original fixture', contactName:'Synthetic contact'};
@@ -135,11 +143,12 @@ try {
     {name:'gateway 404 after committed CRM receipt keeps website status uncertain', receiptFailure:'gateway404'},
     {name:'receiver-shaped JSON 404 after CRM commit keeps website status uncertain', receiptFailure:'json404'},
   ];
+  const boundaryMessage = '🌱'.repeat(1999) + 'é';
   for (const [index, scenario] of cases.entries()) {
     const submissionId = '00000000-0000-4000-8000-00000000081' + index;
     const body = {submissionId, email:visitor, businessName:'Synthetic receipt ' + index, contactName:'Fixture contact ' + index};
     if (scenario.receiptFailure === 'json404') {
-      Object.assign(body, {message:'  Synthetic café enquiry  ', utmCampaign:'  fixture campaign  ', sourcePage:'  '});
+      Object.assign(body, {message:'  ' + boundaryMessage + '  ', utmCampaign:'  fixture campaign  ', sourcePage:'  '});
     }
     const messages = [];
     const observations = [];
@@ -199,7 +208,7 @@ try {
         .where(eq(schema.enquiries.submissionId, submissionId));
       assert.equal(rows.length, 1);
       const mapped = enquiryRowToCrmPayload(rows[0]);
-      assert.equal(mapped.message, 'Synthetic café enquiry');
+      assert.equal(mapped.message, boundaryMessage);
       assert.equal(mapped.attribution.utmCampaign, 'fixture campaign');
       assert.equal(mapped.sourcePage, null);
       assert.deepEqual(await crm.inspectReceipt(mapped), {matches:true, linked:true, audits:1});
