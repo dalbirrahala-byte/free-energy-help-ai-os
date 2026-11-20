@@ -67,7 +67,27 @@ test('unrecognised gateway response after a receiver commit preserves the reconc
  assert.equal(s.commits,1);
  assert.equal(s.transports,1);
 });
-test('definitive receiver rejection finishes failed without retry',async()=>{const s=setup({response:()=>Response.json({error:'unauthorized'},{status:401})});assert.equal(await call(s),'failed');assert.equal(s.status,'failed');await call(s);assert.equal(s.transports,1);});
+test('receiver-shaped error after a committed receipt keeps the durable hold', async () => {
+ const s = setup();
+ const send = s.client.transport;
+ s.client.transport = async (url, init) => {
+  const receipt = await send(url, init);
+  assert.equal(receipt.status, 201);
+  return Response.json({error:'not_found'}, {status:404});
+ };
+ assert.equal(await call(s), 'reconcile');
+ assert.equal(s.status, 'uncertain');
+ assert.deepEqual(s.events, ['claim', 'transport']);
+ assert.equal(s.commits, 1);
+ assert.equal(s.transports, 1);
+});
+test('invalid local configuration can finish failed before transport', async () => {
+ const s = setup();
+ s.client.approvedEndpoint = null;
+ assert.equal(await call(s), 'failed');
+ assert.equal(s.status, 'failed');
+ assert.equal(s.transports, 0);
+});
 test('mapper error or changed submission identity cannot claim',async()=>{const s=setup();assert.equal(await s.step(id,true,'pending',()=>{throw Error('PRIVATE_MAP');}),'reconcile');assert.equal(await s.step(id,true,'pending',()=>({...payload,submissionId:'wrong'})),'reconcile');assert.deepEqual(s.events,[]);});
 
 // Load both exact baseline and generated candidate with all DB/email imports mocked.

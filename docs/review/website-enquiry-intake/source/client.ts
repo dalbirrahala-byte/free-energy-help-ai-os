@@ -12,12 +12,6 @@ export interface ClientDependencies {
 }
 const absent:DeliveryResult={ok:true,httpStatus:null,simulated:true,endpointAbsent:true,uncertain:false,error:null};
 const failed=(error:string,uncertain=false,status:number|null=null):DeliveryResult=>({ok:false,httpStatus:status,simulated:false,endpointAbsent:false,uncertain,error});
-const rejectionCodes = new Map<number, string>([
- [400, 'invalid_payload'], [401, 'unauthorized'], [404, 'not_found'],
- [405, 'method_not_allowed'], [409, 'submission_conflict'], [413, 'invalid_body'],
- [415, 'content_type'],
-]);
-
 async function readResponseBody(res:Response): Promise<unknown>{
  if(res.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json')throw Error('content_type');
  const reader=res.body?.getReader();if(!reader)throw Error('no_body');let bytes=0;const chunks:Uint8Array[]=[];
@@ -39,17 +33,14 @@ export async function deliver(payload:Payload,deps:ClientDependencies):Promise<D
  try{
   const res=await deps.transport(deps.endpoint,{method:'POST',redirect:'error',headers:{'content-type':'application/json','x-feh-timestamp':timestamp,'x-feh-signature':'v1='+signature(deps.key,timestamp,body)},body,signal:AbortSignal.timeout(8000)});
   if(res.redirected)return failed('unverified_receipt',true,res.status);
-  const rejection = rejectionCodes.get(res.status);
-  if(res.status!==200 && res.status!==201 && !rejection)return failed('unverified_receipt',true,res.status);
-  let reply:unknown;
-  try{reply=await readResponseBody(res);}catch{return failed('unverified_receipt',true,res.status);}
-  if(rejection){
-   // A framework or proxy can also return these HTTP statuses.
-   if(reply && typeof reply==='object' && 'error' in reply && reply.error===rejection && Object.keys(reply).length===1){
-    return failed('receiver_rejected',false,res.status);
-   }
+  // A gateway can replace a committed response with the same error JSON as the receiver.
+  // Only a receipt identifying this submission can settle the durable delivery hold.
+  if(res.status!==200 && res.status!==201){
+   void res.body?.cancel().catch(()=>{});
    return failed('unverified_receipt',true,res.status);
   }
+  let reply:unknown;
+  try{reply=await readResponseBody(res);}catch{return failed('unverified_receipt',true,res.status);}
   if(!validReceipt(reply,payload.submissionId)||(res.status===201)!==(reply.outcome==='created'))return failed('unverified_receipt',true,res.status);
   return {ok:true,httpStatus:res.status,simulated:false,endpointAbsent:false,uncertain:false,error:null};
  }catch{return failed('delivery_uncertain',true);}

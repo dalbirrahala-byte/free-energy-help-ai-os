@@ -65,9 +65,9 @@ submission_id, with no new table, grant, credential or schema state:
    deduplication key. uncertain means a durable reconciliation hold, including a
    process that died before it sent anything; it does not prove a send occurred.
 4. The existing candidate sender signs the exact request and requires a correlated
-   committed receipt. Only then can uncertain -> sent be recorded. Explicit
-   receiver rejection can finalize failed. Unknown transport/receipt/claim or
-   finalization results are held. No exception escapes this CRM step.
+   committed receipt. Only then can uncertain -> sent be recorded. An error response after transport leaves the
+   enquiry held, even when its JSON matches a receiver rejection. Reconcile by
+   submission UUID. Unknown claim and finalization results are also held. No exception escapes this CRM step.
 5. A second concurrent claimant cannot win the same conditional UPDATE. No expiry,
    reset-to-pending, replay route or automatic recovery was introduced.
 

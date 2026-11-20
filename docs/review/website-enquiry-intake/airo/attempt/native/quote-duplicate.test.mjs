@@ -131,6 +131,7 @@ try {
     {name:'visitor email exception preserves one committed CRM receipt', failingRecipient:visitor},
     {name:'owner email exception stops before visitor delivery and CRM handoff', failingRecipient:owner},
     {name:'gateway 404 after committed CRM receipt keeps website status uncertain', receiptFailure:'gateway404'},
+    {name:'receiver-shaped JSON 404 after CRM commit keeps website status uncertain', receiptFailure:'json404'},
   ];
   for (const [index, scenario] of cases.entries()) {
     const submissionId = '00000000-0000-4000-8000-00000000081' + index;
@@ -152,6 +153,7 @@ try {
         const receipt = await response.clone().json();
         observations.push({destination, before, status:response.status, receipt});
         if (scenario.receiptFailure === 'gateway404') return new Response('Not found', {status:404});
+        if (scenario.receiptFailure === 'json404') return Response.json({error:'not_found'}, {status:404});
         if (scenario.receiptFailure === 'lost') throw Error('Synthetic response loss after receiver commit');
         return response;
       },

@@ -81,7 +81,23 @@ for(const [label,resp]of [
  ['oversized receipt',()=>json({...receipt(),extra:'x'.repeat(3000)})]
 ]as const){test('client holds ambiguous '+label+' without retry',async()=>{let calls=0;const r=await deliver(fixture(),deps(async()=>{calls++;return resp();}));assert.equal(r.ok,false);assert.equal(r.uncertain,true);assert.equal(calls,1);assert(!JSON.stringify(r).includes('RAW'));});}
 test('network error classified uncertain, no raw exception or retry',async()=>{let calls=0;const r=await deliver(fixture(),deps(async()=>{calls++;throw Error('RAW');}));assert.equal(r.uncertain,true);assert.equal(calls,1);assert(!JSON.stringify(r).includes('RAW'));});
-test('receiver conflict is definitive without replay',async()=>{const r=await deliver(fixture(),deps(async()=>json({error:'submission_conflict'},409)));assert.equal(r.ok,false);assert.equal(r.uncertain,false);});
+for (const [status, error] of [
+ [400, 'invalid_payload'], [401, 'unauthorized'], [404, 'not_found'],
+ [405, 'method_not_allowed'], [409, 'submission_conflict'], [413, 'invalid_body'],
+ [415, 'content_type'],
+] as const) {
+ test('client holds uncorrelated JSON rejection ' + status, async () => {
+  let calls = 0;
+  const result = await deliver(fixture(), deps(async () => {
+   calls++;
+   return json({error}, status);
+  }));
+  assert.equal(result.ok, false);
+  assert.equal(result.uncertain, true);
+  assert.equal(result.httpStatus, status);
+  assert.equal(calls, 1);
+ });
+}
 test('duplicate committed receipt accepted',async()=>{const r=await deliver(fixture(),deps(async()=>json(receipt(fixture(),'duplicate'),200)));assert.equal(r.ok,true);});
 test('store preserves the largest PostgreSQL bigint as exact decimal text',async()=>{
  const largest={...receipt(),leadId:'9223372036854775807'};
