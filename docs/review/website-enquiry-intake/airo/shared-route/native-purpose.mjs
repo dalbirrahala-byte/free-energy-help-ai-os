@@ -32,7 +32,7 @@ async function query(statements, select) {
   }
   throw Error('MySQL result deadline at statement group ' + serial);
 }
-const columns = 'submission_id submitted_at business_name contact_name email phone meter_numbers current_supplier message sms_consent utm_source utm_medium utm_campaign utm_content utm_term gclid fbclid source_page owner_email_status visitor_email_status crm_status'.split(' ');
+const columns = 'submission_id submitted_at business_name contact_name email phone meter_numbers current_supplier message business_answers sms_consent utm_source utm_medium utm_campaign utm_content utm_term gclid fbclid source_page owner_email_status visitor_email_status crm_status'.split(' ');
 const schema = Object.fromEntries(columns.map(col => [col.replace(/_(.)/g, (_,c)=>c.toUpperCase()), col]));
 const rowJson = 'JSON_OBJECT(' + Object.entries(schema).map(([key,col])=> "'" + key + "'," + col).join(',') + ')';
 async function rows([col, value]) {
@@ -95,8 +95,20 @@ async function runFixture() {
   const ddl=readFileSync(ddlPath,'utf8').split('\n').filter(l=>!l.startsWith('--')).join(' ');
   const cfg=await query(['CREATE DATABASE feh_fixture','USE feh_fixture','SET autocommit=1',ddl], "SELECT CONCAT(VERSION(),' ',@@skip_networking,' ',@@autocommit)");
   assert.match(cfg,/^8\.4\.13\S* 1 1$/);
+  const legacyId = '00000000-0000-4000-8000-000000000900';
+  if (process.argv[4]) {
+    await query(["INSERT INTO enquiries (submission_id,submitted_at,business_name,contact_name,email,crm_status) " +
+      "VALUES ('" + legacyId + "','2026-11-20T00:00:00.000Z','Fixture','Fixture','fixture@example.invalid','excluded')"],'SELECT 1');
+  }
+  const upgrade = readFileSync(runDir + '/business-answer-column.sql','utf8').split('\n').filter(l=>!l.startsWith('--')).join(' ');
+  await query([upgrade], 'SELECT 1');
   if (process.argv[4]) {
     const {traceFormFields} = await import('./native-field-retention.mjs');
+    const [legacy] = await rows(['submission_id',legacyId]);
+    assert.equal(legacy.businessAnswers,null);
+    assert.equal(legacy.crmStatus,'excluded');
+    const {enquiryRowToCrmPayload} = await import('./enquiry-store.candidate.ts');
+    assert.equal(Object.hasOwn(enquiryRowToCrmPayload(legacy),'businessAnswers'),false);
     return traceFormFields({asset:process.argv[4], rows, query, owner, visitor, fetchCount:() => fetches});
   }
   const {default:shared,verifiedEnquiry}=await import('./quote-held.ts');

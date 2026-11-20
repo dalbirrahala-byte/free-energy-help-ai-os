@@ -33,7 +33,9 @@ const base = {submittedAt:'2026-11-20T00:00:00.000Z', businessName:'Fixture busi
   contactName:'Fixture contact', email:'fixture@example.invalid', phone:null, meterNumbers:null,
   currentSupplier:null, message:'Original free text', smsConsent:null, sourcePage:null,
   attribution:{utmSource:null,utmMedium:null,utmCampaign:null,utmContent:null,utmTerm:null,gclid:null,fbclid:null}};
-let serial = 0;
+const stored = process.argv[3] ? JSON.parse(read(process.argv[3])) : null;
+if (stored) assert.equal(Object.keys(stored).length,19);
+let serial = stored ? 1000 : 0;
 const next = () => ({...base, submissionId:'00000000-0000-4000-8000-' + String(++serial).padStart(12,'0')});
 const db = new (requireLocal('@electric-sql/pglite').PGlite)();
 const ingest = async payload => (await db.query('select public.ingest_website_enquiry($1::jsonb) as receipt',
@@ -66,7 +68,7 @@ async function verify(payload) {
     await tx.exec('set transaction read only');
     return render({unsafe:async (sql, params) => (await tx.query(sql,params)).rows},receipt.leadId);
   });
-  assert(html.includes('Original free text'));
+  assert(html.includes(payload.message));
   for (const [field,value] of Object.entries(payload.businessAnswers ?? {})) {
     assert(html.includes('&quot;' + field + '&quot;: &quot;' + value + '&quot;'),field);
   }
@@ -101,12 +103,17 @@ try {
       answers[key] = value;
       counts[key] = (counts[key] ?? 0) + 1;
     }
-    const payload = {...next(),businessAnswers:answers};
+    const payload = stored ? stored[page] : {...next(),businessAnswers:answers};
+    if (stored) {
+      assert.equal(payload.submissionId,'00000000-0000-4000-8000-' + String(pages.size).padStart(12,'0'));
+      assert.deepEqual(Object.keys(payload.businessAnswers).sort(),Object.keys(answers).sort());
+      for (const key of Object.keys(answers)) assert.equal(payload.businessAnswers[key],'fixture-' + key + '-' + pages.size + '-end');
+    }
     const {leadId} = await verify(payload);
     const key = Object.keys(answers)[0];
-    assert.deepEqual(await ingest({...payload,businessAnswers:{...answers,[key]:'Different'}}), {outcome:'conflict'});
+    assert.deepEqual(await ingest({...payload,businessAnswers:{...payload.businessAnswers,[key]:'Different'}}), {outcome:'conflict'});
     const {rows:[row]} = await db.query("select notes::jsonb->'businessAnswers' as answers from public.leads where id=$1",[leadId]);
-    assert.deepEqual(row.answers,answers);
+    assert.deepEqual(row.answers,payload.businessAnswers);
   }
   assert.equal(pages.size,19);
   assert.deepEqual(counts,{annualUsage:1,postcode:17,contractEndDate:18,industry:1,annualElectricity:4,annualGas:4,sites:4});

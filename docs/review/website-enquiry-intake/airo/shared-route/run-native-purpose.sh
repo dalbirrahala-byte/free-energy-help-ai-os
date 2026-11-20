@@ -28,6 +28,10 @@ test "$(git hash-object "$native/full-enquiries.fixture.sql")" = 52e47b7807a7cb7
 patchfile="$archive/airo/shared-route/candidate.patch"
 test "$(git hash-object "$patchfile")" = 15a944a4e594d2cb4aab59c1b29f2f2ee6c91e30
 git apply "$patchfile"
+cp "$native/enquiries-schema.ts" ./
+test "$(git hash-object enquiries-schema.ts)" = 16efcd714d25b760604eb56ae83b159bc1e1171b
+git apply "$here/business-answer-store.patch"
+cp "$here/business-answer-column.sql" ./
 guard="$archive/tests/deny-network.py"
 test "$(git hash-object "$guard")" = 3e8f7c946cda0da555852bfddf68c26f1c138c1f
 mkfifo input
@@ -37,3 +41,6 @@ timeout 60s python3 "$guard" "$(command -v node)" --no-warnings "$work/native-pu
 wait "$server"
 server=
 if grep -Fq '[ERROR]' mysql.log; then exit 1; fi
+if [ -n "$asset" ]; then
+  timeout 60s python3 "$guard" "$(command -v node)" --no-warnings "$archive/tests/business-answers.mjs" "$asset" "$work/projections.json"
+fi
