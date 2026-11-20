@@ -105,13 +105,13 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       };
     });
     const page = read(new URL('frontend/src/app/leads/page.tsx', repo));
-    const columns = page.match(/const LEAD_COLUMNS\s*=\s*"([a-z_, ]+)"/)?.[1];
+    const columns = page.match(/const LEAD_COLUMNS\s*=\s*"(id, route_id:id::text, [a-z_, ]+)"/)?.[1];
     assert(columns && page.includes('.select(LEAD_COLUMNS)'));
     // The CRM receives Supabase JSON. Let PostgreSQL encode dates and numeric IDs
     // before the native driver's timestamp decoder can turn them into JS Dates.
     async function listLeads(tx) {
       const records = await tx.unsafe('select row_to_json(visible) as lead from (select ' +
-        columns + ' from public.leads) visible order by visible.created_at desc');
+        columns.replace('route_id:id::text', 'id::text as route_id') + ' from public.leads) visible order by visible.created_at desc');
       return records.map(record => record.lead);
     }
     const readerId = '00000000-0000-4000-8000-000000000901';
@@ -169,7 +169,7 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
       const [lead] = matches;
       assert.equal(typeof lead.created_at, 'string');
       assert.equal(typeof lead.id, 'number');
-      assert.equal(String(lead.id), id);
+      assert.equal(lead.route_id, id);
       assert.equal(lead.company_name, body.businessName);
       assert.equal(lead.contact_name, body.contactName);
       assert.equal(lead.email, body.email);
@@ -218,6 +218,28 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
         });
         assert.deepEqual(receipt, {version:1, submissionId, outcome:'created', leadId:id});
       }
+      await admin.begin('read only', async tx => {
+        await tx`set local role authenticated`;
+        await tx`select set_config('request.jwt.claim.sub', ${readerId}, true)`;
+        const list = renderList(await listLeads(tx));
+        for (const [index, id] of ids.entries()) {
+          const matching = (list.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/g) ?? [])
+            .filter(row => row.includes(`href="/leads/${id}"`));
+          assert.equal(matching.length, 1);
+          assert(matching[0].includes(`>REST fixture ${id}<`));
+          const detail = await renderDetail(tx, id);
+          assert(detail.includes(`>REST fixture ${id}<`));
+          assert(detail.includes('00000000-0000-4000-8000-00000000092' + index));
+          assert(detail.includes('read-only mode'));
+          assert.doesNotMatch(detail, /<form\b/);
+        }
+        assert.equal(await renderDetail(tx, '9007199254740994'), null);
+      });
+      await admin.begin('read only', async tx => {
+        await tx`set local role anon`;
+        for (const id of ids) assert.equal(await renderDetail(tx, id), null);
+      });
+      console.log('# CRM list links and read-only detail pages retain all three exact receipt IDs');
       execFileSync('/usr/bin/python3', ['verify-postgrest.py', binary, directory, ...ids],
         {env:{}, timeout:40000, stdio:'inherit'});
     }

@@ -13,6 +13,7 @@ import { leadWorklistRank } from "@/lib/revenue-engine/leadWorklistOrder";
 
 export type CrmLeadRow = {
   id: number;
+  route_id: string;
   created_at?: string;
   company_name: string | null;
   contact_name: string | null;
@@ -94,11 +95,12 @@ export function LeadsPageClient({
   const [showRejected, setShowRejected] = useState(false);
 
   const qualityCounts = useMemo(() => {
-    const counts = { Hot: 0, Warm: 0, Nurture: 0, Reject: 0, unscored: 0 };
+    const counts = { Hot: 0, Warm: 0, Nurture: 0, Reject: 0, unscored: 0, scoreable: 0 };
     for (const lead of crmLeads) {
       const classification = lead.qualification_classification;
       if (!classification) {
         counts.unscored += 1;
+        if (Number.isSafeInteger(lead.id)) counts.scoreable += 1;
       } else if (classification in counts) {
         counts[classification as keyof typeof counts] += 1;
       }
@@ -111,6 +113,10 @@ export function LeadsPageClient({
       ? crmLeads
       : crmLeads.filter((lead) => lead.qualification_classification !== "Reject");
 
+    function priorityScore(lead: CrmLeadRow) {
+      return Number.isSafeInteger(lead.id) ? revenueViews[lead.id]?.priority.priorityScore ?? 0 : 0;
+    }
+
     return [...visible].sort((a, b) => {
       const rankDiff = leadWorklistRank(a.qualification_classification) - leadWorklistRank(b.qualification_classification);
       if (rankDiff !== 0) return rankDiff;
@@ -118,7 +124,7 @@ export function LeadsPageClient({
       // Within the same classification, prioritise by the already-computed
       // priority score so newer/more urgent leads aren't buried by an
       // arbitrary secondary sort, then fall back to most-recently-created.
-      const scoreDiff = (revenueViews[b.id]?.priority.priorityScore ?? 0) - (revenueViews[a.id]?.priority.priorityScore ?? 0);
+      const scoreDiff = priorityScore(b) - priorityScore(a);
       if (scoreDiff !== 0) return scoreDiff;
 
       return (b.created_at ?? "").localeCompare(a.created_at ?? "");
@@ -182,14 +188,14 @@ export function LeadsPageClient({
                 </p>
               </div>
 
-              {qualityCounts.unscored > 0 && (
+              {qualityCounts.scoreable > 0 && (
                 <form action={recomputeUnscoredLeadQualifications}>
                   <button
                     type="submit"
                     className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    title="Scores every lead that has never been classified (Factory 027 qualification engine, reused verbatim)"
+                    title="Scores unclassified leads with supported numeric IDs"
                   >
-                    Recompute {qualityCounts.unscored} unscored lead{qualityCounts.unscored === 1 ? "" : "s"}
+                    Recompute {qualityCounts.scoreable} unscored lead{qualityCounts.scoreable === 1 ? "" : "s"}
                   </button>
                 </form>
               )}
@@ -243,10 +249,10 @@ export function LeadsPageClient({
                   </tr>
                 ) : (
                   worklistLeads.map((lead) => {
-                    const view = revenueViews[lead.id];
+                    const view = Number.isSafeInteger(lead.id) ? revenueViews[lead.id] : undefined;
                     return (
                       <tr
-                        key={lead.id}
+                        key={lead.route_id}
                         className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
                       >
                         <td className="px-5 py-4 font-semibold text-slate-900">
@@ -306,7 +312,7 @@ export function LeadsPageClient({
                         <td className="px-5 py-4 text-slate-600">{formatLastActivity(view)}</td>
                         <td className="px-5 py-4">
                           <Link
-                            href={`/leads/${lead.id}`}
+                            href={`/leads/${lead.route_id}`}
                             className="font-semibold text-emerald-600 hover:text-emerald-700"
                           >
                             View

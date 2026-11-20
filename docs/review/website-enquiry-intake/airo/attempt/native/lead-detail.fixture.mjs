@@ -13,7 +13,7 @@ function detailClient(tx, routeId) {
       assert(columns === '*' || /^[a-z_]+(?:, [a-z_]+)*$/.test(columns));
       return {eq(column, id) {
         assert.equal(column, reads.get(table));
-        assert.equal(id, Number(routeId));
+        assert.equal(id, routeId);
         const orderBy = [];
         async function query() {
           const order = orderBy.length ? ' order by ' + orderBy.join(', ') : '';

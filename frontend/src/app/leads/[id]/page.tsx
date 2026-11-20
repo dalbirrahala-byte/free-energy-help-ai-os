@@ -79,10 +79,9 @@ function formatDate(date: string | null) {
 export default async function LeadDetailsPage({
   params,
 }: LeadPageProps) {
-  const { id } = await params;
-  const leadId = Number(id);
+  const { id: leadId } = await params;
 
-  if (!Number.isInteger(leadId)) {
+  if (!/^[1-9][0-9]{0,18}$/.test(leadId) || BigInt(leadId) > BigInt("9223372036854775807")) {
     notFound();
   }
 
@@ -95,6 +94,28 @@ export default async function LeadDetailsPage({
     )
     .eq("id", leadId)
     .maybeSingle();
+
+  if (error || !data) {
+    notFound();
+  }
+
+  const lead = data as CanonicalLead;
+  // Downstream scoring and write actions still use numeric identifiers.
+  // Keep the enquiry readable without handing a rounded key to those paths.
+  if (!Number.isSafeInteger(lead.id)) {
+    return (
+      <AppShell activeHref="/leads" title="Lead Workspace" subtitle="Enquiry details" headerContext="Lead Management">
+        <div className="mx-auto max-w-5xl">
+          <LeadSummary lead={lead} />
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <Detail label="Lead ID" value={leadId} />
+            <Detail label="Notes" value={displayValue(lead.notes)} />
+            <p className="mt-4 text-sm text-slate-600">This record is available in read-only mode.</p>
+          </section>
+        </div>
+      </AppShell>
+    );
+  }
 
   const { data: existingCustomer } = await supabase
     .from("customers")
@@ -118,11 +139,6 @@ const { data: activities } = await supabase
   .order("activity_time", { ascending: false });
 
 const leadActivities = (activities ?? []) as CanonicalActivity[];
-  if (error || !data) {
-    notFound();
-  }
-
-  const lead = data as CanonicalLead;
   const hasCampaignAttribution = Boolean(
     lead.utm_source || lead.utm_medium || lead.utm_campaign || lead.utm_term || lead.utm_content,
   );
@@ -165,7 +181,7 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
     "use server";
 
     const submittedLeadId = Number(formData.get("lead_id"));
-    if (!Number.isInteger(submittedLeadId)) {
+    if (!Number.isSafeInteger(submittedLeadId) || formData.get("lead_id") !== leadId) {
       throw new Error("Invalid lead.");
     }
 
@@ -208,8 +224,8 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
     const activityId = Number(formData.get("activity_id"));
 
     if (
-      !Number.isInteger(submittedLeadId) ||
-      !Number.isInteger(activityId)
+      !Number.isSafeInteger(submittedLeadId) || formData.get("lead_id") !== leadId ||
+      !Number.isSafeInteger(activityId) || activityId <= 0 || String(activityId) !== formData.get("activity_id")
     ) {
       throw new Error("Invalid activity or lead.");
     }
@@ -237,7 +253,7 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
 
     const submittedLeadId = Number(formData.get("lead_id"));
 
-    if (!Number.isInteger(submittedLeadId)) {
+    if (!Number.isSafeInteger(submittedLeadId) || formData.get("lead_id") !== leadId) {
       throw new Error("Invalid lead.");
     }
 
@@ -327,57 +343,7 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
   return (
     <AppShell activeHref="/leads" title="Lead Workspace" subtitle="Review lead intelligence, activity and next actions." headerContext="Lead Management">
       <div className="mx-auto max-w-5xl">
-        <Link
-          href="/leads"
-          className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"
-        >
-          ← Back to Leads
-        </Link>
-
-        <div className="mt-5 flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">
-              {lead.company_name || "Unnamed company"}
-            </h1>
-
-            <p className="mt-1 text-slate-500">
-              Lead record and commercial energy information.
-            </p>
-          </div>
-
-          <span className="rounded-full bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-700">
-            {lead.status || "New"}
-          </span>
-        </div>
-
-        <div className="mt-8 grid gap-6 md:grid-cols-2">
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-slate-900">
-              Contact Details
-            </h2>
-
-            <div className="mt-5 space-y-5">
-              <Detail label="Contact Name" value={displayValue(lead.contact_name)} />
-              <Detail label="Telephone" value={displayValue(lead.telephone)} />
-              <Detail label="Email" value={displayValue(lead.email)} />
-              <Detail label="Lead Source" value={displayValue(lead.lead_source)} />
-              <Detail label="Source Detail" value={displayValue(lead.source_detail)} />
-              <Detail label="Source Provenance" value={displayValue(lead.source_provenance)} />
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-slate-900">
-              Energy Details
-            </h2>
-
-            <div className="mt-5 space-y-5">
-              <Detail label="Current Supplier" value={displayValue(lead.supplier)} />
-              <Detail label="Contract End" value={formatDate(lead.contract_end)} />
-              <Detail label="Lead Created" value={formatDate(lead.created_at)} />
-            </div>
-          </section>
-        </div>
+        <LeadSummary lead={lead} />
 
         {potentialDuplicates.length > 0 && (
           <div className="mt-6">
@@ -617,6 +583,64 @@ const leadActivities = (activities ?? []) as CanonicalActivity[];
         </div>
       </div>
     </AppShell>
+  );
+}
+
+function LeadSummary({ lead }: { lead: CanonicalLead }) {
+  return (
+    <>
+      <Link
+        href="/leads"
+        className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"
+      >
+        ← Back to Leads
+      </Link>
+
+      <div className="mt-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">
+            {lead.company_name || "Unnamed company"}
+          </h1>
+
+          <p className="mt-1 text-slate-500">
+            Lead record and commercial energy information.
+          </p>
+        </div>
+
+        <span className="rounded-full bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-700">
+          {lead.status || "New"}
+        </span>
+      </div>
+
+      <div className="mt-8 grid gap-6 md:grid-cols-2">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-900">
+            Contact Details
+          </h2>
+
+          <div className="mt-5 space-y-5">
+            <Detail label="Contact Name" value={displayValue(lead.contact_name)} />
+            <Detail label="Telephone" value={displayValue(lead.telephone)} />
+            <Detail label="Email" value={displayValue(lead.email)} />
+            <Detail label="Lead Source" value={displayValue(lead.lead_source)} />
+            <Detail label="Source Detail" value={displayValue(lead.source_detail)} />
+            <Detail label="Source Provenance" value={displayValue(lead.source_provenance)} />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-900">
+            Energy Details
+          </h2>
+
+          <div className="mt-5 space-y-5">
+            <Detail label="Current Supplier" value={displayValue(lead.supplier)} />
+            <Detail label="Contract End" value={formatDate(lead.contract_end)} />
+            <Detail label="Lead Created" value={formatDate(lead.created_at)} />
+          </div>
+        </section>
+      </div>
+    </>
   );
 }
 

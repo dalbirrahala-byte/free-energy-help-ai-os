@@ -30,7 +30,9 @@ export async function loadLeadRevenueViews(
   leads: CanonicalLead[],
   today: Date,
 ): Promise<Record<number, LeadRevenueView>> {
-  const leadIds = leads.map((lead) => lead.id);
+  // A rounded bigint can also exceed PostgreSQL bigint range and invalidate
+  // the entire activity query, including rows for ordinary lead IDs.
+  const leadIds = leads.map((lead) => lead.id).filter(Number.isSafeInteger);
 
   const [{ data: customerRows }, { data: activityRows }] = await Promise.all([
     supabase.from("customers").select("source_lead_id"),
