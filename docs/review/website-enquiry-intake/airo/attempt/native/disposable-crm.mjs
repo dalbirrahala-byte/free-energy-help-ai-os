@@ -205,6 +205,22 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
         (select count(*)::int from public.audit_log where correlation_id=${submissionId} and action='website_enquiry_received') as audits`;
       assert.deepEqual({...counts}, {receipts:0, leads:0, audits:0});
     }
-    return {save, verifyLead, verifyAbsent, close};
+    async function verifyPostgrest(binary) {
+      const ids = ['9007199254740992', '9007199254740993', '9223372036854775807'];
+      for (const [i, id] of ids.entries()) {
+        await admin`select setval(pg_get_serial_sequence('public.leads','id'), ${id}::bigint, false)`;
+        const submissionId = '00000000-0000-4000-8000-00000000092' + i;
+        const receipt = await save({
+          submissionId, submittedAt:'2030-01-01T00:00:00.000Z', businessName:'REST fixture ' + id,
+          contactName:'Synthetic contact', email:'fixture@example.invalid', phone:null, meterNumbers:null,
+          currentSupplier:null, message:null, smsConsent:null, sourcePage:null,
+          attribution:{utmSource:null, utmMedium:null, utmCampaign:null, utmContent:null, utmTerm:null, gclid:null, fbclid:null},
+        });
+        assert.deepEqual(receipt, {version:1, submissionId, outcome:'created', leadId:id});
+      }
+      execFileSync('/usr/bin/python3', ['verify-postgrest.py', binary, directory, ...ids],
+        {env:{}, timeout:40000, stdio:'inherit'});
+    }
+    return {save, verifyLead, verifyAbsent, verifyPostgrest, close};
   } catch (error) { await close(); throw error; }
 }

@@ -50,6 +50,14 @@ npm_bin="$(dirname "$node_bin")/npm"
 env -i PATH="$(dirname "$node_bin"):/usr/bin:/bin" npm_config_cache="$cache/npm-cache" \
   "$npm_bin" --prefix "$cache" ci --registry=https://registry.npmjs.org/ --ignore-scripts --no-audit --no-fund
 
+# Fetch the static test server before opening any fixture sockets.
+rest_archive="$cache/postgrest.tar.xz"
+curl --proto '=https' --proto-redir '=https' --fail --silent --show-error --location --max-time 60 \
+  'https://github.com/PostgREST/postgrest/releases/download/v13.0.8/postgrest-v13.0.8-linux-static-x86-64.tar.xz' -o "$rest_archive"
+echo "eb4471a7b8112a54e103539f2348c4d7f1c5b9b390649700ad62836e9211e279  $rest_archive" | sha256sum -c -
+tar -xJO -f "$rest_archive" --wildcards --no-anchored 'postgrest' > "$cache/postgrest"
+chmod 700 "$cache/postgrest"
+
 lib="$cache/root/usr/lib/x86_64-linux-gnu"
 mysql="$cache/root/usr/sbin/mysqld"
 for fixture in mysql.test.mjs committed-store.test.mjs full-schema-committed-store.test.mjs quote-duplicate.test.mjs; do
@@ -72,6 +80,6 @@ for fixture in mysql.test.mjs committed-store.test.mjs full-schema-committed-sto
   fi
   echo "Running $fixture"
   timeout 60s python3 unix-only.py "$lib" "$node_bin" --no-warnings \
-    "$fixture" "$cache/node_modules/mysql2/promise.js" "$run_dir/test.sock"
+    "$fixture" "$cache/node_modules/mysql2/promise.js" "$run_dir/test.sock" "$cache/postgrest"
   cleanup_case
 done

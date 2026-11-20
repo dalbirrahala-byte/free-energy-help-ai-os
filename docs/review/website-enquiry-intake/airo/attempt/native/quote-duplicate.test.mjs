@@ -220,7 +220,9 @@ try {
     assert.equal(fetches, 0);
     console.log('ok ' + (4 + cases.length + index) + ' - ' + fault.name);
   }
-  console.log('1..' + (3 + cases.length + saveFaults.length));
+  await crm.verifyPostgrest(process.argv[4]);
+  console.log('ok ' + (4 + cases.length + saveFaults.length) + ' - PostgREST reads exact receipt IDs under CRM RLS');
+  console.log('1..' + (4 + cases.length + saveFaults.length));
 } finally {
   if (crm) await crm.close();
   if (pool) await pool.end();
