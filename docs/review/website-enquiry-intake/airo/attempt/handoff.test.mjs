@@ -130,3 +130,56 @@ test('owner failure remains HTTP500 without CRM; visitor failure remains nonfata
   const a=await quote(baseline,{emailFailure}),b=await quote(candidate,{emailFailure});assert.equal(a.res.code,b.res.code);assert.deepEqual(a.emails,b.emails);assert.deepEqual(a.events,b.events);assert.equal(b.s.transports,emailFailure.startsWith('owner')?0:1);
  }
 });
+
+for (const phase of ['headers', 'body']) {
+ test('lost ' + phase + ' deadline after commit retains the claim', async t => {
+  const clock = new AbortController();
+  t.mock.method(AbortSignal, 'timeout', ms => {
+   assert.equal(ms, 8000);
+   return clock.signal;
+  });
+  const s = setup();
+  const send = s.client.transport;
+  const ready = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  let cancellations = 0;
+  s.client.transport = async (url, init) => {
+   assert.equal(init.signal, clock.signal);
+   const committed = await send(url, init);
+   const bytes = new Uint8Array(await committed.arrayBuffer());
+   const stream = new ReadableStream({
+    async pull(controller) {
+     ready.resolve();
+     await release.promise;
+     if (!cancellations) {
+      controller.enqueue(bytes);
+      controller.close();
+     }
+    },
+    cancel() { cancellations++; },
+   }, {highWaterMark:0});
+   const reply = new Response(stream, {status:201, headers:committed.headers});
+   if (phase === 'headers') { ready.resolve(); await release.promise; }
+   return reply;
+  };
+  let outcome;
+  const delivery = call(s).then(value => { outcome = value; });
+  try {
+   await ready.promise;
+   await new Promise(resolve => setImmediate(resolve));
+   assert.equal(s.commits, 1);
+   clock.abort();
+   await new Promise(resolve => setImmediate(resolve));
+   assert.equal(outcome, 'reconcile');
+   assert.equal(s.status, 'uncertain');
+  } finally {
+   release.resolve();
+   await delivery;
+  }
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cancellations, 1);
+  assert.deepEqual(s.events, ['claim', 'transport']);
+  assert.equal(s.transports, 1);
+  assert.equal(s.commits, 1);
+ });
+}

@@ -6,6 +6,7 @@ node_bin=$(command -v node)
 export PATH=/usr/bin:/bin
 python3 ../../../tests/deny-network.py /usr/bin/python3 -B ../../../tests/verify-archive.py
 python3 ../../../tests/deny-network.py "$node_bin" --no-warnings --test-isolation=none --test ../../../tests/connection.test.ts
+python3 ../../../tests/deny-network.py "$node_bin" --no-warnings --test-isolation=none --test ../handoff.test.mjs
 python3 ../../../tests/deny-network.py "$node_bin" --no-warnings --test-isolation=none --test quote-email-errors.test.mjs
 cache=$(mktemp -d /tmp/feh133-deps-XXXXXXXX)
 run_dir=
