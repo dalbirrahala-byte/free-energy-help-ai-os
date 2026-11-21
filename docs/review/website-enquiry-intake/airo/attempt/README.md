@@ -147,3 +147,12 @@ website persistence/emails and held statuses. Do not roll back to an enabled old
 sender, clear uncertain records, reset pending, or replay. Reconcile a known reference
 only via separately approved access. Native DB and runtime verification failures hold
 release; source approval alone is not completion. #115 and its watches are unchanged.
+
+When disabling the CRM binding, record when the closed configuration takes effect
+for new handoffs and when the old sender processes have drained. A receiver may
+already have committed while the website is still waiting for its reply. Allow an
+in-flight attempt to settle: a correlated receipt can still mark it sent after
+cutoff. If the reply is lost, retain the uncertain state and reconcile the existing
+reference under the agreed read scope. Do not infer a missing CRM row from the
+cutoff time. The two disable cases in `handoff.test.mjs` exercise this boundary
+with a mock store and transport.

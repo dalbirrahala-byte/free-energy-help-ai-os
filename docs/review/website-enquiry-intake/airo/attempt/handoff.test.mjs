@@ -183,3 +183,41 @@ for (const phase of ['headers', 'body']) {
   assert.equal(s.commits, 1);
  });
 }
+
+for (const receiptLost of [false, true]) {
+ const receiptState = receiptLost ? 'lost' : 'received';
+ test('disable new CRM handoffs with an earlier committed receipt ' + receiptState, async () => {
+  const s = setup();
+  const committed = Promise.withResolvers();
+  const releaseReply = Promise.withResolvers();
+  const send = s.client.transport;
+  s.client.transport = async (url, init) => {
+   const receipt = await send(url, init);
+   assert.equal(receipt.status, 201);
+   committed.resolve();
+   await releaseReply.promise;
+   if (receiptLost) throw Error('synthetic lost reply');
+   return receipt;
+  };
+
+  const earlier = call(s);
+  try {
+   await Promise.race([committed.promise, earlier.then(() => assert.fail('expected outstanding receipt'))]);
+   assert.equal(s.commits, 1);
+   assert.equal(s.status, 'uncertain');
+   s.client.endpoint = null;
+   const laterId = '00000000-0000-4000-8000-000000000002';
+   const later = await s.step(laterId, true, 'pending', () => assert.fail('unexpected mapping'));
+   assert.equal(later, 'pending');
+   assert.deepEqual(s.events, ['claim', 'transport']);
+  } finally {
+   releaseReply.resolve();
+  }
+
+  assert.equal(await earlier, receiptLost ? 'reconcile' : 'sent');
+  assert.equal(s.status, receiptLost ? 'uncertain' : 'sent');
+  assert.deepEqual(s.events, receiptLost ? ['claim', 'transport'] : ['claim', 'transport', 'finish']);
+  assert.equal(s.commits, 1);
+  assert.equal(s.transports, 1);
+ });
+}
