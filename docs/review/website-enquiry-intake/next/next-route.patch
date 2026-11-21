@@ -1,0 +1,48 @@
+diff --git a/frontend/src/middleware.ts b/frontend/src/middleware.ts
+--- a/frontend/src/middleware.ts
++++ b/frontend/src/middleware.ts
+@@ -19,6 +19,12 @@
+ }
+ 
+ export async function middleware(request: NextRequest) {
++  // The exact website POST is authenticated by the route's signed receiver.
++  if (request.method === "POST" &&
++      request.nextUrl.pathname === "/api/website-enquiries" &&
++      request.nextUrl.search === "") {
++    return NextResponse.next();
++  }
+   let response = NextResponse.next({ request });
+   const supabase = createServerClient(
+     process.env.NEXT_PUBLIC_SUPABASE_URL!,
+diff --git a/frontend/src/lib/website-enquiries/createWebsitePost.ts b/frontend/src/lib/website-enquiries/createWebsitePost.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/website-enquiries/createWebsitePost.ts
+@@ -0,0 +1,18 @@
++import {createReceiver} from '../../../../docs/review/website-enquiry-intake/source/receiver.ts';
++import {createCommittedPostgresStore} from '../../../../docs/review/website-enquiry-intake/source/committed-postgres-store.ts';
++import type {OwnedPostgresConnection} from '../../../../docs/review/website-enquiry-intake/source/committed-postgres-store.ts';
++
++interface WebsiteReceiverConfig {
++  key: string;
++  now: () => number;
++  openFresh: () => Promise<OwnedPostgresConnection>;
++}
++
++export function createWebsitePost(config: WebsiteReceiverConfig | null) {
++  if (!config) return createReceiver(null);
++  return createReceiver({
++    key: config.key,
++    now: config.now,
++    save: createCommittedPostgresStore(config.openFresh),
++  });
++}
+diff --git a/frontend/src/app/api/website-enquiries/route.ts b/frontend/src/app/api/website-enquiries/route.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/app/api/website-enquiries/route.ts
+@@ -0,0 +1,4 @@
++import {createWebsitePost} from '@/lib/website-enquiries/createWebsitePost';
++
++export const runtime = 'nodejs';
++export const POST = createWebsitePost(null);
