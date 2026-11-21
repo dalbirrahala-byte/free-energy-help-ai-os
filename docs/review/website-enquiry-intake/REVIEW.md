@@ -1,11 +1,19 @@
-# Website enquiry connection — source review
+# Website enquiry source review
 
-This directory preserves the 11-file package published in issue #133 on 17 November 2026. The source files and manifest are unchanged. The original README is historical; this pull request now provides the GitHub review surface it requested.
+This archive contains the candidate sender, receiver, database store and tests for the website-to-CRM connection. The original README records the 17 November baseline. The [draft PR](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/pull/133) tracks independent review and release decisions.
 
-Review the four TypeScript modules, candidate SQL and tests here. No application imports, route registration, deployed migration, credentials, configuration wrapper or live CRM connection is added. SQL remains outside supabase/migrations. Do not merge or activate as a substitute for independent validation.
+## Verify the review package
 
-Historical local result: 46 mock tests passed, zero failures/skips. PostgreSQL execution, concurrency/crash checks and full project typecheck/lint/build for the package remain unverified. Existing repository CI does not cover these archived source files automatically.
+From a clean export of the chosen Git commit, run the following command inside this directory before installing dependencies or generating test outputs.
 
-The root and frontend vercel.json files disable Git auto-deployment only for review/website-crm-source-133. Other branches retain their existing default behaviour. They are publication guards, not application functionality or deployment approval. Keep the guard if updating this branch.
+```sh
+python3 tests/deny-network.py /usr/bin/python3 -B tests/verify-archive.py
+```
 
-Next: independent CRM/database source review, disposable PostgreSQL validation including ACL/concurrency/rollback, and candidate typechecking before any separately approved integration. Preserve the working website emails; no new form submission, replay, secret provisioning or endpoint configuration is part of this PR.
+The verifier checks every regular file against the SHA-256 inventory in MANIFEST.json, including the SQL, patches, rollback fixtures and historical test evidence. It reports missing files, extra files, symbolic links and changed contents. The Git commit identifies the manifest itself. The native database CI entry point runs this check and the isolated sender/receiver tests before starting the database fixtures.
+
+## Integration and release evidence
+
+The archived enquiry-only handler has been exercised with disposable MySQL and PostgreSQL. The isolated test correlated a committed receipt with one CRM lead, checked its detail view and recorded the owner and visitor mock emails. Loss of the response after commit left the website enquiry available for reconciliation by reference. [Four handler scenarios](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/pull/133#issuecomment-7051040686)
+
+Before applying the integration, the website maintainer must identify the editable revision matching the public bundle and the registered server-owned enquiry route. The CRM custodian must confirm the authorised destination, runtime identity, schema, TLS and read-only access for the agreed existing reference. A release decision requires separate scoped authority. The rollback procedure closes the CRM handoff while retaining the saved enquiry, its email states and its receipt. [Release and rollback package](https://github.com/dalbirrahala-byte/free-energy-help-ai-os/pull/133#issuecomment-6974607208)
