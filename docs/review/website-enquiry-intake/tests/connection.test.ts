@@ -120,3 +120,31 @@ test('SQL structural checks only: no grants, no permission upgrade, unique recei
  assert(!/^\s*grant\s/im.test(sql));assert(sql.includes('submission_id uuid primary key'));assert(sql.includes('pg_advisory_xact_lock'));assert(sql.includes("'user-entered',false"));assert(sql.includes('alter table public.website_enquiry_receipts enable row level security'));assert(sql.includes('insert into public.audit_log'));assert(!sql.includes('exception when others'));assert(!sql.includes('set role'));
 });
 
+
+test('sender reports an uncertain receipt while transport cleanup is pending', async () => {
+ let finishCleanup!: () => void;
+ const cleanup = new Promise<void>(resolve => { finishCleanup = resolve; });
+ let calls = 0;
+ let cancellations = 0;
+ const body = new ReadableStream<Uint8Array>({
+  start(controller) { controller.enqueue(new Uint8Array(2049)); },
+  cancel() { cancellations++; return cleanup; }
+ });
+ const delivery = deliver(fixture(), deps(async () => {
+  calls++;
+  return new Response(body, {status: 201, headers: {'content-type': 'application/json'}});
+ }));
+ try {
+  const result = await Promise.race([delivery, new Promise<'pending'>(resolve => {
+   setImmediate(() => resolve('pending'));
+  })]);
+  assert.deepEqual(result, {ok:false, httpStatus:201, simulated:false,
+   endpointAbsent:false, uncertain:true, error:'unverified_receipt'});
+  assert.equal(calls, 1);
+  assert.equal(cancellations, 1);
+  assert.equal(body.locked, false);
+ } finally {
+  finishCleanup();
+  await delivery;
+ }
+});

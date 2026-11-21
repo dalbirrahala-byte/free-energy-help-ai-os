@@ -16,7 +16,11 @@ async function readResponseBody(res:Response): Promise<unknown>{
  if(res.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json')throw Error('content_type');
  const reader=res.body?.getReader();if(!reader)throw Error('no_body');let bytes=0;const chunks:Uint8Array[]=[];
  try{for(;;){const {done,value}=await reader.read();if(done)break;bytes+=value.length;if(bytes>2048)throw Error('receipt_limit');chunks.push(value);}}
- catch(e){await reader.cancel().catch(()=>{});throw e;}finally{reader.releaseLock();}
+ catch(e){
+  // Transport cleanup can finish after we return the uncertain delivery result.
+  void reader.cancel().catch(()=>{});
+  throw e;
+ }finally{reader.releaseLock();}
  return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks)));
 }
 /** Compatible result flags for the reviewed Airo quote block; never retries. */
