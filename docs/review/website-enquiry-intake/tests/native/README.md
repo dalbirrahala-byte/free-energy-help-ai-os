@@ -102,3 +102,9 @@ independent review. Target/role/configuration and release authority remain separ
 Preserve the rollback plan on #133: disable only the CRM handoff through a reviewed
 path while retaining enquiry storage and both emails; keep replay closed; preserve
 receipts/leads/audits and uncertain references. No destructive down migration.
+
+## Single-reference readback fixture
+
+Add `--reference-check` to the native harness command above to run the isolated readback scenarios. The fixture prepares `receipt-reference.sql` with one UUID parameter and executes each lookup inside a read-only transaction. An independent session observes the reference before and after commit, after rollback, and with contradictory audit evidence. It checks that the ordinary authenticated role still gets an access error.
+
+The query returns one status. `correlated` requires a visible receipt, its linked Website lead, and exactly one visible website-received audit for that reference which names that lead and records success. `unconfirmed` calls for further reconciliation. Row visibility affects both outcomes. The query reads identifiers, source and audit status without selecting enquiry text, contact fields, notes or a payload digest. Field correctness, CRM screen visibility and the two emails require separate evidence. A custodian must verify the intended target, scoped read identity and existing reference before any hosted lookup.
