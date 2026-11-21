@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
 import { requireOperationalPermission } from "@/lib/auth/enforceWrite";
+import { requireNumericRouteId } from "@/lib/navigation/requireNumericRouteId";
 import { createClient } from "@/lib/supabase/server";
 import { PIPELINE_STATUSES } from "@/lib/dashboard/dates";
 
@@ -29,11 +30,7 @@ export default async function EditLeadPage({
   params,
 }: EditLeadPageProps) {
   const { id } = await params;
-  const leadId = Number(id);
-
-  if (!Number.isInteger(leadId)) {
-    notFound();
-  }
+  const leadId = requireNumericRouteId(id);
 
   const supabase = await createClient();
 

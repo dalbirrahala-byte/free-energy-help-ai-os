@@ -1,0 +1,92 @@
+--- a/src/server/api/quote/POST.ts
++++ b/src/server/api/quote/POST.ts
+@@ -8,19 +8,16 @@
+  *        it left off rather than re-sending what already succeeded.
+  *   3. Send owner notification email (if ownerEmailStatus is not 'sent').
+  *   4. Send visitor acknowledgement email (if visitorEmailStatus is not 'sent').
+- *   5. Deliver to CRM (if crmStatus is not 'sent').
+- *      - Missing CRM_ENDPOINT → status stays 'pending' (not an error).
+- *      - Network failure → status set to 'failed'; visitor still gets 201.
+- *      - Uncertain outcome → status set to 'uncertain' for reconciliation.
+- *
+- * The DB row is the source of truth for retry. The /api/crm-retry endpoint
+- * queries for pending/uncertain rows and re-attempts CRM delivery.
++ *   5. Dormant CRM handoff: new rows only, durable hold before any transport.
++ *      - Missing configuration leaves pending; no automatic replay.
++ *      - Ambiguous outcomes stay held for reconciliation.
++ *      - CRM replay remains closed; this candidate does not activate delivery.
+  */
+ 
+ import type { Request, Response } from 'express';
+ import { sendEmail } from '@/server/email.js';
+ import { TEL1, TEL1_HREF } from '@/lib/phone.js';
+-import { deliverToCrm, type CrmPayload } from '@/server/lib/crm-client.js';
++import { finishQuoteCrm } from '@/server/lib/quote-crm-step.js';
+ import {
+   saveEnquiry,
+   updateDeliveryStatus,
+@@ -236,58 +233,12 @@
+     }
+   }
+ 
+-  // ── Step 4: CRM delivery ────────────────────────────────────────────────────
+-  // Gate: only 'pending' rows are attempted.
+-  //   'sent'      — already delivered; skip.
+-  //   'uncertain' — outcome unknown; excluded to avoid duplicates. Manual
+-  //                 reconciliation required before any retry.
+-  //   'failed'    — definitive failure; not retried automatically.
+-  if (row.crmStatus === 'pending') {
+-    try {
+-      const crmPayload: CrmPayload = enquiryRowToCrmPayload(row);
+-      const crmResult = await deliverToCrm(crmPayload);
+-
+-      if (crmResult.endpointAbsent) {
+-        // No CRM endpoint configured — leave as 'pending'. Not an error.
+-        console.log('quote.submit.crm_pending_no_endpoint', { submissionId });
+-      } else if (crmResult.ok && !crmResult.simulated) {
+-        // Genuine 2xx from the CRM — attempt to record sent.
+-        const writeResult = await updateDeliveryStatus(submissionId, 'crmStatus', 'sent');
+-        if (writeResult && !writeResult.ok) {
+-          // Status write failed — row remains 'pending'; flag for reconciliation.
+-          console.error('quote.submit.crm_reconciliation_required', { submissionId });
+-        } else {
+-          console.log('quote.submit.crm_ok', { submissionId });
+-        }
+-      } else if (crmResult.uncertain) {
+-        // 5xx or network timeout — outcome unknown; hold for manual reconciliation.
+-        const writeResult = await updateDeliveryStatus(submissionId, 'crmStatus', 'uncertain');
+-        if (writeResult && !writeResult.ok) {
+-          console.error('quote.submit.crm_reconciliation_required', { submissionId });
+-        } else {
+-          console.warn('quote.submit.crm_uncertain', { submissionId });
+-        }
+-      } else {
+-        // Definitive 4xx failure.
+-        const writeResult = await updateDeliveryStatus(submissionId, 'crmStatus', 'failed');
+-        if (writeResult && !writeResult.ok) {
+-          console.error('quote.submit.crm_reconciliation_required', { submissionId });
+-        } else {
+-          console.warn('quote.submit.crm_failed', { submissionId });
+-        }
+-      }
+-    } catch (_crmErr) {
+-      // Unexpected exception in CRM payload mapping or delivery.
+-      // Attempt to mark uncertain so the row is held for reconciliation.
+-      // Never rethrow — CRM failure must not prevent the HTTP 201 response.
+-      try {
+-        await updateDeliveryStatus(submissionId, 'crmStatus', 'uncertain');
+-      } catch {
+-        // Status write also failed — row remains 'pending'.
+-      }
+-      console.error('quote.submit.crm_reconciliation_required', { submissionId });
+-    }
+-  }
++  // CRM is subordinate to the completed email journey. This helper is closed
++  // by default; the review archive does not install a runtime transport.
++  const crmOutcome = await finishQuoteCrm(
++    submissionId, isNew, row.crmStatus, () => enquiryRowToCrmPayload(row),
++  );
++  console.log('quote.submit.crm_handoff', { submissionId, outcome: crmOutcome });
+ 
+   return res.status(201).json({ ok: true, submissionId, created: isNew });
+ }
