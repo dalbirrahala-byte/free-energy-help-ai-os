@@ -121,3 +121,29 @@ test('receipt storage failure preserves the reference and prevents a second post
   assert.deepEqual(await submitHomepageQuote(fields, deps), {status:'held', submissionId:id});
   assert.equal(trace.posts, 1);
 });
+
+test('missing owner mailbox holds the homepage attempt before saving, even after configuration returns', async t => {
+  const {deps, trace} = setup();
+  const diagnostic = t.mock.method(console, 'error', () => {});
+  const replies = [];
+  const post = deps.post;
+  deps.post = async (...args) => {
+    const reply = await post(...args);
+    replies.push(reply.status);
+    return reply;
+  };
+
+  delete process.env.NOTIFICATION_RECIPIENT_EMAIL;
+  const held = {status:'held', submissionId:id};
+  try {
+    assert.deepEqual(await submitHomepageQuote(fields, deps), held);
+  } finally {
+    process.env.NOTIFICATION_RECIPIENT_EMAIL = owner;
+  }
+
+  assert.deepEqual(diagnostic.mock.calls.map(call => call.arguments), [['quote.submit.recipient_unset']]);
+  assert.deepEqual(readHomepageAttempt(deps.storage), held);
+  assert.deepEqual(await submitHomepageQuote(fields, {...deps}), held);
+  assert.deepEqual(replies, [500]);
+  assert.deepEqual(trace, {posts:1, ids:1, saves:0, mail:[], crm:0, analytics:0});
+});
