@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import net from 'node:net';
 import { privateTestSocket } from './private-test-socket.mjs';
+import {createQuoteCrmStep} from '../handoff.ts';
+import {PATH} from '../../../source/contract.ts';
 import {createCommittedMysqlAttemptStore} from '../committed-mysql-store.ts';
 
 const require=createRequire(import.meta.url);
@@ -58,6 +60,56 @@ try {
    const c=await open();return {beginTransaction:()=>c.beginTransaction(),execute:(...a)=>c.execute(...a),commit:async()=>{c.destroy();throw Error('synthetic finalization disconnect');},destroy:()=>c.destroy()};
   });
   await assert.rejects(failing.finish(id(4),'sent'),/^Error: CRM persistence indeterminate$/);assert.equal(await state(4),'uncertain');
+ });
+ await check('final COMMIT succeeds but its acknowledgement is lost', async () => {
+  const reference = id(7);
+  await seed(7);
+  let opens = 0;
+  let sends = 0;
+  const finalAckLost = createCommittedMysqlAttemptStore(async () => {
+   const connection = await open();
+   opens++;
+   if (opens === 1) return connection;
+   assert.equal(opens, 2);
+   return {
+    beginTransaction: () => connection.beginTransaction(),
+    execute: (sql, args) => connection.execute(sql, args),
+    async commit() {
+     await connection.commit();
+     throw Error('synthetic loss after final commit');
+    },
+    destroy: () => connection.destroy(),
+   };
+  });
+  const endpoint = 'https://crm.example.invalid' + PATH;
+  const submittedAt = '2030-01-01T00:00:00.000Z';
+  const payload = {
+   submissionId:reference, submittedAt, businessName:'Synthetic', contactName:'Fixture',
+   email:'fixture@example.invalid', phone:null, meterNumbers:null, currentSupplier:null,
+   message:null, smsConsent:null, sourcePage:null,
+   attribution:{utmSource:null, utmMedium:null, utmCampaign:null, utmContent:null,
+    utmTerm:null, gclid:null, fbclid:null},
+  };
+  const step = createQuoteCrmStep({store:finalAckLost, client:{
+   endpoint, approvedEndpoint:endpoint, key:'fixture-only-final-ack-loss-133-test',
+   now:() => Date.parse(submittedAt),
+   async transport() {
+    sends++;
+    assert.equal(await state(7), 'uncertain');
+    return Response.json({version:1, submissionId:reference, outcome:'created', leadId:'7'}, {status:201});
+   },
+  }});
+  assert.equal(await step(reference, true, 'pending', () => payload), 'reconcile');
+  const reader = await open();
+  await reader.query('START TRANSACTION READ ONLY');
+  try {
+   const [rows] = await reader.execute('SELECT crm_status FROM enquiries WHERE submission_id=?', [reference]);
+   assert.deepEqual(rows, [{crm_status:'sent'}]);
+  } finally {
+   await reader.rollback();
+  }
+  assert.equal(opens, 2);
+  assert.equal(sends, 1);
  });
  await check('terminal sent and failed statuses persist and reject another claim',async()=>{
   for(const [n,status] of [[5,'sent'],[6,'failed']]){await seed(n);assert.equal(await store.claim(id(n)),true);assert.equal(await store.finish(id(n),status),true);assert.equal(await state(n),status);assert.equal(await store.claim(id(n)),false);}
