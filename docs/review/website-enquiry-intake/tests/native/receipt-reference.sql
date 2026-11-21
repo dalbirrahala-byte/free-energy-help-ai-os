@@ -8,6 +8,8 @@ select case when exists (
     and (
       select count(*) = 1 and bool_and(
         a.entity_type = 'lead' and a.entity_id = l.id::text and a.result = 'success'
+        and a.metadata->>'source' = 'feh-airo-website'
+        and a.metadata->>'submission_id' = r.submission_id::text
       ) from public.audit_log a
       where a.correlation_id = r.submission_id and a.action = 'website_enquiry_received'
     )

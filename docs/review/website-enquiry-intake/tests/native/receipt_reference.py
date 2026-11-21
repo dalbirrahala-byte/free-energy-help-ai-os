@@ -26,6 +26,22 @@ def verify_reference(writer, reader, query_file, invoke, payload):
     writer.q('rollback')
     check(802, 'unconfirmed')
 
+    # Each disposable record starts with the authentic shape written by the RPC.
+    # Change just its audit provenance; the linked lead and receipt remain visible.
+    metadata_changes = (
+        (803, "metadata - 'source'"),
+        (804, "metadata || jsonb_build_object('source', 'other-fixture-source')"),
+        (805, "metadata || jsonb_build_object('submission_id', '" + payload(801)['submissionId'] + "')"),
+    )
+    for number, expression in metadata_changes:
+        assert invoke(writer, number)['outcome'] == 'created'
+        check(number, 'correlated')
+        reference = payload(number)['submissionId']
+        assert writer.q(f"""update public.audit_log set metadata = {expression}
+            where action='website_enquiry_received' and correlation_id='{reference}'
+            returning 1""") == [['1']]
+        check(number, 'unconfirmed')
+
     # A partial or contradictory audit trail cannot confirm a reference.
     ref = payload(801)['submissionId']
     lead = int(receipt['leadId'])
@@ -41,4 +57,4 @@ def verify_reference(writer, reader, query_file, invoke, payload):
         raise AssertionError('Expected receipt access denial')
     finally:
         reader.q('rollback')
-    print('PASS 6 status reads and 1 restricted-role denial; zero returned payload fields', flush=True)
+    print('PASS 12 status reads and 1 restricted-role denial; zero returned payload fields', flush=True)
