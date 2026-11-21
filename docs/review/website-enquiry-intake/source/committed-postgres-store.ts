@@ -33,7 +33,8 @@ export function createCommittedPostgresStore(
       throw new Error('CRM persistence unavailable');
     }
     try {
-      const started = await connection.query('BEGIN');
+      // A waiting duplicate must see the receipt committed by the first writer.
+      const started = await connection.query('BEGIN ISOLATION LEVEL READ COMMITTED');
       if (started.command !== 'BEGIN') throw new Error('transaction not begun');
       const result = await connection.query(sql, [...values]);
       // SELECT completion is not a committed receipt. A rejected COMMIT or a

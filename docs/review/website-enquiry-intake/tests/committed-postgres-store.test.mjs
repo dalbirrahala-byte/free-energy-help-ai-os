@@ -18,12 +18,13 @@ const payload = (id = '1') => ({
 });
 const receipt = p => ({version: 1, submissionId: p.submissionId, outcome: 'created', leadId: '133'});
 const defer = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return {promise, resolve}; };
+const beginSql = 'BEGIN ISOLATION LEVEL READ COMMITTED';
 function session(options = {}) {
   const calls = []; let ends = 0;
   return {calls, get ends() { return ends; }, async query(sql, values) {
     calls.push(sql);
     if (options.fail === sql || (options.fail === 'SELECT' && sql.startsWith('select'))) throw Error(privateError);
-    if (sql === 'BEGIN') return {command: options.beginTag ?? 'BEGIN', rows: []};
+    if (sql === beginSql) return {command: options.beginTag ?? 'BEGIN', rows: []};
     if (sql === 'COMMIT') {
       options.atCommit?.resolve();
       if (options.commitGate) await options.commitGate.promise;
@@ -69,7 +70,7 @@ test('signed receipt is withheld until COMMIT acknowledgement, then session clos
 });
 
 for (const [label, options, count] of [
-  ['BEGIN rejection', {fail: 'BEGIN'}, 1],
+  ['BEGIN rejection', {fail: beginSql}, 1],
   ['unexpected BEGIN tag', {beginTag: 'ROLLBACK'}, 1],
   ['SELECT rejection', {fail: 'SELECT'}, 2],
   ['lost COMMIT acknowledgement', {fail: 'COMMIT'}, 3],
