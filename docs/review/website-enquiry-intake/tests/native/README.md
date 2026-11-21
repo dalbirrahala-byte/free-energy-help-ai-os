@@ -108,3 +108,19 @@ receipts/leads/audits and uncertain references. No destructive down migration.
 Add `--reference-check` to the native harness command above to run the isolated readback scenarios. The fixture prepares `receipt-reference.sql` with one UUID parameter and executes each lookup inside a read-only transaction. An independent session observes the reference before and after commit, after rollback, and with contradictory audit evidence. It checks that the ordinary authenticated role still gets an access error.
 
 The query returns one status. `correlated` requires a visible receipt, its linked Website lead, and exactly one visible website-received audit for that reference which names that lead and records success. `unconfirmed` calls for further reconciliation. Row visibility affects both outcomes. The query reads identifiers, source and audit status without selecting enquiry text, contact fields, notes or a payload digest. Field correctness, CRM screen visibility and the two emails require separate evidence. A custodian must verify the intended target, scoped read identity and existing reference before any hosted lookup.
+
+### Comparing the durability settings used by the recovery fixture
+
+Add `--durability-check` to the native harness command to exercise
+`durability-settings.sql`. The one-row result compares the primary/recovery
+state, fsync, full-page writes, effective synchronous commit mode and the three
+permanent ordinary tables with this fixture. A false value identifies a
+difference to investigate. Other synchronous commit modes or relation layouts
+need their own assessment.
+
+For release verification, the CRM custodian would need separately authorised
+access to the exact intended destination and evidence of the effective writer
+session settings at commit. A read on a different connection or role may see
+different settings. The query reads catalog metadata only. Matching settings
+alone cannot establish storage durability, receipt visibility, email delivery
+or permission to release.

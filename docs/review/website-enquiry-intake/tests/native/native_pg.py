@@ -11,6 +11,7 @@ parser.add_argument('--work-root',required=True,type=pathlib.Path,help='Disposab
 parser.add_argument('--phase',choices=['controller','phase1','recovery'],default='controller')
 parser.add_argument('--work',type=pathlib.Path)
 modes=parser.add_mutually_exclusive_group()
+modes.add_argument('--durability-check',action='store_true',help='Compare effective settings and table persistence with the recovery fixture')
 modes.add_argument('--reference-check',action='store_true',help='Run only the single-reference readback fixture')
 modes.add_argument('--upgrade-from',type=pathlib.Path,help='Run only the pinned legacy receipt upgrade rehearsal')
 args=parser.parse_args()
@@ -24,6 +25,8 @@ work=args.work.resolve() if args.work else pathlib.Path(tempfile.mkdtemp(prefix=
 assert work.name.startswith('feh_synthetic_')
 data=work/'data';log=work/'server.log';port=55433
 worker_args=['--package-root',str(PKG),'--source-root',str(SOURCE),'--migration-root',str(MIGRATIONS),'--work-root',str(args.work_root.resolve()),'--work',str(work)]
+if args.durability_check:
+    worker_args.append('--durability-check')
 if args.reference_check:
     worker_args.append('--reference-check')
 if args.upgrade_from:
@@ -104,7 +107,7 @@ if phase=='controller':
         with (data/'postgresql.conf').open('a') as f:f.write(f"\nlisten_addresses='127.0.0.1'\nport={port}\nunix_socket_directories=''\ndynamic_library_path='{LIB}'\nfsync=on\nsynchronous_commit=on\nfull_page_writes=on\n")
         start();started=True
         bootstrap=DB('postgres');bootstrap.q('create database feh_synthetic_native');bootstrap.close()
-        if args.upgrade_from or args.reference_check:
+        if args.upgrade_from or args.reference_check or args.durability_check:
             subprocess.run(['/usr/bin/python3',__file__,*worker_args,'--phase','phase1'],
                            env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8'},timeout=60,check=True)
             sys.exit(0)
@@ -150,6 +153,10 @@ try:
         verify_upgrade(admin, pool[0], payload, args.upgrade_from, SQL)
         sys.exit(0)
     admin.q(SQL.read_text())
+    if args.durability_check:
+        from durability_settings import verify_durability_settings
+        verify_durability_settings(admin, pool[0], ROOT/'durability-settings.sql')
+        sys.exit(0)
     if args.reference_check:
         from receipt_reference import verify_reference
         verify_reference(admin, pool[0], ROOT/'receipt-reference.sql', invoke, payload)
