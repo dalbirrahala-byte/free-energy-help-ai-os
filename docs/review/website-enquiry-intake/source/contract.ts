@@ -24,7 +24,8 @@ function string(v:unknown, max:number, required=false) {
  if(typeof v !== 'string' || v.length > 2 * max) return false;
  // Match MySQL VARCHAR and PostgreSQL char_length for supplementary characters.
  if(v.length > max && Array.from(v).length > max) return false;
- return (!required || v.trim().length > 0) && !v.includes('\u0000');
+ // PostgreSQL jsonb cannot store NUL or an unpaired UTF-16 surrogate.
+ return (!required || v.trim().length > 0) && !/[\u0000\uD800-\uDFFF]/u.test(v);
 }
 /** No coercion or truncation; preserve every submitted field and missing consent. */
 export function validPayload(v:unknown):v is Payload{
@@ -34,7 +35,7 @@ export function validPayload(v:unknown):v is Payload{
   const entries = Object.entries(v.businessAnswers);
   if(!entries.length || !entries.every(([field, answer]) =>
    answerFields.some(key => key === field) && typeof answer === 'string' &&
-   answer.length > 0 && string(answer,255) && !/[\uD800-\uDFFF]/u.test(answer)))return false;
+   answer.length > 0 && string(answer,255)))return false;
  } else if(!keys(v,fields))return false;
  if(typeof v.submissionId!=='string'||!UUID.test(v.submissionId))return false;
  if(!string(v.submittedAt,30,true)||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(v.submittedAt as string))return false;

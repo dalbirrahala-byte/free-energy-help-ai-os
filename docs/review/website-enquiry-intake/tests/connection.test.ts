@@ -148,3 +148,36 @@ test('sender reports an uncertain receipt while transport cleanup is pending', a
   await delivery;
  }
 });
+
+test('text accepted for CRM delivery is representable in PostgreSQL jsonb', async () => {
+ const valid = {...fixture(), businessName:'Synthetic 🔋', message:'A\uD83D\uDD0B'};
+ const stored: Payload[] = [];
+ const receive = createReceiver({key, now:() => now, save:async payload => {
+  stored.push(payload);
+  return {version:1, submissionId:payload.submissionId, outcome:'created', leadId:'1'};
+ }});
+ let sends = 0;
+ const client = deps(async (url, init) => {
+  sends++;
+  return receive(new Request(url, init));
+ });
+ assert.equal((await deliver(valid, client)).ok, true);
+ assert.deepEqual(stored, [valid]);
+
+ for (const fragment of ['\uD83D', '\uDD0B']) {
+  for (const invalid of [
+   {...valid, businessName:'Synthetic ' + fragment},
+   {...valid, message:'Fixture ' + fragment},
+   {...valid, attribution:{...valid.attribution, utmSource:'Fixture ' + fragment}},
+  ]) {
+   const result = await deliver(invalid, client);
+   assert.equal(result.error, 'invalid_payload');
+   assert.equal(result.uncertain, false);
+   assert.equal(sends, 1);
+   const response = await receive(request(JSON.stringify(invalid)));
+   assert.equal(response.status, 400);
+   assert.deepEqual(await response.json(), {error:'invalid_payload'});
+   assert.equal(stored.length, 1);
+  }
+ }
+});
