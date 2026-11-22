@@ -221,3 +221,35 @@ for (const receiptLost of [false, true]) {
   assert.equal(s.transports, 1);
  });
 }
+
+for (const scenario of ['redirected', 'wrong-content-type']) {
+  test(`unusable ${scenario} receipt starts cleanup and retains the uncertain claim`, async () => {
+    let cancellations = 0;
+    let pulls = 0;
+    let settleCleanup;
+    const cleanup = new Promise(resolve => { settleCleanup = resolve; });
+    const session = setup({ response() {
+      const body = new ReadableStream({
+        pull() { pulls++; },
+        cancel() { cancellations++; return cleanup; },
+      }, { highWaterMark: 0 });
+      const response = new Response(body, {
+        status: 201,
+        headers: { 'content-type': scenario === 'redirected' ? 'application/json' : 'text/html' },
+      });
+      if (scenario === 'redirected') Object.defineProperty(response, 'redirected', { value: true });
+      return response;
+    }});
+    try {
+      const result = call(session);
+      const outcome = await Promise.race([result, new Promise(resolve => setImmediate(() => resolve('still waiting')))]);
+      assert.equal(outcome, 'reconcile');
+      assert.equal(cancellations, 1);
+      assert.equal(pulls, 0);
+      assert.equal(session.status, 'uncertain');
+      assert.deepEqual(session.events, ['claim', 'transport']);
+    } finally {
+      settleCleanup();
+    }
+  });
+}

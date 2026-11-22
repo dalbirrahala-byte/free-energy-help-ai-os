@@ -13,7 +13,6 @@ export interface ClientDependencies {
 const absent:DeliveryResult={ok:true,httpStatus:null,simulated:true,endpointAbsent:true,uncertain:false,error:null};
 const failed=(error:string,uncertain=false,status:number|null=null):DeliveryResult=>({ok:false,httpStatus:status,simulated:false,endpointAbsent:false,uncertain,error});
 async function readResponseBody(res:Response, signal:AbortSignal): Promise<unknown>{
- if(res.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/json')throw Error('content_type');
  const reader=res.body?.getReader();if(!reader)throw Error('no_body');let bytes=0;const chunks:Uint8Array[]=[];
  const stopReading = () => { void reader.cancel().catch(()=>{}); };
  signal.addEventListener('abort', stopReading, {once:true});
@@ -53,10 +52,10 @@ export async function deliver(payload:Payload,deps:ClientDependencies):Promise<D
    }
    return reply;
   })]);
-  if(res.redirected)return failed('unverified_receipt',true,res.status);
   // A gateway can replace a committed response with the same error JSON as the receiver.
   // Only a receipt identifying this submission can settle the durable delivery hold.
-  if(res.status!==200 && res.status!==201){
+  const contentType=res.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+  if(res.redirected || (res.status!==200 && res.status!==201) || contentType!=='application/json'){
    void res.body?.cancel().catch(()=>{});
    return failed('unverified_receipt',true,res.status);
   }
