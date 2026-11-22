@@ -83,6 +83,7 @@
     "source/committed-postgres-store.ts": "d85b95cf2f9c836adb111ca97fd72fca92aff4cb21bd4cdb8bc74b2d783ee5e7",
     "source/contract.ts": "fe209d9a3ccfe0c312216b2859e880e78b0c088ef1d5a46595877943c5c0eb35",
     "source/receiver.ts": "f1d11caf5819e925c1694c30ffc76a97169f00727177059f0fca53cc718d5bf0",
+    "source/reserved-session.mjs": "5e236ebeabfa32477c6af35bdb2401737e8e7054ce8163e6032da33bafa449c7",
     "source/store.ts": "7f995a9485175ef19d82f7ad512c4947ea2ba966dd064c7491c51d8f3a4ca67e",
     "source/website-enquiries.sql": "98f8b5a1eed2de867d975640c8c74df453752c31e797aa0fcfe8bd8c41d12aa8",
     "tests/COMMITTED-POSTGRES.md": "6545b437792892c3d439bba28b2bca290f247f1188da7e911d485a0ffef141f1",
