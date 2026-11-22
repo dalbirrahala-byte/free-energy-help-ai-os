@@ -137,12 +137,18 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
     const renderDetail = loadDetailFixture(loadSource, requirePinned);
     const React = requirePinned('react');
     const {renderToStaticMarkup} = requirePinned('react-dom/server');
-    function renderList(rows) {
+    function renderList(rows, supabaseError = false) {
       return renderToStaticMarkup(React.createElement(client.LeadsPageClient, {
-        crmLeads:rows, revenueViews:{}, supabaseError:false,
+        crmLeads:rows, revenueViews:{}, supabaseError,
         recomputeUnscoredLeadQualifications() { assert.fail('Unexpected write action'); },
       }));
     }
+
+    const unavailable = renderList([], true);
+    assert(unavailable.includes('CRM leads could not be loaded from Supabase.'));
+    assert(unavailable.includes('data-fixture-local-panel'));
+    assert(!unavailable.includes('No CRM leads in Supabase yet.'));
+    assert(!unavailable.includes('Show rejected leads'));
 
     async function verifyLead(body) {
       const receipts = await admin`select lead_id::text as id from public.website_enquiry_receipts where submission_id=${body.submissionId}`;
