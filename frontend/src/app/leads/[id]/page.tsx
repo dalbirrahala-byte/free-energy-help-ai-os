@@ -87,13 +87,26 @@ export default async function LeadDetailsPage({
 
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from("leads")
     .select(
       "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance, utm_source, utm_medium, utm_campaign, utm_term, utm_content, consent_given, qualification_classification, qualification_score, qualification_computed_at",
     )
     .eq("id", leadId)
     .maybeSingle();
+
+  if (error && (status === 0 || status >= 500)) {
+    return (
+      <AppShell activeHref="/leads" title="Lead Workspace" subtitle="Enquiry details" headerContext="Lead Management">
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          CRM lead details could not be loaded.
+        </p>
+        <Link href="/leads" className="mt-4 inline-block text-sm font-semibold text-emerald-600">
+          Back to leads
+        </Link>
+      </AppShell>
+    );
+  }
 
   if (error || !data) {
     notFound();

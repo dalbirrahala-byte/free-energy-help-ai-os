@@ -135,6 +135,34 @@ export async function startCrm(mysqlSocket, postgres, requirePinned) {
 
     const {client, loadSource} = loadLeadsFixture(requirePinned, path => read(new URL(path, repo)));
     const renderDetail = loadDetailFixture(loadSource, requirePinned);
+    for (const status of [0, 403, 503]) {
+      let reads = 0;
+      const unavailableDetail = loadDetailFixture((path, imports) => loadSource(path, {
+        ...imports,
+        '@/lib/supabase/server': {createClient: async () => ({
+          from(table) {
+            assert.equal(table, 'leads');
+            return {select: () => ({eq: (column, id) => {
+              assert.equal(column, 'id');
+              assert.equal(id, '916');
+              return {maybeSingle: async () => {
+                reads++;
+                return {data:null, error:{message:'synthetic private diagnostic'}, status};
+              }};
+            }})};
+          },
+        })},
+      }), requirePinned);
+      const markup = await unavailableDetail(null, '916');
+      assert.equal(reads, 1);
+      if (status === 403) {
+        assert.equal(markup, null);
+      } else {
+        assert(markup.includes('CRM lead details could not be loaded.'));
+        assert(markup.includes('href="/leads"'));
+        assert(!markup.includes('synthetic private diagnostic'));
+      }
+    }
     const React = requirePinned('react');
     const {renderToStaticMarkup} = requirePinned('react-dom/server');
     function renderList(rows, supabaseError = false) {
