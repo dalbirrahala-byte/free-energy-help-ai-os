@@ -19,7 +19,10 @@ SOURCE=args.source_root.resolve();MIGRATIONS=args.migration_root.resolve()
 PKG=args.package_root.resolve()
 BIN=PKG/'usr/lib/postgresql/17/bin';SHARE=PKG/'usr/share/postgresql/17';LIB=PKG/'usr/lib/postgresql/17/lib'
 SQL=SOURCE/'source/website-enquiries.sql'
-assert hashlib.sha256(SQL.read_bytes()).hexdigest()=='98f8b5a1eed2de867d975640c8c74df453752c31e797aa0fcfe8bd8c41d12aa8'
+# Use the manifest shipped with this runner, independently of --source-root.
+expected_sql = json.loads((ROOT.parents[1] / 'MANIFEST.json').read_text())['files']['source/website-enquiries.sql']
+if hashlib.sha256(SQL.read_bytes()).hexdigest() != expected_sql:
+    raise SystemExit('Receiver SQL differs from the archived runner manifest.')
 phase=args.phase
 work=args.work.resolve() if args.work else pathlib.Path(tempfile.mkdtemp(prefix='feh_synthetic_',dir=args.work_root.resolve()))
 assert work.name.startswith('feh_synthetic_')

@@ -96,7 +96,7 @@
     "tests/native/durability-settings.sql": "94ad415ffddff8030712f2c47d7d2745d4cf059f77984d8bf3cdbed5bd6130eb",
     "tests/native/durability_settings.py": "4b3e1d7a6565474d873b60e9034deeae760c9740a011e4b363dd2478736f07be",
     "tests/native/migration-provenance.json": "142904d8cdb22b74a1c01f314b75f336dcb2765300c30c3faf0a82b9895e3c90",
-    "tests/native/native_pg.py": "c9642ee7020a20322aa7ca634a1cf87da29aafa23e08275430b1e62a96ed46f3",
+    "tests/native/native_pg.py": "3264c21fd098f9a6ab46c0744f5d090f39e3de9b651dad0b59685b89cd645ffa",
     "tests/native/network_guard.py": "941c40e881e276020197c5431314772874972758945ba38ce1a6bef0646f00f4",
     "tests/native/receipt-reference.sql": "b932200b842e95df9f3be535bf40b7b0e726c30c65e696346f1c8e7be1ffce0a",
     "tests/native/receipt_reference.py": "f9dddb0a92b008be33de7dbe5e29c99a2196fea29a18af475f79bc7b3a127a1c",
