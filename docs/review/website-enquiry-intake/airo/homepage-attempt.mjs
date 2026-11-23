@@ -67,13 +67,14 @@ export async function submitQuoteAttempt(key, prepare, {storage, newId, post, re
     if (response.status !== 201 || response.redirected ||
         response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') return held;
     const receipt = await response.json();
-    if (receipt?.ok !== true || receipt.submissionId !== submissionId || typeof receipt.created !== 'boolean')
+    // An existing reference does not confirm that this form's details were saved.
+    if (receipt?.ok !== true || receipt.submissionId !== submissionId || receipt.created !== true)
       return held;
 
     const saved = {status:'saved', submissionId};
     // An earlier held marker still prevents replay if this second write fails.
     try { storage.setItem(key, JSON.stringify(saved)); } catch { /* Keep the confirmed on-screen receipt. */ }
-    if (receipt.created) void Promise.resolve().then(() => recordConversion?.()).catch(() => {});
+    void Promise.resolve().then(() => recordConversion?.()).catch(() => {});
     return saved;
   } catch { return held; }
 }

@@ -37,7 +37,12 @@ function setup(mode = 'success') {
   globalThis.fixture = {
     save(row) {
       trace.saves++;
-      return mode === 'unconfirmed' ? {ok:false} : {ok:true, created:mode !== 'duplicate',
+      if (mode === 'duplicate' || mode === 'changed-duplicate') {
+        const savedRow = mode === 'duplicate' ? row : {...row, email:'original@example.invalid'};
+        return {ok:true, created:false, row:{...savedRow,
+          ownerEmailStatus:'sent', visitorEmailStatus:'sent', crmStatus:'uncertain'}};
+      }
+      return mode === 'unconfirmed' ? {ok:false} : {ok:true, created:true,
         row:{...row, ownerEmailStatus:'pending', visitorEmailStatus:'pending', crmStatus:'pending'}};
     },
     mail(to) { trace.mail.push(to); if ((to === owner && mode === 'owner-error') ||
@@ -69,23 +74,23 @@ function setup(mode = 'success') {
 }
 
 for (const mode of ['success', 'analytics-error', 'lost', 'wrong-id', 'gateway', 'malformed',
-  'unconfirmed', 'duplicate', 'owner-error', 'visitor-error']) {
+  'unconfirmed', 'duplicate', 'changed-duplicate', 'owner-error', 'visitor-error']) {
   test(mode + ' preserves one attempt across clicks and a same-tab reload', async () => {
     const {deps, trace, values} = setup(mode);
     const result = submitHomepageQuote(fields, deps);
     const held = {status:'held', submissionId:id};
     assert.deepEqual(await submitHomepageQuote(fields, deps), held);
-    const saved = ['success', 'analytics-error', 'duplicate', 'visitor-error'].includes(mode);
+    const saved = ['success', 'analytics-error', 'visitor-error'].includes(mode);
     const expected = saved ? {status:'saved', submissionId:id} : held;
     assert.deepEqual(await result, expected);
     assert.deepEqual(JSON.parse([...values.values()][0]), expected);
     assert.equal(values.size, 1);
     assert.deepEqual(readHomepageAttempt(deps.storage), expected);
     assert.deepEqual(await submitHomepageQuote(fields, {...deps}), expected);
-    const stopped = ['unconfirmed', 'duplicate', 'owner-error'].includes(mode);
+    const stopped = ['unconfirmed', 'duplicate', 'changed-duplicate', 'owner-error'].includes(mode);
     const mail = mode === 'owner-error' ? [owner] : stopped ? [] : [owner, fields.email];
     assert.deepEqual(trace, {posts:1, ids:1, saves:1, mail, crm:Number(!stopped),
-      analytics:Number(saved && mode !== 'duplicate')});
+      analytics:Number(saved)});
   });
 }
 

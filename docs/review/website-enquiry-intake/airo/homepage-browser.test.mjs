@@ -35,7 +35,7 @@ document.querySelector('button').onclick = async () => {
       if (path !== '/api/quote' || options.method !== 'POST') throw Error('Unexpected request');
       console.info('fixture-post');
       if (location.hash === '#loss') throw Error('Synthetic response loss');
-      return Response.json({ok:true, created:true, submissionId:JSON.parse(options.body).submissionId}, {status:201});
+      return Response.json({ok:true, created:location.hash !== '#duplicate', submissionId:JSON.parse(options.body).submissionId}, {status:201});
     },
     recordConversion() { console.info('fixture-analytics'); throw Error('Synthetic analytics fault'); }
   }));
@@ -100,7 +100,7 @@ async function command(method, params = {}, sessionId) {
 }
 try {
   const version = await command('Browser.getVersion');
-  for (const [mode, expected] of [['loss','held'], ['analytics','saved']]) {
+  for (const [mode, expected] of [['loss','held'], ['duplicate','held'], ['analytics','saved']]) {
     const initialPosts = posts, initialAnalytics = analytics;
     const {targetId} = await command('Target.createTarget', {url:'about:blank'});
     const {sessionId} = await command('Target.attachToTarget', {targetId, flatten:true});
