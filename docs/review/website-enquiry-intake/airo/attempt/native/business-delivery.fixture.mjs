@@ -10,17 +10,22 @@ export async function verifyBusinessDelivery({
   const endpoint = 'https://crm.example.invalid' + PATH;
   const now = () => 1800000000000;
   const key = 'fixture-only-key-for-isolated-business-delivery';
-  const answers = {contractEndDate:'around March', sites:'2-5'};
+  const businessAnswers = {contractEndDate:'around March', sites:'2-5'};
   const scenarios = [
     {name:'shared', state:'excluded', calls:0},
     {name:'absent', state:'pending', calls:0},
     {name:'received', state:'sent', calls:1},
     {name:'lost', state:'uncertain', calls:1},
+    {name:'healthCheck', state:'sent', calls:1},
   ];
   for (const [index, scenario] of scenarios.entries()) {
     const submissionId = '00000000-0000-4000-8000-00000000144' + index;
+    const healthCheck = scenario.name === 'healthCheck';
+    const answers = healthCheck
+      ? {postcode:'AA1 1AA', energyType:'both', contractEnd:'around March', annualSpend:'fixture spend band'}
+      : businessAnswers;
     const body = {submissionId, businessName:'Synthetic business ' + index, contactName:'Fixture contact',
-      email:visitor, message:'Original fixture message', ...answers, sourcePage:'/business-energy-quotes'};
+      email:visitor, message:'Original fixture message', ...answers, sourcePage:healthCheck ? '/business-energy-health-check' : '/business-energy-quotes'};
     const emails = [];
     const attempts = [];
     const outcomes = [];
@@ -70,7 +75,7 @@ export async function verifyBusinessDelivery({
     }
     assert.equal(attempts.length, scenario.calls);
     assert.deepEqual(emails, [owner, visitor]);
-    const expectedOutcomes = {shared:[], absent:['pending'], received:['sent'], lost:['reconcile']};
+    const expectedOutcomes = {shared:[], absent:['pending'], received:['sent'], lost:['reconcile'], healthCheck:['sent']};
     assert.deepEqual(outcomes, expectedOutcomes[scenario.name]);
     console.log('# Business enquiry ' + scenario.name + ': website=' + saved.crmStatus +
       ', mock emails=2, CRM attempts=' + attempts.length);

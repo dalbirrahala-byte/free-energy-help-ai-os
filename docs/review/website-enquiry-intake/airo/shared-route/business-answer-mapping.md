@@ -16,6 +16,8 @@ The candidate renders these values through the existing Notes field. Free text, 
 
 The client form adapter also maps each static form tag to its router path. Four industry pages include `-for-` in the URL. The native website fixture resolves the route's component in the pinned bundle, finds its form and compares that route to the website's stored and projected path. The shared route remains CRM-excluded.
 
+The Health Check draft also submits `energyType`, `contractEnd` and `annualSpend`. The dedicated handler retains each supplied answer under its original key in CRM lead notes. Omitted answers stay absent. Before enabling this sender, verify the receiver accepts all three keys. During rollback, close the sender first and retain the reader and stored answers.
+
 ## Local verification
 
 From the repository root with the pinned public bundle available as `$asset`, local frontend test dependencies, and the archive's verified MySQL runtime available as `$mysqlroot`:

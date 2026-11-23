@@ -4,7 +4,7 @@ export const SOURCE = 'feh-airo-website';
 export const MAX_BYTES = 32768;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const answerFields = ['contractEndDate', 'postcode', 'annualUsage', 'industry',
- 'annualElectricity', 'annualGas', 'sites'] as const;
+ 'annualElectricity', 'annualGas', 'sites', 'energyType', 'contractEnd', 'annualSpend'] as const;
 type BusinessAnswers = Partial<Record<typeof answerFields[number], string>>;
 
 export interface Payload {

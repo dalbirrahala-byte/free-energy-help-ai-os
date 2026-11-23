@@ -35,7 +35,7 @@ begin
   if jsonb_typeof(p_payload->'businessAnswers') <> 'object'
     or p_payload->'businessAnswers' = '{}'::jsonb then raise exception 'invalid_payload'; end if;
   for v_key, v_value in select key,value from jsonb_each(p_payload->'businessAnswers') loop
-   if v_key not in ('contractEndDate','postcode','annualUsage','industry','annualElectricity','annualGas','sites')
+   if v_key not in ('contractEndDate','postcode','annualUsage','industry','annualElectricity','annualGas','sites','energyType','contractEnd','annualSpend')
      or jsonb_typeof(v_value) <> 'string'
      or char_length(v_value #>> '{}') not between 1 and 255 then raise exception 'invalid_payload'; end if;
   end loop;

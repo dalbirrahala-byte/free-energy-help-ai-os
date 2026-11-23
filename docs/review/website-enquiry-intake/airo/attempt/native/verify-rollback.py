@@ -47,7 +47,7 @@ with tempfile.TemporaryDirectory(prefix='feh133-roll-') as directory:
         (work/name).write_text(pinned(native/name, sha))
     store = work/'enquiry-store.candidate.ts'
     for patch, sha in [('candidate.patch','15a944a4e594d2cb4aab59c1b29f2f2ee6c91e30'),
-                       ('business-answer-store.patch','fb56c709fcc1a8ef2fdff1ecd91a4290d14c9e25')]:
+                       ('business-answer-store.patch','a6ccda6de6d85162a0ae64616a4babfaa9e19bc0')]:
         subprocess.run(['git','apply','-'], input=pinned(route/patch, sha), text=True, cwd=work, check=True)
         if patch == 'candidate.patch':
             legacy = store.read_text()

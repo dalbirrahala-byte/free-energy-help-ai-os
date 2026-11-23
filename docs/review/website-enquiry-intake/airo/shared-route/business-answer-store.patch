@@ -66,7 +66,7 @@
  
 -interface QuoteRequestBody {
 +const businessAnswerFields = ['contractEndDate', 'postcode', 'annualUsage', 'industry',
-+  'annualElectricity', 'annualGas', 'sites'] as const;
++  'annualElectricity', 'annualGas', 'sites', 'energyType', 'contractEnd', 'annualSpend'] as const;
 +
 +interface QuoteRequestBody extends Partial<Record<typeof businessAnswerFields[number], unknown>> {
    businessName: string;
@@ -76,7 +76,7 @@
      return res.status(500).json({ error: 'Notification recipient not configured.' });
    }
  
-+  // Published business forms post these seven fields individually.
++  // Website enquiry forms post individual answers as optional text.
 +  if (Object.hasOwn(body, 'businessAnswers')) {
 +    return res.status(400).json({error: 'Supply the individual business form fields.'});
 +  }
