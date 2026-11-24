@@ -14,3 +14,17 @@ The exported `wireHealthCheck(entry, healthCheckForm)` applies the two routing e
 ```sh
 python3 docs/review/website-enquiry-intake/tests/deny-network.py "$(command -v node)" docs/review/website-health-check-wiring/wire-health-check.test.mjs
 ```
+
+## Check the editable draft before changing its route
+
+Run the read-only preflight on the complete, unwired Airo draft files at a recorded commit. It parses the TypeScript source and tries the route edit in memory. Use this entry point to check the request mapping before applying the route change. It writes no files and never imports the website application. Supply an already-installed TypeScript compiler.
+
+```sh
+python3 docs/review/website-enquiry-intake/tests/deny-network.py "$(command -v node)" \
+  docs/review/website-health-check-wiring/preflight.mjs \
+  /absolute/path/to/typescript/lib/typescript.js \
+  /absolute/path/to/airo/src/server/entry.ts \
+  /absolute/path/to/airo/src/pages/business-energy-health-check.tsx
+```
+
+The check recognises the reported draft's direct form construction. It looks for the UUID generator, SMS state, four named form controls, and the dedicated POST serialising that body. A different implementation needs source review. A pass establishes the checked syntax only. Use the rendered form and isolated handler integration tests to confirm actual control values, saved answers and email behaviour. The hosted CRM check has its own approval and reserved reference.
