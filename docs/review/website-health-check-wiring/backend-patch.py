@@ -26,7 +26,8 @@ def backend_files():
             shutil.copyfile(native / name, work / name)
         shutil.copyfile(shared / "native-purpose.mjs", work / "native-purpose.mjs")
         for patch in (shared / "candidate.patch", shared / "business-answer-store.patch",
-                      guards / "row-fidelity.patch", guards / "health-check-reference.patch"):
+                      guards / "row-fidelity.patch", guards / "health-check-reference.patch",
+                      Path(__file__).resolve().with_name("duplicate-details.patch")):
             subprocess.run(["git", "apply", "--no-index", str(patch)], cwd=work, check=True)
 
         handler = replace_import((work / "quote-held.ts").read_text(),

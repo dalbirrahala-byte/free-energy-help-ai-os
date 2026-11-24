@@ -25,6 +25,10 @@ const database = {
     assert.ok(columns.includes('businessAnswers'));
     const data = [...values.slice(0,-1), 'pending', 'pending', values.at(-1)];
     assert.equal(columns.length, data.length);
+    if (row && row.submissionId === values[0]) {
+      events.push('existing dedicated row');
+      return [{affectedRows:0}];
+    }
     row = Object.fromEntries(columns.map((column, index) => [column, data[index]]));
     events.push('dedicated store');
     return [{affectedRows:1}];
@@ -88,3 +92,26 @@ for (const [path,store,tail] of [['/api/quote','shared store','401'], ['/api/hea
   }
 }
 console.log('PASS independent route imports, shared email order, dedicated store, four answers and disabled CRM');
+
+const submitted = {...base, ...answers, submissionId:row.submissionId};
+// The server generates a new timestamp for each request, including exact repeats.
+row.submittedAt = '2025-01-01T00:00:00.000Z';
+const expected = structuredClone(row);
+for (const [changes, expectedStatus] of [
+  [{},201],
+  [{email:'changed@example.invalid'},409],
+  [{message:'changed fictional message'},409],
+  [{smsConsent:'no'},409],
+  [{annualSpend:'different fixture band'},409],
+]) {
+  events.length=0;
+  const res = {status(n){this.code=n;return this;}, json(body){this.body=body;return this;}};
+  await routes.get('/api/health-check/quote')({body:{...submitted,...changes}},res);
+  assert.equal(res.code, expectedStatus);
+  assert.equal(res.body.submissionId, submitted.submissionId);
+  if (expectedStatus === 201) assert.equal(res.body.created,false);
+  else assert.deepEqual(Object.keys(res.body).sort(), ['error','submissionId']);
+  assert.deepEqual(events,['existing dedicated row']);
+  assert.deepEqual(row,expected);
+}
+console.log('PASS exact repeat after time advanced and four conflicting repeats, original row and email counts preserved');
