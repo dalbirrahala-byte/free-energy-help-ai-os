@@ -12,5 +12,7 @@ done
 git apply "$archive/airo/shared-route/candidate.patch"
 git apply "$archive/airo/shared-route/business-answer-store.patch"
 git apply "$here/row-fidelity.patch"
+cp "$archive/airo/shared-route/native-purpose.mjs" .
+git apply "$here/health-check-reference.patch"
 cp "$here/row-fidelity.test.mjs" .
 python3 "$archive/tests/deny-network.py" "$(command -v node)" --no-warnings row-fidelity.test.mjs

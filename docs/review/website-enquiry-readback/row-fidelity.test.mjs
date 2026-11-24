@@ -34,14 +34,16 @@ const ref = '00000000-0000-4000-8000-000000000041';
 const body = {businessName:'  Fixture  ', contactName:'Visitor', email:visitor,
   submissionId:ref, message:' Quote 🔋 ', smsConsent:'no', postcode:'FIXTURE'};
 
-async function submit(t, handler, changes, created) {
+async function submit(t, handler, changes, created, requestBody = body) {
   const calls = [];
+  let saved;
   const logs = [];
   for (const level of ['log','warn','error']) t.mock.method(console, level, (...args) => logs.push(args));
   t.mock.method(globalThis, 'fetch', () => {calls.push('fetch'); throw Error('Unexpected fetch');});
   globalThis.fixture = {
     save(input, status) {
       calls.push('save');
+      saved = input;
       return {ok:true, created, row:{...input, ownerEmailStatus:'pending',
         visitorEmailStatus:'pending', crmStatus:status, ...changes}};
     },
@@ -51,10 +53,10 @@ async function submit(t, handler, changes, created) {
   };
   t.after(() => { delete globalThis.fixture; });
   const res = {status(code) {this.code=code;return this;}, json(value) {this.body=value;}};
-  await handler({body}, res);
-  assert.equal(res.body.submissionId, ref);
+  await handler({body:requestBody}, res);
+  if (requestBody === body) assert.equal(res.body.submissionId, ref);
   assert.doesNotMatch(JSON.stringify([logs,res.body]), /example\.invalid|PRIVATE_FIXTURE/);
-  return {res, calls};
+  return {res, calls, saved};
 }
 
 for (const [field, value] of Object.entries({
@@ -84,3 +86,25 @@ for (const [name,handler,created,extra] of [
     assert.deepEqual(calls,created?['save','owner@example.invalid','status',visitor,'status',...extra]:['save']);
   });
 }
+
+const olderForm = {...body};
+delete olderForm.submissionId;
+test('dedicated route rejects a form without a browser reference before any effect', async t => {
+  const {res,calls} = await submit(t,verifiedEnquiry,{},true,olderForm);
+  assert.equal(res.code,400);
+  assert.deepEqual(res.body,{error:'A browser-generated UUID v4 is required for the Health Check.'});
+  assert.deepEqual(calls,[]);
+});
+test('dedicated route rejects a malformed browser reference before any effect', async t => {
+  const {res,calls} = await submit(t,verifiedEnquiry,{},true,{...body,submissionId:'malformed'});
+  assert.equal(res.code,400);
+  assert.deepEqual(res.body,{error:'A browser-generated UUID v4 is required for the Health Check.'});
+  assert.deepEqual(calls,[]);
+});
+test('shared quote keeps its generated reference and both emails when the ID is omitted', async t => {
+  const {res,calls,saved} = await submit(t,shared,{},true,olderForm);
+  assert.equal(res.code,201);
+  assert.match(saved.submissionId,/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i);
+  assert.deepEqual(res.body,{ok:true,created:true,submissionId:saved.submissionId});
+  assert.deepEqual(calls,['save','owner@example.invalid','status',visitor,'status']);
+});

@@ -1,0 +1,36 @@
+--- a/quote-held.ts
++++ b/quote-held.ts
+@@ -109,12 +109,16 @@
+   }
+ 
+   // ── Submission ID ───────────────────────────────────────────────────────────
+-  // Generate a reference only for callers that omit one. Replacing a supplied
+-  // invalid reference would break correlation after a lost response.
++  // Health Check callers keep their own reference across a lost HTTP response.
++  // Older callers of the shared quote route may still omit the reference.
+   const supplied = body.submissionId;
+-  if (Object.hasOwn(body, 'submissionId') &&
++  const dedicated = initialCrmStatus === 'pending';
++  if ((dedicated || Object.hasOwn(body, 'submissionId')) &&
+       (typeof supplied !== 'string' || supplied.length !== 36 || !UUID_RE.test(supplied))) {
+-    return res.status(400).json({error: 'Invalid submissionId. Supply a UUID v4 or omit the field.'});
++    const error = dedicated
++      ? 'A browser-generated UUID v4 is required for the Health Check.'
++      : 'Invalid submissionId. Supply a UUID v4 or omit the field.';
++    return res.status(400).json({error});
+   }
+   const submissionId = supplied ?? crypto.randomUUID();
+ 
+--- a/native-purpose.mjs
++++ b/native-purpose.mjs
+@@ -167,7 +167,9 @@
+     for (const supplied of ['', null, 42, {}, 'fixture-ref', id(15) + ' ', id(15).replace('-4000-', '-1000-')]) {
+       const response = await referenceCase(handler,{submissionId:supplied});
+       assert.equal(response.code,400,'An explicit invalid reference must be rejected before saving');
+-      assert.deepEqual(response.body,{error:'Invalid submissionId. Supply a UUID v4 or omit the field.'});
++      assert.deepEqual(response.body,{error:handler === shared
++        ? 'Invalid submissionId. Supply a UUID v4 or omit the field.'
++        : 'A browser-generated UUID v4 is required for the Health Check.'});
+       assert.equal(currentId,undefined);
+       assert.deepEqual(events,[]);
+     }
