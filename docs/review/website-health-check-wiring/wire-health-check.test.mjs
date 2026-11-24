@@ -14,7 +14,7 @@ test('adds the named dedicated handler and edits only the Health Check fetch', (
   const wired = wireHealthCheck(entry, form);
   assert.equal(wired.entry, [
     imports,
-    'import { verifiedEnquiry } from "./api/quote/POST";',
+    'import { verifiedEnquiry } from "./api/health-check/POST";',
     route,
     'app.post("/api/health-check/quote", verifiedEnquiry);',
     'app.get("/api/health", health__get);',

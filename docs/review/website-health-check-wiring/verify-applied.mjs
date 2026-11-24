@@ -12,13 +12,13 @@ export function verifyApplied(ts, beforeEntry, beforeForm, afterEntry, afterForm
 
   const file = ts.createSourceFile('entry.ts', afterEntry, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   if (file.parseDiagnostics.length) throw Error('Provide the complete parseable server entry');
-  const imports = file.statements.filter(node =>
-    ts.isImportDeclaration(node) && node.moduleSpecifier.text === './api/quote/POST' &&
+  const importsFrom = path => file.statements.filter(node =>
+    ts.isImportDeclaration(node) && node.moduleSpecifier.text === path &&
     node.importClause && !node.importClause.isTypeOnly
   ).map(node => node.importClause);
   const named = (node, name) => node && ts.isIdentifier(node) && node.text === name;
-  const shared = imports.filter(clause => named(clause.name, 'quote__post'));
-  const dedicated = imports.flatMap(clause => {
+  const shared = importsFrom('./api/quote/POST').filter(clause => named(clause.name, 'quote__post'));
+  const dedicated = importsFrom('./api/health-check/POST').flatMap(clause => {
     const bindings = clause.namedBindings;
     return bindings && ts.isNamedImports(bindings) ? [...bindings.elements] : [];
   }).filter(binding => !binding.isTypeOnly && !binding.propertyName && named(binding.name, 'verifiedEnquiry'));

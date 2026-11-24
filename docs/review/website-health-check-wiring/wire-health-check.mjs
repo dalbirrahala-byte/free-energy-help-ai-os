@@ -31,7 +31,7 @@ export function wireHealthCheck(entry, healthCheckForm) {
 
   return {
     entry: entry.replace(quoteImport, quoteImport + eol + indent(quoteImport) +
-      `import { verifiedEnquiry } from ${quote}./api/quote/POST${quote};`)
+      `import { verifiedEnquiry } from ${quote}./api/health-check/POST${quote};`)
       .replace(quoteRegistration, quoteRegistration + eol + indent(quoteRegistration) +
         `app.post(${quote}${healthCheckPath}${quote}, verifiedEnquiry);`),
     healthCheckForm: healthCheckForm.replace(healthCheckFetch,
