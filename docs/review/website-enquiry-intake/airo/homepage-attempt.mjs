@@ -1,6 +1,7 @@
 // Review candidate for src/pages/index.tsx. Supply the tab's sessionStorage,
 // crypto.randomUUID, and the homepage's POST transport when integrating.
 const homepageKey = 'feh.homepage-quote.v1';
+const legacyHealthCheckKey = 'feh_hc_attempt';
 const healthCheckKey = 'feh.health-check.quote.v1';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const limits = {businessName:255, contactName:255, email:255, phone:40, currentSupplier:255, message:2000};
@@ -45,7 +46,17 @@ export async function submitHomepageQuote(fields, dependencies) {
 }
 
 export function readHealthCheckAttempt(storage) {
-  return readQuoteAttempt(storage, healthCheckKey);
+  const receipt = readQuoteAttempt(storage, healthCheckKey);
+  try {
+    const raw = storage.getItem(legacyHealthCheckKey);
+    if (raw === null) return receipt;
+    const record = JSON.parse(raw);
+    if (typeof record?.submissionId !== 'string' || !uuid.test(record.submissionId) ||
+        typeof record.inFlight !== 'boolean') return {status:'unavailable'};
+    if (receipt.status === 'ready') return {status:'held', submissionId:record.submissionId};
+    if (receipt.submissionId === record.submissionId) return receipt;
+  } catch { /* An unreadable hold cannot safely be replaced. */ }
+  return {status:'unavailable'};
 }
 
 export function submitHealthCheckQuote(body, dependencies) {
@@ -60,7 +71,7 @@ export function submitQuoteAttempt(key, prepare, dependencies) {
 }
 
 async function submitAtPath(path, key, prepare, {storage, newId, post, recordConversion}) {
-  const previous = readQuoteAttempt(storage, key);
+  const previous = key === healthCheckKey ? readHealthCheckAttempt(storage) : readQuoteAttempt(storage, key);
   if (previous.status !== 'ready') return previous;
   const {body, error} = prepare();
   if (error) return {status:'invalid', ...error};
@@ -70,6 +81,10 @@ async function submitAtPath(path, key, prepare, {storage, newId, post, recordCon
     submissionId = newId();
     if (typeof submissionId !== 'string' || !uuid.test(submissionId)) return {status:'unavailable'};
     // Set before the first await so a second click/remount sees the hold.
+    if (key === healthCheckKey) {
+      // The previous Airo handler blocks on this exact two-field record after rollback.
+      storage.setItem(legacyHealthCheckKey, JSON.stringify({submissionId, inFlight:true}));
+    }
     storage.setItem(key, JSON.stringify({status:'held', submissionId}));
   } catch { return {status:'unavailable'}; }
 

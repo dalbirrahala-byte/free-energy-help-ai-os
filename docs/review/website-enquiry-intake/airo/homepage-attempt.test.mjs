@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import net from 'node:net';
 import {test} from 'node:test';
-import {readHomepageAttempt, submitHomepageQuote} from './homepage-attempt.mjs';
+import {readHealthCheckAttempt, readHomepageAttempt, submitHealthCheckQuote, submitHomepageQuote} from './homepage-attempt.mjs';
 
 await new Promise((resolve, reject) => {
   const socket = net.connect(9, '127.0.0.1');
@@ -151,4 +151,56 @@ test('missing owner mailbox holds the homepage attempt before saving, even after
   assert.deepEqual(await submitHomepageQuote(fields, {...deps}), held);
   assert.deepEqual(replies, [500]);
   assert.deepEqual(trace, {posts:1, ids:1, saves:0, mail:[], crm:0, analytics:0});
+});
+
+const legacyKey = 'feh_hc_attempt';
+const receiptKey = 'feh.health-check.quote.v1';
+const healthBody = {source:'health-check-form'};
+
+for (const inFlight of [true, false]) {
+  test('an earlier Health Check reference blocks a new attempt with inFlight=' + inFlight, async () => {
+    const {deps, values, trace} = setup();
+    const record = JSON.stringify({submissionId:id, inFlight});
+    values.set(legacyKey, record);
+    assert.deepEqual(readHealthCheckAttempt(deps.storage), {status:'held', submissionId:id});
+    assert.deepEqual(await submitHealthCheckQuote(healthBody, deps), {status:'held', submissionId:id});
+    assert.deepEqual([...values], [[legacyKey, record]]);
+    assert.deepEqual([trace.ids, trace.posts, trace.analytics], [0, 0, 0]);
+  });
+}
+
+test('incompatible or unreadable Health Check references block without a write', async () => {
+  for (const record of ['{', JSON.stringify({submissionId:id}), JSON.stringify({submissionId:'bad', inFlight:false}),
+    JSON.stringify({submissionId:'00000000-0000-4000-8000-000000000136', inFlight:true})]) {
+    const {deps, values, trace} = setup();
+    values.set(legacyKey, record);
+    values.set(receiptKey, JSON.stringify({submissionId:id, status:'saved'}));
+    const before = [...values];
+    assert.deepEqual(await submitHealthCheckQuote(healthBody, deps), {status:'unavailable'});
+    assert.deepEqual([...values], before);
+    assert.deepEqual([trace.ids, trace.posts, trace.analytics], [0, 0, 0]);
+  }
+});
+
+test('existing candidate receipts still block submission without a legacy record', async () => {
+  for (const status of ['held', 'saved']) {
+    const {deps, values, trace} = setup();
+    const previous = {status, submissionId:id};
+    values.set(receiptKey, JSON.stringify(previous));
+    assert.deepEqual(await submitHealthCheckQuote(healthBody, deps), previous);
+    assert.deepEqual([trace.ids, trace.posts, trace.analytics], [0, 0, 0]);
+  }
+});
+
+test('an interrupted second marker write holds the original reference without a POST', async () => {
+  const {deps, values, trace} = setup();
+  const write = deps.storage.setItem;
+  deps.storage.setItem = (key, value) => {
+    if (key === receiptKey) throw Error('Quota');
+    write(key, value);
+  };
+  assert.deepEqual(await submitHealthCheckQuote(healthBody, deps), {status:'unavailable'});
+  assert.deepEqual(JSON.parse(values.get(legacyKey)), {submissionId:id, inFlight:true});
+  assert.deepEqual(await submitHealthCheckQuote(healthBody, deps), {status:'held', submissionId:id});
+  assert.deepEqual([trace.ids, trace.posts, trace.analytics], [1, 0, 0]);
 });

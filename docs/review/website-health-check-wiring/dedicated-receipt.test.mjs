@@ -129,7 +129,8 @@ try {
     const expected = loseBrowserReply ? held : {status:'saved', submissionId:id};
     assert.deepEqual(await first, expected);
     assert.deepEqual(readHealthCheckAttempt(storage), expected);
-    assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [expected]);
+    assert.deepEqual(JSON.parse(values.get('feh_hc_attempt')), {submissionId:id, inFlight:true});
+    assert.deepEqual(JSON.parse(values.get('feh.health-check.quote.v1')), expected);
     assert.deepEqual([ids, posts, conversions], [1, 1, Number(!loseBrowserReply)]);
     assert.equal(res.code,201);
     assert.deepEqual(res.data,{ok:true, submissionId:id, created:true});
