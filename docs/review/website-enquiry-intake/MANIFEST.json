@@ -47,7 +47,7 @@
     "airo/attempt/regression.tap": "157e4550c5c71d68294e1f34ff9ebbd65e8bb3fb9c6fd54768abc624eda725cb",
     "airo/homepage-attempt.mjs": "29163b07d9412c1269e0145fb98393f02e3960b1c55064b0d0289c4ff0b48fe6",
     "airo/homepage-attempt.test.mjs": "e670b0cdbe60a225b2e1911d6049500944f045c766b5447cd325d6795673db76",
-    "airo/homepage-browser.test.mjs": "337265f5cb065004c583820665eda6914c869aa15ef01347025f21792f6f50e0",
+    "airo/homepage-browser.test.mjs": "90e242b780c18f750bfb505143935a59b003fd0a34e8075ec8984a13079af46e",
     "airo/public-form-handoff.mjs": "d11aaa9b1f5e263356756d7a456be04363856af610c8558a370865f75f1c8902",
     "airo/quote-POST.ts": "25219749b68dd6c3b4efd8d79a70ca9377e6e14a68b23f1e3dcd02f1c4680893",
     "airo/quote-composition.tap": "20d15131e78423a36b9dbd5936afccb9a84298ba9d6a8f5f31b3d06697678fc6",

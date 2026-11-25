@@ -42,6 +42,41 @@ document.querySelector('button').onclick = async () => {
   document.querySelector('button').dataset.finished = 'yes';
 };
 </script>`);
+const healthHtml = join(directory, 'health-check.html');
+await writeFile(healthHtml, `<!doctype html><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' data:; connect-src 'none'">
+<button>Submit synthetic Health Check</button><output></output>
+<script type="module">
+import {readHealthCheckAttempt, submitHealthCheckQuote} from 'data:text/javascript;base64,${module.toString('base64')}';
+const button = document.querySelector('button');
+const paint = state => document.querySelector('output').textContent = JSON.stringify(state);
+if (location.search === '?earlier') {
+  // Model only the restore and submit guard reported for Airo draft 8bf854b.
+  const key = 'feh_hc_attempt';
+  const prior = JSON.parse(sessionStorage.getItem(key));
+  if (prior?.inFlight) sessionStorage.setItem(key, JSON.stringify({...prior, inFlight:false}));
+  paint(prior ? {status:'held', submissionId:prior.submissionId} : {status:'ready'});
+  button.onclick = () => {
+    if (sessionStorage.getItem(key) === null) console.info('fixture-post');
+    button.dataset.finished = 'yes';
+  };
+} else {
+  paint(readHealthCheckAttempt(sessionStorage));
+  button.onclick = async () => {
+    paint(await submitHealthCheckQuote({source:'health-check-form'}, {
+      storage:sessionStorage, newId:() => crypto.randomUUID(),
+      async post(path, options) {
+        console.info('fixture-post');
+        if (path !== '/api/health-check/quote' || options.method !== 'POST') throw Error('Unexpected route');
+        if (location.search === '?lost') throw Error('Synthetic response loss');
+        return Response.json({ok:true, created:true, submissionId:JSON.parse(options.body).submissionId}, {status:201});
+      },
+      recordConversion() { console.info('fixture-analytics'); }
+    }));
+    button.dataset.finished = 'yes';
+  };
+}
+</script>`);
 const child = spawn(chrome, [
   '--headless', '--no-sandbox', '--disable-background-networking', '--disable-sync',
   '--disable-extensions', '--no-first-run', '--disable-dev-shm-usage', '--remote-debugging-pipe',
@@ -98,28 +133,32 @@ async function command(method, params = {}, sessionId) {
     pending.delete(id);
   }
 }
+async function openTab() {
+  const {targetId} = await command('Target.createTarget', {url:'about:blank'});
+  const {sessionId} = await command('Target.attachToTarget', {targetId, flatten:true});
+  const page = (method, params) => command(method, params, sessionId);
+  await page('Runtime.enable');
+  await page('Network.enable');
+  await page('Page.enable');
+  async function evaluate(expression) {
+    const {result, exceptionDetails} = await page('Runtime.evaluate', {expression, returnByValue:true});
+    assert.equal(exceptionDetails, undefined);
+    return result.value;
+  }
+  async function waitFor(expression) {
+    for (let i=0; i<150; i++) {
+      if (await evaluate(expression)) return;
+      await delay(40);
+    }
+    throw Error('Fixture did not reach expected browser state');
+  }
+  return {targetId, page, evaluate, waitFor};
+}
 try {
   const version = await command('Browser.getVersion');
   for (const [mode, expected] of [['loss','held'], ['duplicate','held'], ['analytics','saved']]) {
     const initialPosts = posts, initialAnalytics = analytics;
-    const {targetId} = await command('Target.createTarget', {url:'about:blank'});
-    const {sessionId} = await command('Target.attachToTarget', {targetId, flatten:true});
-    const page = (method, params) => command(method, params, sessionId);
-    await page('Runtime.enable');
-    await page('Network.enable');
-    await page('Page.enable');
-    async function evaluate(expression) {
-      const {result, exceptionDetails} = await page('Runtime.evaluate', {expression, returnByValue:true});
-      assert.equal(exceptionDetails, undefined);
-      return result.value;
-    }
-    async function waitFor(expression) {
-      for (let i=0; i<150; i++) {
-        if (await evaluate(expression)) return;
-        await delay(40);
-      }
-      throw Error('Fixture did not reach expected browser state');
-    }
+    const {targetId, page, evaluate, waitFor} = await openTab();
     await page('Page.navigate', {url:pathToFileURL(html).href+'#'+mode});
     const value = 'document.querySelector("output")?.textContent';
     await waitFor(`${value} === '{"status":"ready"}'`);
@@ -143,6 +182,47 @@ try {
     assert.equal(httpRequests,0);
     assert.equal(exceptions,0);
     console.log(`PASS ${version.product} ${mode}: one mock POST, same reference after document reload, zero HTTP(S) requests`);
+    await command('Target.closeTarget', {targetId});
+  }
+  for (const mode of ['legacy-in-flight', 'legacy-restored', 'lost', 'saved']) {
+    const {targetId, page, evaluate, waitFor} = await openTab();
+    const beforePosts = posts, beforeConversions = analytics;
+    const value = 'document.querySelector("output")?.textContent';
+    const ready = JSON.stringify({status:'ready'});
+    const url = pathToFileURL(healthHtml).href;
+    await page('Page.navigate', {url:url + '?' + mode});
+    await waitFor(`${value} === ${JSON.stringify(ready)}`);
+    const click = async () => {
+      await evaluate('document.querySelector("button").click()');
+      await waitFor('document.querySelector("button")?.dataset.finished === "yes"');
+    };
+    let id;
+    const upgrade = mode.startsWith('legacy-');
+    if (upgrade) {
+      id = '00000000-0000-4000-8000-000000007351';
+      const previous = JSON.stringify({submissionId:id, inFlight:mode === 'legacy-in-flight'});
+      await evaluate(`sessionStorage.setItem('feh_hc_attempt', ${JSON.stringify(previous)})`);
+      await page('Page.reload', {ignoreCache:true});
+      await waitFor(`${value} === ${JSON.stringify(JSON.stringify({status:'held', submissionId:id}))}`);
+      await click();
+      assert.equal(await evaluate("sessionStorage.getItem('feh_hc_attempt')"), previous);
+    } else {
+      await click();
+      const result = JSON.parse(await evaluate(value));
+      assert.equal(result.status, mode === 'lost' ? 'held' : 'saved');
+      id = result.submissionId;
+      assert.match(id, /^[0-9a-f-]{36}$/);
+      await page('Page.navigate', {url:url + '?earlier'});
+      await waitFor(`location.search === '?earlier' && ${value} === ${JSON.stringify(JSON.stringify({status:'held', submissionId:id}))}`);
+      assert.deepEqual(JSON.parse(await evaluate("sessionStorage.getItem('feh_hc_attempt')")), {submissionId:id, inFlight:false});
+      await click();
+    }
+    assert.deepEqual(JSON.parse(await evaluate(value)), {status:'held', submissionId:id});
+    assert.equal(posts - beforePosts, upgrade ? 0 : 1);
+    assert.equal(analytics - beforeConversions, Number(mode === 'saved'));
+    assert.equal(httpRequests, 0);
+    assert.equal(exceptions, 0);
+    console.log(`PASS ${version.product} Health Check ${mode}: same reference and no repeat POST`);
     await command('Target.closeTarget', {targetId});
   }
 } finally {
