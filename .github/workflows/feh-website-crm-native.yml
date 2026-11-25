@@ -4,11 +4,9 @@ on:
   pull_request:
     paths:
       - ".github/workflows/feh-website-crm-native.yml"
-      - "docs/review/website-enquiry-intake/airo/attempt/native/**"
-      - "docs/review/website-enquiry-intake/airo/homepage-attempt.mjs"
-      - "docs/review/website-enquiry-intake/airo/homepage-browser.test.mjs"
-      - "docs/review/website-enquiry-intake/airo/shared-route/business-quote-body.mjs"
-      - "docs/review/website-enquiry-intake/airo/shared-route/browser-form-test.py"
+      - "docs/review/website-enquiry-intake/**"
+      - "docs/review/website-enquiry-readback/*.patch"
+      - "docs/review/website-health-check-wiring/**"
 
 permissions:
   contents: read
@@ -35,6 +33,9 @@ jobs:
           node-version: "24"
       - name: Run three disposable MySQL fixtures
         run: bash run-disposable-mysql.sh
+      - name: Verify the dedicated Health Check handler and shared quote emails offline
+        working-directory: docs/review/website-health-check-wiring
+        run: sh test-backend.sh
       - name: Check same-tab reload in an offline browser
         run: python3 unix-only.py '' "$(command -v node)" ../../homepage-browser.test.mjs "$(command -v google-chrome)"
       - name: Check business name validation in an offline browser
