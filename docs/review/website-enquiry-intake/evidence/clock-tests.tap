@@ -1,0 +1,304 @@
+TAP version 13
+# Subtest: receiver fails closed for NaN clock before body read or persistence
+ok 1 - receiver fails closed for NaN clock before body read or persistence
+  ---
+  duration_ms: 53.0912
+  type: 'test'
+  ...
+# Subtest: receiver fails closed for infinite clock before body read or persistence
+ok 2 - receiver fails closed for infinite clock before body read or persistence
+  ---
+  duration_ms: 1.016648
+  type: 'test'
+  ...
+# Subtest: receiver fails closed for throwing clock before body read or persistence
+ok 3 - receiver fails closed for throwing clock before body read or persistence
+  ---
+  duration_ms: 0.950511
+  type: 'test'
+  ...
+# Subtest: signed sender -> receiver -> committed mock receipt; fields preserved, no consent invention
+ok 4 - signed sender -> receiver -> committed mock receipt; fields preserved, no consent invention
+  ---
+  duration_ms: 8.674239
+  type: 'test'
+  ...
+# Subtest: duplicate and conflict contract under concurrent requests (in-memory store, not PostgreSQL proof)
+ok 5 - duplicate and conflict contract under concurrent requests (in-memory store, not PostgreSQL proof)
+  ---
+  duration_ms: 3.065777
+  type: 'test'
+  ...
+# Subtest: authentication rejects missing signature before persistence
+ok 6 - authentication rejects missing signature before persistence
+  ---
+  duration_ms: 0.552314
+  type: 'test'
+  ...
+# Subtest: authentication rejects wrong key before persistence
+ok 7 - authentication rejects wrong key before persistence
+  ---
+  duration_ms: 0.668765
+  type: 'test'
+  ...
+# Subtest: authentication rejects stale timestamp before persistence
+ok 8 - authentication rejects stale timestamp before persistence
+  ---
+  duration_ms: 1.061494
+  type: 'test'
+  ...
+# Subtest: authentication rejects future timestamp before persistence
+ok 9 - authentication rejects future timestamp before persistence
+  ---
+  duration_ms: 1.981349
+  type: 'test'
+  ...
+# Subtest: authentication rejects tampered signed body before persistence
+ok 10 - authentication rejects tampered signed body before persistence
+  ---
+  duration_ms: 1.799471
+  type: 'test'
+  ...
+# Subtest: receiver rejects extra authority flag
+ok 11 - receiver rejects extra authority flag
+  ---
+  duration_ms: 0.76728
+  type: 'test'
+  ...
+# Subtest: receiver rejects sms consent boolean
+ok 12 - receiver rejects sms consent boolean
+  ---
+  duration_ms: 0.576469
+  type: 'test'
+  ...
+# Subtest: receiver rejects missing email
+ok 13 - receiver rejects missing email
+  ---
+  duration_ms: 0.492786
+  type: 'test'
+  ...
+# Subtest: receiver rejects missing attribution
+ok 14 - receiver rejects missing attribution
+  ---
+  duration_ms: 6.129721
+  type: 'test'
+  ...
+# Subtest: receiver rejects invalid UUID
+ok 15 - receiver rejects invalid UUID
+  ---
+  duration_ms: 0.497764
+  type: 'test'
+  ...
+# Subtest: receiver rejects invalid timestamp
+ok 16 - receiver rejects invalid timestamp
+  ---
+  duration_ms: 0.579945
+  type: 'test'
+  ...
+# Subtest: receiver rejects overlong message
+ok 17 - receiver rejects overlong message
+  ---
+  duration_ms: 0.435281
+  type: 'test'
+  ...
+# Subtest: receiver rejects phone object
+ok 18 - receiver rejects phone object
+  ---
+  duration_ms: 0.548908
+  type: 'test'
+  ...
+# Subtest: receiver rejects extra attribution
+ok 19 - receiver rejects extra attribution
+  ---
+  duration_ms: 0.430825
+  type: 'test'
+  ...
+# Subtest: receiver rejects null business
+ok 20 - receiver rejects null business
+  ---
+  duration_ms: 0.572994
+  type: 'test'
+  ...
+# Subtest: preserves SMS answer yes
+ok 21 - preserves SMS answer yes
+  ---
+  duration_ms: 0.201016
+  type: 'test'
+  ...
+# Subtest: preserves SMS answer no
+ok 22 - preserves SMS answer no
+  ---
+  duration_ms: 0.056653
+  type: 'test'
+  ...
+# Subtest: preserves SMS answer null
+ok 23 - preserves SMS answer null
+  ---
+  duration_ms: 0.043564
+  type: 'test'
+  ...
+# Subtest: unconfigured receiver is closed
+ok 24 - unconfigured receiver is closed
+  ---
+  duration_ms: 0.24425
+  type: 'test'
+  ...
+# Subtest: wrong method and path rejected
+ok 25 - wrong method and path rejected
+  ---
+  duration_ms: 0.32612
+  type: 'test'
+  ...
+# Subtest: body size bounded before persistence
+ok 26 - body size bounded before persistence
+  ---
+  duration_ms: 0.857724
+  type: 'test'
+  ...
+# Subtest: database error response redacted; no receipt issued
+ok 27 - database error response redacted; no receipt issued
+  ---
+  duration_ms: 0.52916
+  type: 'test'
+  ...
+# Subtest: mismatched database receipt fails closed
+ok 28 - mismatched database receipt fails closed
+  ---
+  duration_ms: 0.444855
+  type: 'test'
+  ...
+# Subtest: no endpoint means pending with zero transport calls
+ok 29 - no endpoint means pending with zero transport calls
+  ---
+  duration_ms: 0.08826
+  type: 'test'
+  ...
+# Subtest: client blocks missing key without transport
+ok 30 - client blocks missing key without transport
+  ---
+  duration_ms: 0.100428
+  type: 'test'
+  ...
+# Subtest: client blocks different destination without transport
+ok 31 - client blocks different destination without transport
+  ---
+  duration_ms: 0.041481
+  type: 'test'
+  ...
+# Subtest: client blocks http without transport
+ok 32 - client blocks http without transport
+  ---
+  duration_ms: 0.042953
+  type: 'test'
+  ...
+# Subtest: client blocks query without transport
+ok 33 - client blocks query without transport
+  ---
+  duration_ms: 0.235927
+  type: 'test'
+  ...
+# Subtest: client holds ambiguous HTML 200 without retry
+ok 34 - client holds ambiguous HTML 200 without retry
+  ---
+  duration_ms: 0.253113
+  type: 'test'
+  ...
+# Subtest: client holds ambiguous empty 204 without retry
+ok 35 - client holds ambiguous empty 204 without retry
+  ---
+  duration_ms: 0.217591
+  type: 'test'
+  ...
+# Subtest: client holds ambiguous malformed JSON without retry
+ok 36 - client holds ambiguous malformed JSON without retry
+  ---
+  duration_ms: 0.493467
+  type: 'test'
+  ...
+# Subtest: client holds ambiguous wrong submission without retry
+ok 37 - client holds ambiguous wrong submission without retry
+  ---
+  duration_ms: 0.2374
+  type: 'test'
+  ...
+# Subtest: client holds ambiguous missing lead id without retry
+ok 38 - client holds ambiguous missing lead id without retry
+  ---
+  duration_ms: 0.242027
+  type: 'test'
+  ...
+# Subtest: client holds ambiguous uncommitted 202 without retry
+ok 39 - client holds ambiguous uncommitted 202 without retry
+  ---
+  duration_ms: 0.245562
+  type: 'test'
+  ...
+# Subtest: client holds ambiguous 500 without retry
+ok 40 - client holds ambiguous 500 without retry
+  ---
+  duration_ms: 0.240995
+  type: 'test'
+  ...
+# Subtest: client holds ambiguous 429 without retry
+ok 41 - client holds ambiguous 429 without retry
+  ---
+  duration_ms: 0.281755
+  type: 'test'
+  ...
+# Subtest: client holds ambiguous 302 without retry
+ok 42 - client holds ambiguous 302 without retry
+  ---
+  duration_ms: 0.229117
+  type: 'test'
+  ...
+# Subtest: client holds ambiguous oversized receipt without retry
+ok 43 - client holds ambiguous oversized receipt without retry
+  ---
+  duration_ms: 0.56365
+  type: 'test'
+  ...
+# Subtest: network error classified uncertain, no raw exception or retry
+ok 44 - network error classified uncertain, no raw exception or retry
+  ---
+  duration_ms: 0.267714
+  type: 'test'
+  ...
+# Subtest: receiver conflict is definitive without replay
+ok 45 - receiver conflict is definitive without replay
+  ---
+  duration_ms: 0.242908
+  type: 'test'
+  ...
+# Subtest: duplicate committed receipt accepted
+ok 46 - duplicate committed receipt accepted
+  ---
+  duration_ms: 0.282787
+  type: 'test'
+  ...
+# Subtest: store uses parameterized single-function query and correlated receipt
+ok 47 - store uses parameterized single-function query and correlated receipt
+  ---
+  duration_ms: 0.240875
+  type: 'test'
+  ...
+# Subtest: store rejects missing or mismatched receipt
+ok 48 - store rejects missing or mismatched receipt
+  ---
+  duration_ms: 0.386349
+  type: 'test'
+  ...
+# Subtest: SQL structural checks only: no grants, no permission upgrade, unique receipt, atomic audit
+ok 49 - SQL structural checks only: no grants, no permission upgrade, unique receipt, atomic audit
+  ---
+  duration_ms: 0.747561
+  type: 'test'
+  ...
+1..49
+# tests 49
+# suites 0
+# pass 49
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 231.430404

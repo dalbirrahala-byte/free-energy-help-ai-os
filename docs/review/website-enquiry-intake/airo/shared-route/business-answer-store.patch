@@ -1,0 +1,114 @@
+--- a/enquiries-schema.ts
++++ b/enquiries-schema.ts
+@@ -1,4 +1,4 @@
+-import {mysqlTable, int, varchar, timestamp, index, uniqueIndex} from 'drizzle-orm/mysql-core';
++import {mysqlTable, int, varchar, text, timestamp, index, uniqueIndex} from 'drizzle-orm/mysql-core';
+ 
+ export const enquiries = mysqlTable('enquiries', {
+   id:             int('id').primaryKey().autoincrement(),
+@@ -21,6 +21,8 @@
+   currentSupplier: varchar('current_supplier', { length: 255 }),
+   message:         varchar('message', { length: 2000 }),
+ 
++  businessAnswers: text('business_answers'),
++
+   // ── Consent ───────────────────────────────────────────────────────────────
+   // 'yes' | 'no' | NULL — null means the visitor skipped the question.
+   smsConsent:     varchar('sms_consent', { length: 3 }),
+--- a/enquiry-store.candidate.ts
++++ b/enquiry-store.candidate.ts
+@@ -44,6 +44,7 @@
+   meterNumbers: string | null;
+   currentSupplier: string | null;
+   message: string | null;
++  businessAnswers: string | null;
+   smsConsent: string | null;
+   utmSource: string | null;
+   utmMedium: string | null;
+@@ -70,6 +71,7 @@
+   meterNumbers: string | null;
+   currentSupplier: string | null;
+   message: string | null;
++  businessAnswers?: string | null;
+   smsConsent: string | null;
+   utmSource: string | null;
+   utmMedium: string | null;
+@@ -104,14 +106,14 @@
+       INSERT IGNORE INTO enquiries (
+         submission_id, submitted_at,
+         business_name, contact_name, email, phone,
+-        meter_numbers, current_supplier, message, sms_consent,
++        meter_numbers, current_supplier, message, business_answers, sms_consent,
+         utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+         gclid, fbclid, source_page,
+         owner_email_status, visitor_email_status, crm_status
+       ) VALUES (
+         ${input.submissionId}, ${input.submittedAt},
+         ${input.businessName}, ${input.contactName}, ${input.email}, ${input.phone},
+-        ${input.meterNumbers}, ${input.currentSupplier}, ${input.message}, ${input.smsConsent},
++        ${input.meterNumbers}, ${input.currentSupplier}, ${input.message}, ${input.businessAnswers ?? null}, ${input.smsConsent},
+         ${input.utmSource}, ${input.utmMedium}, ${input.utmCampaign}, ${input.utmContent}, ${input.utmTerm},
+         ${input.gclid}, ${input.fbclid}, ${input.sourcePage},
+         'pending', 'pending', ${initialCrmStatus}
+@@ -210,6 +212,7 @@
+     meterNumbers:    row.meterNumbers,
+     currentSupplier: row.currentSupplier,
+     message:         row.message,
++    ...(row.businessAnswers == null ? {} : {businessAnswers: JSON.parse(row.businessAnswers)}),
+     smsConsent:      (row.smsConsent as 'yes' | 'no' | null) ?? null,
+     attribution: {
+       utmSource:   row.utmSource,
+--- a/quote-held.ts
++++ b/quote-held.ts
+@@ -24,7 +24,10 @@
+   enquiryRowToCrmPayload,
+ } from '@/server/lib/enquiry-store.js';
+ 
+-interface QuoteRequestBody {
++const businessAnswerFields = ['contractEndDate', 'postcode', 'annualUsage', 'industry',
++  'annualElectricity', 'annualGas', 'sites', 'energyType', 'contractEnd', 'annualSpend'] as const;
++
++interface QuoteRequestBody extends Partial<Record<typeof businessAnswerFields[number], unknown>> {
+   businessName: string;
+   contactName: string;
+   email: string;
+@@ -155,10 +158,26 @@
+     return res.status(500).json({ error: 'Notification recipient not configured.' });
+   }
+ 
++  // Website enquiry forms post individual answers as optional text.
++  if (Object.hasOwn(body, 'businessAnswers')) {
++    return res.status(400).json({error: 'Supply the individual business form fields.'});
++  }
++  const answers: Record<string, string> = {};
++  for (const field of businessAnswerFields) {
++    const value = body[field];
++    if (value == null || value === '') continue;
++    if (typeof value !== 'string' || value.length > 510 || [...value].length > 255 ||
++        /[\u0000\uD800-\uDFFF]/u.test(value)) {
++      return res.status(400).json({error: 'Invalid business form answer.', field});
++    }
++    if (value.trim()) answers[field] = value;
++  }
++  const businessAnswers = Object.keys(answers).length ? JSON.stringify(answers) : null;
++
+   // ── Step 1: Save to DB ──────────────────────────────────────────────────────
+   // INSERT IGNORE — idempotent. A double-submit returns the existing row and
+   // holds further delivery for reconciliation.
+-  const saveResult = await saveEnquiry({submissionId, submittedAt, smsConsent: smsConsentNorm, ...fields}, initialCrmStatus);
++  const saveResult = await saveEnquiry({submissionId, submittedAt, smsConsent: smsConsentNorm, businessAnswers, ...fields}, initialCrmStatus);
+ 
+   if (!saveResult.ok) {
+     console.error('quote.submit.db_save_failed', { submissionId });
+@@ -173,6 +192,11 @@
+ 
+   console.log('quote.submit.saved', { submissionId, created: isNew });
+ 
++  if (row.businessAnswers !== businessAnswers) {
++    return res.status(isNew ? 500 : 409).json({
++      error: 'Business answers could not be confirmed for this reference.', submissionId,
++    });
++  }
+   if (!isNew) {
+     if (row.ownerEmailStatus !== 'sent' || row.visitorEmailStatus !== 'sent') {
+       console.warn('quote.submit.duplicate_email_reconciliation_required', { submissionId });

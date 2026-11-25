@@ -1,0 +1,17 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: connect EPERM /workspace/scratch/172ee5dd10b3/mysql-local-runtime/test.sock
+    at file:///workspace/scratch/172ee5dd10b3/crm133-sender-clock/airo/attempt/native/mysql.test.mjs:12:25
+    at ModuleJob.run (node:internal/modules/esm/module_job:561:25)
+    at async node:internal/modules/esm/loader:647:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+  errno: -1,
+  code: 'EPERM',
+  syscall: 'connect',
+  address: '/workspace/scratch/172ee5dd10b3/mysql-local-runtime/test.sock',
+  fatal: true
+}
+
+Node.js v24.22.3

@@ -1,0 +1,21 @@
+--- a/quote-held.ts
++++ b/quote-held.ts
+@@ -205,6 +205,18 @@
+     return res.status(201).json({ ok: true, submissionId, created: false });
+   }
+ 
++  if (initialCrmStatus === 'pending') {
++    const keys = Object.keys(fields) as (keyof typeof fields)[];
++    if (keys.some(key => row[key] !== fields[key]) ||
++        row.submissionId !== submissionId || row.submittedAt !== submittedAt ||
++        row.smsConsent !== smsConsentNorm) {
++      return res.status(500).json({
++        error: 'We could not confirm the saved enquiry details. Please call and quote your reference.',
++        submissionId,
++      });
++    }
++  }
++
+   // ── Build email content for this new enquiry ────────────────
+   const submittedAtDisplay = new Date(row.submittedAt).toLocaleString('en-GB', {
+     timeZone: 'Europe/London',

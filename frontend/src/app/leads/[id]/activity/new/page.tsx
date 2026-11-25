@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { buildAuditEvent, recordAuditEvent } from "@/lib/audit/log";
 import { requireOperationalPermission } from "@/lib/auth/enforceWrite";
+import { requireNumericRouteId } from "@/lib/navigation/requireNumericRouteId";
 import { createClient } from "@/lib/supabase/server";
 
 type NewActivityPageProps = {
@@ -16,7 +17,7 @@ export default async function NewActivityPage({
   params,
 }: NewActivityPageProps) {
   const { id } = await params;
-  const leadId = Number(id);
+  const leadId = requireNumericRouteId(id);
 
   async function saveActivity(formData: FormData) {
     "use server";

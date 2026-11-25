@@ -13,6 +13,7 @@ import { leadWorklistRank } from "@/lib/revenue-engine/leadWorklistOrder";
 
 export type CrmLeadRow = {
   id: number;
+  route_id: string;
   created_at?: string;
   company_name: string | null;
   contact_name: string | null;
@@ -94,11 +95,12 @@ export function LeadsPageClient({
   const [showRejected, setShowRejected] = useState(false);
 
   const qualityCounts = useMemo(() => {
-    const counts = { Hot: 0, Warm: 0, Nurture: 0, Reject: 0, unscored: 0 };
+    const counts = { Hot: 0, Warm: 0, Nurture: 0, Reject: 0, unscored: 0, scoreable: 0 };
     for (const lead of crmLeads) {
       const classification = lead.qualification_classification;
       if (!classification) {
         counts.unscored += 1;
+        if (Number.isSafeInteger(lead.id)) counts.scoreable += 1;
       } else if (classification in counts) {
         counts[classification as keyof typeof counts] += 1;
       }
@@ -111,6 +113,10 @@ export function LeadsPageClient({
       ? crmLeads
       : crmLeads.filter((lead) => lead.qualification_classification !== "Reject");
 
+    function priorityScore(lead: CrmLeadRow) {
+      return Number.isSafeInteger(lead.id) ? revenueViews[lead.id]?.priority.priorityScore ?? 0 : 0;
+    }
+
     return [...visible].sort((a, b) => {
       const rankDiff = leadWorklistRank(a.qualification_classification) - leadWorklistRank(b.qualification_classification);
       if (rankDiff !== 0) return rankDiff;
@@ -118,7 +124,7 @@ export function LeadsPageClient({
       // Within the same classification, prioritise by the already-computed
       // priority score so newer/more urgent leads aren't buried by an
       // arbitrary secondary sort, then fall back to most-recently-created.
-      const scoreDiff = (revenueViews[b.id]?.priority.priorityScore ?? 0) - (revenueViews[a.id]?.priority.priorityScore ?? 0);
+      const scoreDiff = priorityScore(b) - priorityScore(a);
       if (scoreDiff !== 0) return scoreDiff;
 
       return (b.created_at ?? "").localeCompare(a.created_at ?? "");
@@ -165,161 +171,160 @@ export function LeadsPageClient({
 
         <WebsiteLeadsPanel leads={websiteLeads} newLeadCount={newCount} />
 
-        {supabaseError && (
+        {supabaseError ? (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            CRM leads could not be loaded from Supabase. Website enquiries below still work
-            locally.
+            CRM leads could not be loaded from Supabase.
           </div>
-        )}
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">CRM leads (Supabase)</h2>
+                  <p className="text-sm text-slate-500">
+                    Existing live transfer and manual leads, worked Hot → Warm → Nurture first.
+                  </p>
+                </div>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">CRM leads (Supabase)</h2>
-                <p className="text-sm text-slate-500">
-                  Existing live transfer and manual leads, worked Hot → Warm → Nurture first.
-                </p>
+                {qualityCounts.scoreable > 0 && (
+                  <form action={recomputeUnscoredLeadQualifications}>
+                    <button
+                      type="submit"
+                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      title="Scores unclassified leads with supported numeric IDs"
+                    >
+                      Recompute {qualityCounts.scoreable} unscored lead{qualityCounts.scoreable === 1 ? "" : "s"}
+                    </button>
+                  </form>
+                )}
               </div>
 
-              {qualityCounts.unscored > 0 && (
-                <form action={recomputeUnscoredLeadQualifications}>
-                  <button
-                    type="submit"
-                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    title="Scores every lead that has never been classified (Factory 027 qualification engine, reused verbatim)"
-                  >
-                    Recompute {qualityCounts.unscored} unscored lead{qualityCounts.unscored === 1 ? "" : "s"}
-                  </button>
-                </form>
-              )}
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <QualityCountChip label="Hot" count={qualityCounts.Hot} />
+                <QualityCountChip label="Warm" count={qualityCounts.Warm} />
+                <QualityCountChip label="Nurture" count={qualityCounts.Nurture} />
+                <QualityCountChip label="Not yet scored" count={qualityCounts.unscored} />
+                <button
+                  type="button"
+                  onClick={() => setShowRejected((prev) => !prev)}
+                  className={`ml-auto rounded-full border px-3 py-1 text-xs font-semibold ${
+                    showRejected
+                      ? "border-slate-800 bg-slate-800 text-white"
+                      : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {showRejected ? "Hide" : "Show"} rejected leads ({qualityCounts.Reject})
+                </button>
+              </div>
             </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <QualityCountChip label="Hot" count={qualityCounts.Hot} />
-              <QualityCountChip label="Warm" count={qualityCounts.Warm} />
-              <QualityCountChip label="Nurture" count={qualityCounts.Nurture} />
-              <QualityCountChip label="Not yet scored" count={qualityCounts.unscored} />
-              <button
-                type="button"
-                onClick={() => setShowRejected((prev) => !prev)}
-                className={`ml-auto rounded-full border px-3 py-1 text-xs font-semibold ${
-                  showRejected
-                    ? "border-slate-800 bg-slate-800 text-white"
-                    : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {showRejected ? "Hide" : "Show"} rejected leads ({qualityCounts.Reject})
-              </button>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50">
-                <tr>
-                  <th className="px-5 py-4 font-semibold">Company</th>
-                  <th className="px-5 py-4 font-semibold">Source</th>
-                  <th className="px-5 py-4 font-semibold">Contact</th>
-                  <th className="px-5 py-4 font-semibold">Telephone</th>
-                  <th className="px-5 py-4 font-semibold">Supplier</th>
-                  <th className="px-5 py-4 font-semibold">Contract End</th>
-                  <th className="px-5 py-4 font-semibold">Status</th>
-                  <th className="px-5 py-4 font-semibold">Lead Quality</th>
-                  <th className="px-5 py-4 font-semibold">Qualification Readiness</th>
-                  <th className="px-5 py-4 font-semibold">Priority</th>
-                  <th className="px-5 py-4 font-semibold">Next Action</th>
-                  <th className="px-5 py-4 font-semibold">Last Activity</th>
-                  <th className="px-5 py-4 font-semibold">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {worklistLeads.length === 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50">
                   <tr>
-                    <td colSpan={13} className="px-5 py-12 text-center text-slate-500">
-                      {crmLeads.length === 0
-                        ? "No CRM leads in Supabase yet."
-                        : "No leads to work right now — rejected leads are hidden. Use \"Show rejected leads\" to view them."}
-                    </td>
+                    <th className="px-5 py-4 font-semibold">Company</th>
+                    <th className="px-5 py-4 font-semibold">Source</th>
+                    <th className="px-5 py-4 font-semibold">Contact</th>
+                    <th className="px-5 py-4 font-semibold">Telephone</th>
+                    <th className="px-5 py-4 font-semibold">Supplier</th>
+                    <th className="px-5 py-4 font-semibold">Contract End</th>
+                    <th className="px-5 py-4 font-semibold">Status</th>
+                    <th className="px-5 py-4 font-semibold">Lead Quality</th>
+                    <th className="px-5 py-4 font-semibold">Qualification Readiness</th>
+                    <th className="px-5 py-4 font-semibold">Priority</th>
+                    <th className="px-5 py-4 font-semibold">Next Action</th>
+                    <th className="px-5 py-4 font-semibold">Last Activity</th>
+                    <th className="px-5 py-4 font-semibold">Action</th>
                   </tr>
-                ) : (
-                  worklistLeads.map((lead) => {
-                    const view = revenueViews[lead.id];
-                    return (
-                      <tr
-                        key={lead.id}
-                        className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
-                      >
-                        <td className="px-5 py-4 font-semibold text-slate-900">
-                          {lead.company_name || "Unnamed company"}
-                        </td>
-                        <td className="px-5 py-4 text-slate-600">
-                          {lead.lead_source || "Not specified"}
-                        </td>
-                        <td className="px-5 py-4 text-slate-600">
-                          {lead.contact_name || "Not provided"}
-                        </td>
-                        <td className="px-5 py-4 text-slate-600">
-                          {lead.telephone || "Not provided"}
-                        </td>
-                        <td className="px-5 py-4 text-slate-600">
-                          {lead.supplier || "Not provided"}
-                        </td>
-                        <td className="px-5 py-4 text-slate-600">
-                          {formatContractDate(lead.contract_end)}
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                            {lead.status || "New"}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4">
-                          {lead.qualification_classification ? (
-                            <div className="flex items-center gap-1.5">
-                              <LeadQualityBadge label={lead.qualification_classification as LeadQualityClassification} />
-                              <span className="text-xs text-slate-400">{lead.qualification_score ?? 0}/100</span>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-400">Not yet scored</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-4">
-                          {view ? (
-                            <QualificationReadinessBadge label={view.qualification.readinessLabel} />
-                          ) : (
-                            <span className="text-xs text-slate-400">Not assessed</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-4">
-                          {view ? (
-                            <PriorityBadge label={view.priority.priorityLabel} />
-                          ) : (
-                            <span className="text-xs text-slate-400">Not assessed</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-4">
-                          {view ? (
-                            <NextActionBadge label={view.nextAction.action} />
-                          ) : (
-                            <span className="text-xs text-slate-400">Not assessed</span>
-                          )}
-                        </td>
-                        <td className="px-5 py-4 text-slate-600">{formatLastActivity(view)}</td>
-                        <td className="px-5 py-4">
-                          <Link
-                            href={`/leads/${lead.id}`}
-                            className="font-semibold text-emerald-600 hover:text-emerald-700"
-                          >
-                            View
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {worklistLeads.length === 0 ? (
+                    <tr>
+                      <td colSpan={13} className="px-5 py-12 text-center text-slate-500">
+                        {crmLeads.length === 0
+                          ? "No CRM leads in Supabase yet."
+                          : "No leads to work right now — rejected leads are hidden. Use \"Show rejected leads\" to view them."}
+                      </td>
+                    </tr>
+                  ) : (
+                    worklistLeads.map((lead) => {
+                      const view = Number.isSafeInteger(lead.id) ? revenueViews[lead.id] : undefined;
+                      return (
+                        <tr
+                          key={lead.route_id}
+                          className="border-b border-slate-100 last:border-0 hover:bg-slate-50"
+                        >
+                          <td className="px-5 py-4 font-semibold text-slate-900">
+                            {lead.company_name || "Unnamed company"}
+                          </td>
+                          <td className="px-5 py-4 text-slate-600">
+                            {lead.lead_source || "Not specified"}
+                          </td>
+                          <td className="px-5 py-4 text-slate-600">
+                            {lead.contact_name || "Not provided"}
+                          </td>
+                          <td className="px-5 py-4 text-slate-600">
+                            {lead.telephone || "Not provided"}
+                          </td>
+                          <td className="px-5 py-4 text-slate-600">
+                            {lead.supplier || "Not provided"}
+                          </td>
+                          <td className="px-5 py-4 text-slate-600">
+                            {formatContractDate(lead.contract_end)}
+                          </td>
+                          <td className="px-5 py-4">
+                            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                              {lead.status || "New"}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4">
+                            {lead.qualification_classification ? (
+                              <div className="flex items-center gap-1.5">
+                                <LeadQualityBadge label={lead.qualification_classification as LeadQualityClassification} />
+                                <span className="text-xs text-slate-400">{lead.qualification_score ?? 0}/100</span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">Not yet scored</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-4">
+                            {view ? (
+                              <QualificationReadinessBadge label={view.qualification.readinessLabel} />
+                            ) : (
+                              <span className="text-xs text-slate-400">Not assessed</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-4">
+                            {view ? (
+                              <PriorityBadge label={view.priority.priorityLabel} />
+                            ) : (
+                              <span className="text-xs text-slate-400">Not assessed</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-4">
+                            {view ? (
+                              <NextActionBadge label={view.nextAction.action} />
+                            ) : (
+                              <span className="text-xs text-slate-400">Not assessed</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-4 text-slate-600">{formatLastActivity(view)}</td>
+                          <td className="px-5 py-4">
+                            <Link
+                              href={`/leads/${lead.route_id}`}
+                              className="font-semibold text-emerald-600 hover:text-emerald-700"
+                            >
+                              View
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </AppShell>
   );

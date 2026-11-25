@@ -18,7 +18,7 @@ import type { createClient } from "../supabase/server";
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 export type DuplicateCandidateRow = {
-  id: number;
+  id: number | string;
   company_name: string | null;
   email: string | null;
   telephone: string | null;
@@ -28,7 +28,7 @@ export type DuplicateCandidateRow = {
 export type DuplicateMatchField = "email" | "telephone";
 
 export type PotentialDuplicateMatch = {
-  id: number;
+  id: number | string;
   companyName: string | null;
   matchedOn: DuplicateMatchField[];
   createdAt: string;
@@ -74,7 +74,7 @@ export function findPotentialDuplicateLeads(
   const matches: PotentialDuplicateMatch[] = [];
 
   for (const candidate of candidates) {
-    if (candidate.id === currentLead.id) {
+    if (String(candidate.id) === String(currentLead.id)) {
       continue;
     }
 
@@ -99,7 +99,12 @@ export function findPotentialDuplicateLeads(
     }
   }
 
-  return matches.sort((a, b) => a.id - b.id);
+  return matches.sort((a, b) => {
+    const left = BigInt(a.id);
+    const right = BigInt(b.id);
+    if (left === right) return 0;
+    return left < right ? -1 : 1;
+  });
 }
 
 /**
@@ -116,13 +121,16 @@ export async function loadPotentialDuplicateLeads(
   supabase: SupabaseServerClient,
   currentLead: Pick<CanonicalLead, "id" | "email" | "telephone">,
 ): Promise<PotentialDuplicateMatch[]> {
+  if (!Number.isSafeInteger(currentLead.id)) {
+    throw new RangeError("Duplicate lookup requires an exact current lead ID");
+  }
   if (!currentLead.email && !currentLead.telephone) {
     return [];
   }
 
   const { data } = await supabase
     .from("leads")
-    .select("id, company_name, email, telephone, created_at")
+    .select("id:id::text, company_name, email, telephone, created_at")
     .neq("id", currentLead.id);
 
   return findPotentialDuplicateLeads(currentLead, (data ?? []) as DuplicateCandidateRow[]);

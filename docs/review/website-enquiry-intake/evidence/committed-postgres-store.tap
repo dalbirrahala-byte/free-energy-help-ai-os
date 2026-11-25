@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: kernel network isolation is enforced
+ok 1 - kernel network isolation is enforced
+  ---
+  duration_ms: 4.237792
+  type: 'test'
+  ...
+# Subtest: signed receipt is withheld until COMMIT acknowledgement, then session closes
+ok 2 - signed receipt is withheld until COMMIT acknowledgement, then session closes
+  ---
+  duration_ms: 46.625751
+  type: 'test'
+  ...
+# Subtest: BEGIN rejection: uncertain response, one attempt, redacted error
+ok 3 - BEGIN rejection: uncertain response, one attempt, redacted error
+  ---
+  duration_ms: 1.928463
+  type: 'test'
+  ...
+# Subtest: unexpected BEGIN tag: uncertain response, one attempt, redacted error
+ok 4 - unexpected BEGIN tag: uncertain response, one attempt, redacted error
+  ---
+  duration_ms: 1.027274
+  type: 'test'
+  ...
+# Subtest: SELECT rejection: uncertain response, one attempt, redacted error
+ok 5 - SELECT rejection: uncertain response, one attempt, redacted error
+  ---
+  duration_ms: 1.118168
+  type: 'test'
+  ...
+# Subtest: lost COMMIT acknowledgement: uncertain response, one attempt, redacted error
+ok 6 - lost COMMIT acknowledgement: uncertain response, one attempt, redacted error
+  ---
+  duration_ms: 1.193088
+  type: 'test'
+  ...
+# Subtest: COMMIT reports ROLLBACK: uncertain response, one attempt, redacted error
+ok 7 - COMMIT reports ROLLBACK: uncertain response, one attempt, redacted error
+  ---
+  duration_ms: 0.855521
+  type: 'test'
+  ...
+# Subtest: physical close failure after commit: uncertain response, one attempt, redacted error
+ok 8 - physical close failure after commit: uncertain response, one attempt, redacted error
+  ---
+  duration_ms: 0.769644
+  type: 'test'
+  ...
+# Subtest: malformed committed receipt: uncertain response, one attempt, redacted error
+ok 9 - malformed committed receipt: uncertain response, one attempt, redacted error
+  ---
+  duration_ms: 1.03111
+  type: 'test'
+  ...
+# Subtest: opener rejection never issues SQL or exposes private error
+ok 10 - opener rejection never issues SQL or exposes private error
+  ---
+  duration_ms: 1.268931
+  type: 'test'
+  ...
+# Subtest: same handle across factories is rejected without disturbing its active owner
+ok 11 - same handle across factories is rejected without disturbing its active owner
+  ---
+  duration_ms: 1.315479
+  type: 'test'
+  ...
+# Subtest: different sessions progress independently while first commit is paused
+ok 12 - different sessions progress independently while first commit is paused
+  ---
+  duration_ms: 0.42738
+  type: 'test'
+  ...
+# Subtest: committed duplicate and conflict use existing receipt validation unchanged
+ok 13 - committed duplicate and conflict use existing receipt validation unchanged
+  ---
+  duration_ms: 1.141983
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 169.276107

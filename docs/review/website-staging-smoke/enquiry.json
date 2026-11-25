@@ -1,0 +1,28 @@
+{
+  "submissionId": "ea675a41-993b-499c-899c-23fa4950db46",
+  "submittedAt": "2026-11-24T12:00:00.000Z",
+  "businessName": "FEH Staging Fixture 133",
+  "contactName": "Fictional CRM Check",
+  "email": "crm-check-133@example.invalid",
+  "phone": null,
+  "meterNumbers": null,
+  "currentSupplier": null,
+  "message": null,
+  "smsConsent": null,
+  "attribution": {
+    "utmSource": null,
+    "utmMedium": null,
+    "utmCampaign": null,
+    "utmContent": null,
+    "utmTerm": null,
+    "gclid": null,
+    "fbclid": null
+  },
+  "sourcePage": "/free-business-energy-health-check",
+  "businessAnswers": {
+    "postcode": "TEST 133",
+    "energyType": "Fixture electricity",
+    "contractEnd": "Fixture term",
+    "annualSpend": "Fixture spend band"
+  }
+}

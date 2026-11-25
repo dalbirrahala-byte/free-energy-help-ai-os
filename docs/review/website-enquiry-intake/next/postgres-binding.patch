@@ -1,0 +1,115 @@
+--- a/frontend/package.json
++++ b/frontend/package.json
+@@ -25,6 +25,7 @@
+     "@supabase/supabase-js": "^2.110.8",
+     "lucide-react": "^1.26.0",
+     "next": "16.2.11",
++    "postgres": "4.0.0",
+     "react": "19.2.4",
+     "react-dom": "19.2.4"
+   },
+--- a/frontend/package-lock.json
++++ b/frontend/package-lock.json
+@@ -12,6 +12,7 @@
+         "@supabase/supabase-js": "^2.110.8",
+         "lucide-react": "^1.26.0",
+         "next": "16.2.11",
++        "postgres": "4.0.0",
+         "react": "19.2.4",
+         "react-dom": "19.2.4"
+       },
+@@ -5729,6 +5730,19 @@
+         "node": "^10 || ^12 || >=14"
+       }
+     },
++    "node_modules/postgres": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/postgres/-/postgres-4.0.0.tgz",
++      "integrity": "sha512-kBh8qXtcvvIAc00DftQyOxz7M/3Zxww1tRMXZPLzipNXXl5PIzHml+9zB3Mrge2U8ldc0WF1ZdLp1iYQi7Kh3A==",
++      "license": "Unlicense",
++      "engines": {
++        "node": ">=20"
++      },
++      "funding": {
++        "type": "individual",
++        "url": "https://github.com/sponsors/porsager"
++      }
++    },
+     "node_modules/prelude-ls": {
+       "version": "1.2.1",
+       "resolved": "https://registry.npmjs.org/prelude-ls/-/prelude-ls-1.2.1.tgz",
+--- a/frontend/src/app/api/website-enquiries/route.ts
++++ b/frontend/src/app/api/website-enquiries/route.ts
+@@ -1,4 +1,4 @@
+-import {createWebsitePost} from '@/lib/website-enquiries/createWebsitePost';
++import {createPostgresWebsitePost} from '@/lib/website-enquiries/createPostgresWebsitePost';
+ 
+ export const runtime = 'nodejs';
+-export const POST = createWebsitePost(null);
++export const POST = createPostgresWebsitePost(null);
+--- /dev/null
++++ b/frontend/src/lib/website-enquiries/createPostgresWebsitePost.ts
+@@ -0,0 +1,63 @@
++import postgres from 'postgres';
++import { isIP } from 'node:net';
++import { createReservedOpener } from '../../../../docs/review/website-enquiry-intake/source/reserved-session.mjs';
++import { createWebsitePost } from './createWebsitePost.ts';
++
++// Supplied only by a separately reviewed server binding. The route defaults to null.
++interface WebsiteDatabaseConfig {
++  hostname: string;
++  port: number;
++  database: string;
++  writer: string;
++  password: () => Promise<string>;
++  key: string;
++}
++
++function validHostname(value: string) {
++  return typeof value === 'string' && value.length <= 253 && !isIP(value) &&
++    value.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
++}
++
++export function createPostgresWebsitePost(config: WebsiteDatabaseConfig | null) {
++  if (!config || !validHostname(config.hostname) || !Number.isInteger(config.port) ||
++      config.port < 1 || config.port > 65535 || !config.database?.trim() ||
++      !config.writer?.trim() || typeof config.password !== 'function' ||
++      typeof config.key !== 'string' || config.key.length < 32) {
++    return createWebsitePost(null);
++  }
++
++  const {hostname, port, database, writer, password, key} = config;
++  const openFresh = createReservedOpener(() => postgres({
++    host: hostname, port, database, user: writer, password,
++    ssl: {servername: hostname, rejectUnauthorized: true},
++    connection: {search_path: 'pg_catalog'},
++    max: 1, prepare: false, fetch_types: false, connect_timeout: 5,
++    debug: false, onnotice: false,
++  }), async (session: postgres.ReservedSql) => {
++    const [row] = await session`
++      select current_database()::text = ${database} and session_user::text = ${writer}
++        and current_user = session_user and not pg_is_in_recovery()
++        and current_setting('transaction_read_only') = 'off'
++        and current_setting('fsync') = 'on' and current_setting('full_page_writes') = 'on'
++        and current_setting('synchronous_commit') = 'on'
++        and (select count(*) = 3 from pg_class c join pg_namespace n on n.oid = c.relnamespace
++             where n.nspname = 'public' and c.relkind = 'r' and c.relpersistence = 'p'
++               and c.relname in ('leads','website_enquiry_receipts','audit_log'))
++        and has_schema_privilege('public','usage')
++        and has_function_privilege('public.ingest_website_enquiry(jsonb)','execute')
++        and not exists (
++          select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
++          where n.nspname <> 'information_schema' and n.nspname !~ '^pg_'
++            and p.prosecdef and p.prokind in ('f','p')
++            and p.oid <> 'public.ingest_website_enquiry(jsonb)'::regprocedure
++            and has_schema_privilege(n.oid,'usage') and has_function_privilege(p.oid,'execute'))
++        and not exists (
++          select 1 from (values ('public.leads'),('public.website_enquiry_receipts'),('public.audit_log')) t(name)
++          where has_table_privilege(t.name,'select,insert,update,delete,truncate,references,trigger')
++             or has_any_column_privilege(t.name,'select,insert,update,references'))
++        as eligible`;
++    return row?.eligible === true;
++  });
++
++  return createWebsitePost({key, now: Date.now, openFresh});
++}

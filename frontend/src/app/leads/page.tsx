@@ -10,7 +10,7 @@ import type { ActivityRecencyInput } from "@/lib/revenue-engine/activityRecency"
 import type { CanonicalLead } from "@/lib/shared/domain";
 
 const LEAD_COLUMNS =
-  "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance, qualification_classification, qualification_score, qualification_computed_at";
+  "id, route_id:id::text, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance, qualification_classification, qualification_score, qualification_computed_at";
 
 export default async function LeadsPage() {
   const supabase = await createClient();
@@ -36,7 +36,8 @@ export default async function LeadsPage() {
       .select(
         "id, created_at, company_name, contact_name, telephone, email, supplier, contract_end, status, notes, lead_source, source_detail, source_provenance, consent_given, qualification_classification, qualification_score",
       )
-      .is("qualification_classification", null);
+      .is("qualification_classification", null)
+      .lte("id", Number.MAX_SAFE_INTEGER);
 
     const leads = (unscoredLeads ?? []) as CanonicalLead[];
     const leadIds = leads.map((lead) => lead.id);

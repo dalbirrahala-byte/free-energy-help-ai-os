@@ -1,0 +1,93 @@
+--- a/quote-held.ts
++++ b/quote-held.ts
+@@ -65,7 +65,17 @@
+   return s ? s : null;
+ }
+ 
+-export default async function handler(req: Request, res: Response) {
++// The shared public route accepts several purposes. Request data cannot opt it into CRM.
++export default function sharedForm(req: Request, res: Response) {
++  return handleForm(req, res, 'excluded');
++}
++
++// Reserved for a separately verified enquiry entry point. No route is registered here.
++export function verifiedEnquiry(req: Request, res: Response) {
++  return handleForm(req, res, 'pending');
++}
++
++async function handleForm(req: Request, res: Response, initialCrmStatus: 'excluded' | 'pending') {
+   const body = req.body as QuoteRequestBody;
+ 
+   const {
+@@ -96,11 +106,14 @@
+   }
+ 
+   // ── Submission ID ───────────────────────────────────────────────────────────
+-  // Accept a client-supplied UUID (retry after lost response) or generate one.
+-  const submissionId =
+-    typeof body.submissionId === 'string' && UUID_RE.test(body.submissionId)
+-      ? body.submissionId
+-      : crypto.randomUUID();
++  // Generate a reference only for callers that omit one. Replacing a supplied
++  // invalid reference would break correlation after a lost response.
++  const supplied = body.submissionId;
++  if (Object.hasOwn(body, 'submissionId') &&
++      (typeof supplied !== 'string' || supplied.length !== 36 || !UUID_RE.test(supplied))) {
++    return res.status(400).json({error: 'Invalid submissionId. Supply a UUID v4 or omit the field.'});
++  }
++  const submissionId = supplied ?? crypto.randomUUID();
+ 
+   const submittedAt = new Date().toISOString();
+ 
+@@ -145,7 +158,7 @@
+   // ── Step 1: Save to DB ──────────────────────────────────────────────────────
+   // INSERT IGNORE — idempotent. A double-submit returns the existing row and
+   // holds further delivery for reconciliation.
+-  const saveResult = await saveEnquiry({submissionId, submittedAt, smsConsent: smsConsentNorm, ...fields});
++  const saveResult = await saveEnquiry({submissionId, submittedAt, smsConsent: smsConsentNorm, ...fields}, initialCrmStatus);
+ 
+   if (!saveResult.ok) {
+     console.error('quote.submit.db_save_failed', { submissionId });
+@@ -255,6 +268,9 @@
+ 
+   // CRM is subordinate to the completed email journey. This helper is closed
+   // by default; the review archive does not install a runtime transport.
++  if (initialCrmStatus === 'excluded' || row.crmStatus === 'excluded') {
++    return res.status(201).json({ ok: true, submissionId, created: true });
++  }
+   const crmOutcome = await finishQuoteCrm(
+     submissionId, isNew, row.crmStatus, () => enquiryRowToCrmPayload(row),
+   );
+--- a/enquiry-store.candidate.ts
++++ b/enquiry-store.candidate.ts
+@@ -92,7 +92,10 @@
+  *
+  * Returns { created: true } on first insert, { created: false } on duplicate.
+  */
+-export async function saveEnquiry(input: SaveEnquiryInput): Promise<SaveEnquiryResult> {
++export async function saveEnquiry(
++  input: SaveEnquiryInput,
++  initialCrmStatus: 'excluded' | 'pending' = 'excluded',
++): Promise<SaveEnquiryResult> {
+   try {
+     const db = await getDb();
+ 
+@@ -111,7 +114,7 @@
+         ${input.meterNumbers}, ${input.currentSupplier}, ${input.message}, ${input.smsConsent},
+         ${input.utmSource}, ${input.utmMedium}, ${input.utmCampaign}, ${input.utmContent}, ${input.utmTerm},
+         ${input.gclid}, ${input.fbclid}, ${input.sourcePage},
+-        'pending', 'pending', 'pending'
++        'pending', 'pending', ${initialCrmStatus}
+       )
+     `);
+ 
+@@ -170,8 +173,7 @@
+ /**
+  * Return enquiries where crmStatus is exactly 'pending'.
+  *
+- * 'pending' means CRM_ENDPOINT was absent at submission time — these are safe
+- * to retry as soon as the endpoint is configured.
++ * Historical pending rows lack verified form purpose. Listing a row never authorises replay.
+  *
+  * 'uncertain' rows (5xx / timeout) are intentionally excluded: their outcome
+  * is unknown and they must be reconciled manually before retrying to avoid

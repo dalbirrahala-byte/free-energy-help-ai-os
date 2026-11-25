@@ -1,0 +1,42 @@
+name: FEH website CRM native MySQL
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/feh-website-crm-native.yml"
+      - "docs/review/website-enquiry-intake/**"
+      - "docs/review/website-enquiry-readback/*.patch"
+      - "docs/review/website-health-check-wiring/**"
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-mysql:
+    if: >-
+      github.repository == 'dalbirrahala-byte/free-energy-help-ai-os' &&
+      github.event.pull_request.number == 133 &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'review/website-crm-source-133'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: docs/review/website-enquiry-intake/airo/attempt/native
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+      - name: Run three disposable MySQL fixtures
+        run: bash run-disposable-mysql.sh
+      - name: Verify the dedicated Health Check handler and shared quote emails offline
+        working-directory: docs/review/website-health-check-wiring
+        run: sh test-backend.sh
+      - name: Check same-tab reload in an offline browser
+        run: python3 unix-only.py '' "$(command -v node)" ../../homepage-browser.test.mjs "$(command -v google-chrome)"
+      - name: Check business name validation in an offline browser
+        run: python3 unix-only.py '' /usr/bin/python3 ../../shared-route/browser-form-test.py "$(command -v google-chrome)"
