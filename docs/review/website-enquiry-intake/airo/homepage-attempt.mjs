@@ -1,6 +1,7 @@
 // Review candidate for src/pages/index.tsx. Supply the tab's sessionStorage,
 // crypto.randomUUID, and the homepage's POST transport when integrating.
 const homepageKey = 'feh.homepage-quote.v1';
+const healthCheckKey = 'feh.health-check.quote.v1';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const limits = {businessName:255, contactName:255, email:255, phone:40, currentSupplier:255, message:2000};
 
@@ -43,7 +44,22 @@ export async function submitHomepageQuote(fields, dependencies) {
   }, dependencies);
 }
 
-export async function submitQuoteAttempt(key, prepare, {storage, newId, post, recordConversion}) {
+export function readHealthCheckAttempt(storage) {
+  return readQuoteAttempt(storage, healthCheckKey);
+}
+
+export function submitHealthCheckQuote(body, dependencies) {
+  return submitAtPath('/api/health-check/quote', healthCheckKey, () => {
+    if (body?.source !== 'health-check-form') return {error:{field:'source'}};
+    return {body};
+  }, dependencies);
+}
+
+export function submitQuoteAttempt(key, prepare, dependencies) {
+  return submitAtPath('/api/quote', key, prepare, dependencies);
+}
+
+async function submitAtPath(path, key, prepare, {storage, newId, post, recordConversion}) {
   const previous = readQuoteAttempt(storage, key);
   if (previous.status !== 'ready') return previous;
   const {body, error} = prepare();
@@ -59,7 +75,7 @@ export async function submitQuoteAttempt(key, prepare, {storage, newId, post, re
 
   const held = {status:'held', submissionId};
   try {
-    const response = await post('/api/quote', {
+    const response = await post(path, {
       method:'POST', redirect:'error', credentials:'same-origin', mode:'same-origin',
       headers:{'Content-Type':'application/json'}, body:JSON.stringify({...body, submissionId}),
       signal:AbortSignal.timeout(15000),

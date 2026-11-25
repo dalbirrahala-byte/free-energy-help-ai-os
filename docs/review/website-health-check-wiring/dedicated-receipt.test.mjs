@@ -1,5 +1,6 @@
 // Invoke through test-dedicated-receipt.sh in a disposable checkout.
 import assert from 'node:assert/strict';
+import {readHealthCheckAttempt, submitHealthCheckQuote} from '../website-enquiry-intake/airo/homepage-attempt.mjs';
 import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {registerHooks} from 'node:module';
 import {connect} from 'node:net';
@@ -93,15 +94,43 @@ try {
   }});
   const {verifiedEnquiry} = await import(pathToFileURL(resolve('src/server/api/health-check/POST.ts')).href+'?fixture-bound');
   const answers = {postcode:'TEST', energyType:'fixture energy', contractEnd:'fixture date', annualSpend:'fixture band'};
-  for (const [id,loseReply] of [
-    ['00000000-0000-4000-8000-000000007301',false],
-    ['00000000-0000-4000-8000-000000007302',true]
+  for (const [id,loseReply,loseBrowserReply] of [
+    ['00000000-0000-4000-8000-000000007301',false,false],
+    ['00000000-0000-4000-8000-000000007302',true,false],
+    ['00000000-0000-4000-8000-000000007303',false,true]
   ]) {
     active = {id,loseReply,events:[]};
     const res = {status(n){this.code=n;return this;},json(data){this.data=data;return this;}};
-    const body = {...answers, submissionId:id, businessName:'Fictional company', contactName:'Fixture',
+    const body = {...answers, source:'health-check-form', businessName:'Fictional company', contactName:'Fixture',
       email:'visitor@example.invalid', sourcePage:'/free-business-energy-health-check'};
-    await verifiedEnquiry({body},res);
+    const values = new Map();
+    const storage = {getItem:key => values.get(key) ?? null, setItem:(key,value) => values.set(key,value)};
+    let ids = 0, posts = 0, conversions = 0;
+    const dependencies = {
+      storage,
+      newId() { ids++; return id; },
+      recordConversion() { conversions++; },
+      async post(path, options) {
+        posts++;
+        assert.equal(path, '/api/health-check/quote');
+        assert.equal(options.method, 'POST');
+        assert.equal(options.redirect, 'error');
+        await verifiedEnquiry({body:JSON.parse(options.body)},res);
+        if (loseBrowserReply) throw Error('fixture lost the website reply');
+        return Response.json(res.data, {status:res.code});
+      }
+    };
+    assert.deepEqual(await submitHealthCheckQuote({...body, source:'homepage-quote-form'}, dependencies),
+      {status:'invalid', field:'source'});
+    assert.deepEqual([ids, posts, values.size], [0, 0, 0]);
+    const held = {status:'held', submissionId:id};
+    const first = submitHealthCheckQuote(body, dependencies);
+    assert.deepEqual(await submitHealthCheckQuote(body, dependencies), held);
+    const expected = loseBrowserReply ? held : {status:'saved', submissionId:id};
+    assert.deepEqual(await first, expected);
+    assert.deepEqual(readHealthCheckAttempt(storage), expected);
+    assert.deepEqual([...values.values()].map(value => JSON.parse(value)), [expected]);
+    assert.deepEqual([ids, posts, conversions], [1, 1, Number(!loseBrowserReply)]);
     assert.equal(res.code,201);
     assert.deepEqual(res.data,{ok:true, submissionId:id, created:true});
     assert.deepEqual(active.events, ['owner@example.invalid','visitor@example.invalid','claim','transport',
@@ -122,7 +151,7 @@ try {
     assert.deepEqual(result.rows,[{id:item.receipt.leadId,answers,ref:item.id,consent:false,phone:null,digest:true,audits:1}]);
   }
   assert.equal(unexpectedFetches, 0);
-  console.log('PASS dedicated signed receipt and committed-but-lost reply, both read back after reopening PostgreSQL');
+  console.log('PASS three dedicated browser cases: overlapping submits, lost CRM reply and lost website reply; all receipts verified after reopening storage');
 } finally {
   try { await db?.close(); } finally {
     rmSync(work,{force:true,recursive:true});
